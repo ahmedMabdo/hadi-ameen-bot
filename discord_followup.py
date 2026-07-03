@@ -33,7 +33,8 @@ def load_env_file(path: str = ".env") -> None:
     if not os.path.isfile(path):
         return
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        # errors="replace" عشان الملف لو متسجل بترميز مش UTF-8 سليم ما يكسرش الروتين كله
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
             for raw_line in f:
                 line = raw_line.strip()
                 if not line or line.startswith("#") or "=" not in line:
@@ -43,7 +44,7 @@ def load_env_file(path: str = ".env") -> None:
                 value = value.strip().strip('"').strip("'")
                 if key and key not in os.environ:
                     os.environ[key] = value
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:
         log(f"تعذر قراءة {path}: {exc}")
 
 
