@@ -5,6 +5,8 @@
 node_modules/
 *.log
 .DS_Store
+__pycache__/
+*.pyc
 
 # ملفات إعداد محلية فيها أسرار حقيقية أو خاصة بجهاز معين — القوالب بديلها في setup/
 .mcp.json
