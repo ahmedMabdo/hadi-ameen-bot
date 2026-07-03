@@ -1,0 +1,78 @@
+Hadaf Solutions - ZIWO Robo Dialer Usage
+1- The first part for calling the restaurant with a pre-recorded message you can use the following API:
+curl --location 'https://ivr-test-poc-api.aswat.co/integrations/cti/click2audio/<will be called number>' \
+--header 'api_key: <api_key>' \
+--form 'storageName="<file_hash_name>"' \
+--form 'scheduleAt=""' \
+--form 'timeout="60"' \
+--form 'callerIDNumber="<caller_DID>"'
+The second part which is about getting the call result back, we have here two options:
+A- first you can setup a webhook on ZIWO platform which will trigger the hook after each call with no filtering (inbound & outbound) and will post you an object looks like this:
+{
+"content": {
+"tagsCount": 0,
+"nonFCRRepeats": 0,
+"wrapUpTime": 0,
+"id": 232697,
+"flags": 16,
+"callID": "34p5f831-039b-j9bx-11s6-l5sqx5ks25jb",
+"channelName": "sofia/internal/+77358964484@105.15.190.65",
+"gateway": "internal",
+"didCalled": "68248808136",
+"direction": "inbound",
+"callerIDNumber": "+77358964484",
+"callerIDName": "+77358964484",
+"hangupCause": "ORIGINATOR_CANCEL",
+"hangupBy": "originator",
+"disposition": "ANSWER",
+"holdTime": 0,
+"startedAt": "2024-05-09T12:31:04.000Z",
+"answeredAt": null,
+"endedAt": "2024-05-09T12:31:12.000Z",
+"duration": 8,
+"voicemail": false,
+"ivrFile": "",
+"lostInIVR": false,
+"nonWorkingHours": false,
+"queueTalkTime": 0,
+"queueWaitTime": 8,
+"agentWaitTime": 0,
+"queueEnteredAt": "2024-05-09T12:31:04.000Z",
+"agentRingStartedAt": null,
+"queueAnsweredAt": null,
+"audioQuality": 100,
+"otherSideUserId": null,
+"positionId": null,
+"queueId": 58,
+"numberId": 19,
+"talkTime": 0,
+"surveyRating": null,
+"result": "cancel",
+"ringTime": 0,
+"customerId": "y74who3z-403k-9ssq-zh90-k09hv9bcqads",
+"updatedAt": "2024-05-09T12:31:12.341Z",
+"createdAt": "2024-05-09T12:31:12.341Z",
+"offeredToAgentId": null,
+"agentId": 1,
+"ivrTime": null,
+"emotions": null,
+"targetNumber": null,
+"other_agent_id": null,
+"enableCallRecordingByCustomer": null,
+"surveyStartedAt": null,
+"conferenceStartedAt": null,
+"recordingFile": null,
+"surveyRecordingAvailable": false,
+"agent": {
+"id": 1,
+"firstName": "Demo",
+"lastName": "Agent",
+"username": "example@ziwo.io",
+"ccLogin": "0001"
+},
+"customer": {
+"id": "242wlae5-h9yu-ch4r-4jsf-ud1gti8hxj4b",
+"firstName": "John",
+"lastName": "Doe" You will find a key "result" has the call result whether it's answered or not.
+B- The second solution is to set up a workflow — a low-code solution inside ZIWO — that can filter calls and post only the relevant ones to your API. Specifically, it will filter outbound calls made from a specific DID “ZIWO DID” (used for restaurant notifications), and then POST the call results to your API accordingly.
+This module is with extra charge “setup fees and running cost with 0.01$ per each outbound call”. With minimum commitment 29$/mont.

@@ -1,0 +1,904 @@
+Items Replacement — Business Documentation.docx
+# Items Replacement — Business Documentation
+ 
+## 1. Executive Summary
+ 
+The **Items Replacement** feature handles orders where a merchant cannot fulfill one or more items after the customer places the order. Instead of rejecting the whole order immediately, the platform can:
+ 
+- Notify the customer and offer **pre-configured alternative items**
+ 
+- Let the customer **replace unavailable items** and recalculate the order total
+ 
+- Apply the customer's **unavailable-items preference** (suggest alternatives, remove and continue, or cancel order)
+ 
+- Support a **different-quantity** scenario (same item, lower quantity)
+ 
+- Remove an entire merchant from a **multi-merchant order** when the customer declines all replacements
+ 
+The feature is controlled by the Esquio feature flag `ItemReplacement` and spans the **Restaurant Portal**, **Customer API**, **notifications**, **robocalls**, and **order/payment recalculation** logic.
+ 
+---
+ 
+## 2. Business Problem & Goals
+ 
+| Problem | Solution |
+ 
+|--------|----------|
+ 
+| Merchant marks items unavailable after order placement | Structured availability workflow per line item |
+ 
+| Customer loses the whole order when one item is missing | Per-item handling with alternatives or partial continuation |
+ 
+| No standard way to suggest substitutes | Merchant configures replacement items on menu items |
+ 
+| Price changes after substitution | Preview and commit replacement with full order recalculation |
+ 
+| Different customers want different behavior | Customer-level preference stored on profile |
+ 
+**Business goals:**
+ 
+- Reduce full-order rejections due to stock issues
+ 
+- Keep customers informed and in control
+ 
+- Preserve order value where possible
+ 
+- Maintain accurate totals, discounts, delivery fees, and wallet/payment balances
+ 
+---
+ 
+## 3. Stakeholders
+ 
+| Actor | Role |
+ 
+|-------|------|
+ 
+| **Customer** | Sets preference, receives notifications, selects replacements or removes merchant |
+ 
+| **Merchant / Restaurant** | Marks item availability, configures alternatives, notifies customer |
+ 
+| **8Orders Platform** | Orchestrates status, notifications, robocalls, pricing, and payments |
+ 
+| **Admin** | Feature flag, robocall limits, notification retry settings |
+ 
+---
+ 
+## 4. Feature Enablement
+ 
+| Control | Value |
+ 
+|---------|-------|
+ 
+| Feature flag | `ItemReplacement` (Esquio) |
+ 
+| Restaurant UI | Shown only when flag is enabled |
+ 
+| Customer API | `GetUnavailableItems` and `CalculateItemsReplacementTotal` are gated by `[FeatureFilter(Name = ItemReplacement)]` |
+ 
+If disabled, merchants use the legacy availability/rejection flow without alternatives.
+ 
+---
+ 
+## 5. Customer Unavailable-Items Preference
+ 
+Stored on `Customer.UnavailableItemsPreference`:
+ 
+| Preference | Enum Value | Business Meaning |
+ 
+|-------------|------------|------------------|
+ 
+| **Suggest Alternatives** | `0` (default) | Customer should be offered replacements when merchant marks items unavailable with alternatives |
+ 
+| **Remove and Continue** | `1` | Unavailable items are removed automatically; order continues with remaining items |
+ 
+| **Cancel Order** | `2` | Order should be rejected when merchant cannot fulfill unavailable items |
+ 
+**Customer API:** `POST api/CustomerUser/UpdateUnavailableItemsPreference`
+ 
+**Restaurant UI:** Preference is displayed on the order details screen when the feature is enabled.
+ 
+---
+ 
+## 6. Core Concepts & Terminology
+ 
+| Term | Meaning |
+ 
+|------|---------|
+ 
+| **Menu Item Replacement** | Catalog-level mapping: original item → up to 3 substitute items (`TA_MenuItemReplacements`) |
+ 
+| **Order Detail Replacement** | Order-level suggestion saved when merchant notifies customer (`TA_OrderDetailReplacements`), including optional quantity |
+ 
+| **Has Alternatives** | Line item flagged as unavailable but with merchant-suggested replacements |
+ 
+| **Not Available Items** | Line item marked unavailable by merchant |
+ 
+| **Is Replacement** | New line item added after customer confirms a substitute |
+ 
+| **Suggest Alternatives** | Merchant availability option: different item(s) as replacement |
+ 
+| **Different Quantity** | Same item offered at a lower quantity (self-replacement) |
+ 
+| **Items Under Replacement** | Restaurant order status while waiting for customer action |
+ 
+---
+ 
+## 7. End-to-End Business Flow
+ 
+```mermaid
+ 
+flowchart TD
+ 
+    A[Customer places order] --> B[Merchant opens order in Restaurant Portal]
+ 
+    B --> C{All items available?}
+ 
+    C -->|Yes| D[Confirm order with cooking time]
+ 
+    C -->|No| E[Mark each item availability]
+ 
+    E --> F{Customer preference?}
+ 
+    F -->|Remove and Continue| G[Auto-remove unavailable items]
+ 
+    G --> H[Recalculate order and confirm if possible]
+ 
+    F -->|Cancel Order / No alternatives| I[Reject order or restaurant portion]
+ 
+    F -->|Suggest Alternatives| J[Merchant configures alternatives]
+ 
+    J --> K[Notify customer]
+ 
+    K --> L[Push notification + optional robocall]
+ 
+    L --> M[Customer opens replacement screen]
+ 
+    M --> N{Customer action}
+ 
+    N -->|Select replacements| O[Preview/Commit replacement total]
+ 
+    O --> P[Order updated, merchant notified]
+ 
+    N -->|Decline all in multi-order| Q[Remove merchant from order]
+ 
+    N -->|No action| R[Reminders via push job]
+ 
+    P --> S[Merchant confirms updated order]
+ 
+```
+ 
+---
+ 
+## 8. Merchant Workflow (Restaurant Portal)
+ 
+**Screen:** `New-OrderDetails` (`TalabatkRestaurants`)
+ 
+### 8.1 Preconditions
+ 
+- Feature flag `ItemReplacement` enabled
+ 
+- Order status is `Pending` or `RestaurantPending`
+ 
+- Order not already confirmed or rejected
+ 
+- Customer preference shown to merchant
+ 
+### 8.2 Per-Item Availability Options
+ 
+When feature is enabled and customer preference is **Suggest Alternatives**:
+ 
+| Option | Effect |
+ 
+|--------|--------|
+ 
+| **Available** | Item remains in order |
+ 
+| **Not Available** | Item unavailable; no alternatives |
+ 
+| **Suggest Alternatives** | Item unavailable; merchant must configure replacement item(s) |
+ 
+| **Different Quantity** | Same item as replacement with lower quantity; no "not available time" required |
+ 
+### 8.3 Configuring Alternatives
+ 
+1. Merchant clicks **Alternatives** (only when `hasAlternatives = true` and customer preference = Suggest Alternatives).
+ 
+2. **Alternatives popup** opens with menu tree/search.
+ 
+3. Merchant selects up to **3 replacement items**.
+ 
+4. For **same-item replacement**, quantity defaults to `ordered quantity - 1` and must be `>= 1` and `< ordered quantity`.
+ 
+5. On confirm:
+ 
+   - Replacement IDs are saved to the **menu item catalog** (future orders).
+ 
+   - Quantities are kept in local UI state until **Notify Customer** is clicked.
+ 
+### 8.4 Notify Customer
+ 
+Triggered when:
+ 
+- Some items are unavailable or have alternatives, and
+ 
+- Restaurant status is before `Confirmed`
+ 
+**Validations before notify:**
+ 
+- Replacement cannot happen twice on same order (`isReplacement` check)
+ 
+- Items marked with alternatives must have at least one replacement configured
+ 
+- Availability time required for unavailable/alternative items (except Different Quantity)
+ 
+- Cooking time required when removing items under Remove and Continue
+ 
+**API:** `POST api/Orders/NotifyCustomerToReplaceItems`
+ 
+**Payload per line item:**
+ 
+- `available`, `hasAlternatives`, `availabilityId`, `rejectionReasonId`
+ 
+- `itemReplacements[]` with `itemId` and optional `quantity`
+ 
+### 8.5 Post-Notify Merchant Experience
+ 
+- Grid becomes read-only (`ItemsUnderReplacement` status)
+ 
+- Merchant waits for customer action
+ 
+- After customer updates order, merchant receives push + real-time update
+ 
+---
+ 
+## 9. Customer Workflow (Mobile App / Customer API)
+ 
+### 9.1 Get Unavailable Items
+ 
+**API:** `GET api/Order/GetUnavailableItems?orderId=&restaurantId=`
+ 
+Returns unavailable line items for the authenticated customer, including:
+ 
+- Original item name, image, price
+ 
+- Whether alternatives exist
+ 
+- Suggested replacement items from `TA_MenuItemReplacements`, filtered to active/available items
+ 
+- Offer discount messaging per replacement
+ 
+- `MaxQuantity` when merchant suggested a self-replacement quantity
+ 
+- `QuantityDifferenceText` for different-quantity cases
+ 
+### 9.2 Preview / Commit Replacement
+ 
+**API:** `POST api/Order/CalculateItemsReplacementTotal`
+ 
+| Parameter | Purpose |
+ 
+|-----------|---------|
+ 
+| `CommitUpdate = false` | Preview new total and messages only |
+ 
+| `CommitUpdate = true` | Persist order changes |
+ 
+| `ReplacedDetails[]` | Per unavailable line: selected replacement as full cart item (item, price, options, quantity) |
+ 
+**Response (`ItemReplacementResult`):**
+ 
+- `HeaderMessage` — same/less/more money scenario
+ 
+- `Message` — cash/wallet adjustment explanation
+ 
+- `Details[]` — old vs new item comparison per line
+ 
+### 9.3 Customer Declines All Replacements (Multi-Merchant Only)
+ 
+If **all** unavailable items from one merchant have **no replacement selected** and the order has **more than one merchant**:
+ 
+- That merchant's items are removed from the order
+ 
+- Order total is recalculated
+ 
+- Merchant is notified of customer update
+ 
+If it is a **single-merchant order**, customer must select at least one replacement (`SelectOneReplacement` error).
+ 
+### 9.4 Remove Merchant Explicitly
+ 
+**API:** `POST api/Order/DeleteRestaurant?orderId=&restaurantId=`
+ 
+Separate endpoint for customer-initiated merchant removal (also used in broader order-update flows).
+ 
+---
+ 
+## 10. Business Rules by Customer Preference
+ 
+### 10.1 Suggest Alternatives (`0`)
+ 
+| Merchant Action | System Behavior |
+ 
+|----------------|-----------------|
+ 
+| Some unavailable + alternatives configured | Notify customer, set status to Items Under Replacement |
+ 
+| All unavailable, none with alternatives | **Reject order** (if no self-replacement items) |
+ 
+| Customer selects replacements | Replace lines, recalculate, return merchant to Pending |
+ 
+| Customer ignores | Repeated push notifications (configurable) + robocall |
+ 
+### 10.2 Remove and Continue (`1`)
+ 
+| Condition | System Behavior |
+ 
+|-----------|-----------------|
+ 
+| Unavailable items, **no** self-replacement (same item) | Remove unavailable items, recalculate, confirm remaining items if cooking time provided |
+ 
+| Single-merchant order, **all** items unavailable | Reject entire order |
+ 
+| Multi-merchant, partial unavailable | Remove only unavailable lines for that merchant |
+ 
+Customer receives localized **"Some items were removed"** notification.
+ 
+### 10.3 Cancel Order (`2`)
+ 
+| Condition | System Behavior |
+ 
+|-----------|-----------------|
+ 
+| Any unavailable items without viable alternatives | Reject restaurant portion; reject whole order if single merchant or all merchants rejected |
+ 
+| Merchant UI warning | If some items still available, merchant is informed that preference is cancel |
+ 
+### 10.4 Self-Replacement (Same Item) Special Rules
+ 
+- Counted when merchant includes the **same menu item** in replacement list
+ 
+- Item is **not** auto-marked unavailable in catalog when different quantity is used
+ 
+- Menu item stays **available** if configured with self-replacement
+ 
+- UI treats this as **Different Quantity**, not Suggest Alternatives
+ 
+---
+ 
+## 11. Order & Status Lifecycle
+ 
+### 11.1 Order-Level Status
+ 
+| Status | When |
+ 
+|--------|------|
+ 
+| `RestaurantNotAvilableItems (14)` | After merchant notifies customer about unavailable items |
+ 
+### 11.2 Restaurant-Level Status
+ 
+| Status | Code | When |
+ 
+|--------|------|------|
+ 
+| `ItemAvailability` | 140 | Items marked unavailable/available during review |
+ 
+| `ItemsUnderReplacement` | 200 | Customer notified and awaiting replacement decision |
+ 
+| `Pending` | 110 | After customer commits replacement (merchant must re-confirm) |
+ 
+| `Confirmed` | 130 | Merchant confirms after replacement or available items |
+ 
+### 11.3 Line-Item Flags
+ 
+| Field | Meaning |
+ 
+|-------|---------|
+ 
+| `NotAvilableItems` | Merchant marked item unavailable |
+ 
+| `HasAlternatives` | Merchant offered replacements |
+ 
+| `IsReplacement` | Line added by customer as substitute |
+ 
+| `IsAvailable` | Merchant marked item as available |
+ 
+### 11.4 Replacement Allowed Once
+ 
+If any line in the order already has `IsReplacement = true`, merchant cannot trigger notify again. UI shows **"Replacement only once"**.
+ 
+---
+ 
+## 12. Data Model
+ 
+### 12.1 `TA_MenuItemReplacements` (Catalog)
+ 
+| Column | Description |
+ 
+|--------|-------------|
+ 
+| `OriginalItemId` | Item being replaced |
+ 
+| `ReplacementItemId` | Suggested substitute |
+ 
+- Composite PK `(OriginalItemId, ReplacementItemId)`
+ 
+- Max **3** replacements per item (validated in `EditMenuItemValidator`)
+ 
+- Managed via menu item add/edit in Restaurant Portal
+ 
+### 12.2 `TA_OrderDetailReplacements` (Per Order)
+ 
+| Column | Description |
+ 
+|--------|-------------|
+ 
+| `OrderDetailId` | Unavailable line |
+ 
+| `ReplacementItemId` | Suggested item |
+ 
+| `Quantity` | Suggested quantity (especially for different-quantity cases) |
+ 
+- Written when merchant calls `NotifyCustomerToReplaceItems`
+ 
+- Existing replacements for a line are replaced on re-notify
+ 
+### 12.3 Related Entities
+ 
+- `Customer.UnavailableItemsPreference`
+ 
+- `OrderDetails.NotAvilableItems`, `HasAlternatives`, `IsReplacement`
+ 
+- `OrderRestaurantDetails.RestaurantOrderStatus`
+ 
+- `RoboCalls` with type `CustomerItemReplacement`
+ 
+---
+ 
+## 13. API Reference
+ 
+### 13.1 Restaurant API (`TalabatkRestaurants`)
+ 
+| Endpoint | Method | Purpose |
+ 
+|----------|--------|---------|
+ 
+| `api/Orders/NotifyCustomerToReplaceItems` | POST | Merchant marks availability and notifies customer |
+ 
+| Menu item add/edit | POST/PUT | Persist `ItemReplacementIds` on catalog items |
+ 
+### 13.2 Customer API (`TalabatkAPIs`)
+ 
+| Endpoint | Method | Feature Flag | Purpose |
+ 
+|----------|--------|--------------|---------|
+ 
+| `api/Order/GetUnavailableItems` | GET | ItemReplacement | List unavailable items + suggestions |
+ 
+| `api/Order/CalculateItemsReplacementTotal` | POST | ItemReplacement | Preview/commit replacements |
+ 
+| `api/Order/DeleteRestaurant` | POST | — | Remove merchant from order |
+ 
+| `api/CustomerUser/UpdateUnavailableItemsPreference` | POST | — | Set customer preference |
+ 
+---
+ 
+## 14. Notifications & Robocalls
+ 
+### 14.1 Push Notifications
+ 
+**Job:** `NotifyCustomerForOrderActionJob` (Hangfire, `restaurant` queue)
+ 
+| Trigger | Message |
+ 
+|---------|---------|
+ 
+| Alternatives offered | Localized `ReplaceItems` |
+ 
+| No alternatives / cannot proceed | `RestaurantCannotProceedOrder` |
+ 
+| Remove and continue | `SomeItemsWereRemoved` |
+ 
+**Notification metadata:**
+ 
+- `entity_type = ReplaceItems (19)`
+ 
+- `entity_id = orderId`
+ 
+- Custom sound: `take_action`
+ 
+**Retry behavior:**
+ 
+- `ReplaceItemsNotificationIntervalInMinutes` — interval between reminders
+ 
+- `MaxRunsForReplaceItemsNotification` — max reminder attempts
+ 
+- Reminders suppressed if unavailable items already resolved (for Suggest Alternatives)
+ 
+### 14.2 Robocall
+ 
+Triggered in `NotifyCustomerToReplaceItems` when `Configuration.MaximumCustomerRobocall > 0`.
+ 
+| Setting | Purpose |
+ 
+|---------|---------|
+ 
+| `ZiwoSettings.ItemReplacementStorageName` | Audio file for replacement prompt |
+ 
+| `RoboCallType.CustomerItemReplacement` | Call classification |
+ 
+Follow-up robocalls can be scheduled via `RobocallScheduler.HandleItemReplacementCall` if customer still has unavailable items.
+ 
+### 14.3 Merchant Notification
+ 
+After customer commits replacement:
+ 
+- Push: "The order has been updated by the customer."
+ 
+- Real-time order update to restaurant via `SendOrderUpdateForRestaurant`
+ 
+---
+ 
+## 15. Financial & Pricing Impact
+ 
+When replacements are committed, the system recalculates:
+ 
+| Area | Behavior |
+ 
+|------|----------|
+ 
+| Line items | Unavailable lines removed; new replacement lines added |
+ 
+| Promo codes | Re-evaluated against updated order |
+ 
+| Vouchers | Re-evaluated if voucher campaign enabled |
+ 
+| Tiered discounts | Recalculated per affected merchant |
+ 
+| Offers | Active offers re-applied; replacement offer items included |
+ 
+| Delivery fees | Recalculated from remaining merchants/zones |
+ 
+| Service fees | City min/max/percentage rules applied |
+ 
+| Wallet | Balance applied; transaction descriptions in EN/AR |
+ 
+| Online payment | If captured and new total lower → wallet refund message; if higher → additional cash message |
+ 
+**Customer-facing total messages:**
+ 
+| Scenario | Header | Footer |
+ 
+|----------|--------|--------|
+ 
+| Same total | Items replaced with same money | Same total after update |
+ 
+| Lower total | Items replaced with less money | Cash deduction or wallet refund |
+ 
+| Higher total | Items replaced with more money | Additional cash required |
+ 
+**Validations on replacement items:**
+ 
+- Item, price, and options must be active/available
+ 
+- Option min/max constraints enforced
+ 
+- Max quantity per day/order enforced per price tier
+ 
+---
+ 
+## 16. Menu Item Configuration (Merchant Catalog)
+ 
+Configured in:
+ 
+- **Order flow:** Alternatives popup (saves to menu item on confirm)
+ 
+- **Menu management:** `category-item-form-popup` (`replacementIds` field)
+ 
+**Rules:**
+ 
+- Max 3 replacement item IDs
+ 
+- Replacements stored on `MenuItem.ItemReplacements`
+ 
+- If item includes itself as replacement → item remains available (supports different-quantity scenario)
+ 
+- For **Mart stores**, search/tree uses store-specific product lookup
+ 
+---
+ 
+## 17. Mart vs Restaurant Differences
+ 
+| Aspect | Restaurant | Mart (Store) |
+ 
+|--------|------------|--------------|
+ 
+| Unavailable item in catalog | Temporary unavailability window | Item **deactivated** |
+ 
+| Replacement picker | Menu tree + search | Store product search with lookup data |
+ 
+| Delivery fee cap | City max tax | `MaximumDeliveryFeesForStore` |
+ 
+| Self-replacement availability | Item not marked unavailable | Item not deactivated |
+ 
+---
+ 
+## 18. Multi-Merchant Order Behavior
+ 
+| Scenario | Outcome |
+ 
+|----------|---------|
+ 
+| Merchant A has unavailable items, Merchant B fine | Only Merchant A enters replacement flow |
+ 
+| Customer replaces items for A | Order continues; A returns to Pending |
+ 
+| Customer selects no replacements for A in multi-order | Merchant A removed; order recalculated with B |
+ 
+| Single-merchant, all unavailable, no replacements | Error — must select at least one replacement |
+ 
+| All merchants eventually confirmed | Order auto-confirms when all restaurant details are Confirmed |
+ 
+---
+ 
+## 19. Configuration & Operational Settings
+ 
+| Setting | Location | Purpose |
+ 
+|---------|----------|---------|
+ 
+| `ItemReplacement` | Esquio feature flags | Enable/disable feature |
+ 
+| `ReplaceItemsNotificationIntervalInMinutes` | appsettings | Push reminder interval |
+ 
+| `MaxRunsForReplaceItemsNotification` | appsettings | Max push reminders |
+ 
+| `MaximumCustomerRobocall` | `Configuration` table | Enable/disable robocalls |
+ 
+| `ItemReplacementStorageName` | `ZiwoSettings` / appsettings | Robocall audio |
+ 
+| `StartOffset` / `EndOffset` | appsettings | Working-day boundaries for availability windows and quantity limits |
+ 
+---
+ 
+## 20. Validations & Guardrails
+ 
+### Merchant-Side
+ 
+- Order must be Pending / RestaurantPending
+ 
+- Cannot update confirmed or rejected orders
+ 
+- Alternatives required when `hasAlternatives = true`
+ 
+- Availability time required except Different Quantity
+ 
+- Cooking time required when continuing with partial availability
+ 
+- Replacement only once per order
+ 
+### Customer-Side
+ 
+- Order must belong to authenticated customer
+ 
+- Replacement items must be currently available
+ 
+- Selected price must be available
+ 
+- Options must satisfy category min/max rules
+ 
+- Quantity limits per price tier respected
+ 
+- Cannot update order with failed/pending online payment when removing merchant
+ 
+### Catalog-Side
+ 
+- Max 3 replacements per menu item
+ 
+- Replacement items must exist in same restaurant catalog
+ 
+---
+ 
+## 21. Audit Trail & Comments
+ 
+On customer commit (`CommitUpdate = true`):
+ 
+- Order comments added in Arabic for removed and added items
+ 
+- Order auditing entries when merchant/restaurant removed
+ 
+- Restaurant action records on notify
+ 
+- Structured logging in `NotifyCustomerToReplaceItemsCommand`
+ 
+---
+ 
+## 22. Admin & Reporting Touchpoints
+ 
+- Admin order list includes `RestaurantNotAvilableItems` column for visibility
+ 
+- Display status `ItemsUnderReplacement (200)` shown in restaurant order UI
+ 
+- Robocall records stored in `RoboCalls` for traceability
+ 
+---
+ 
+## 23. Key Business Scenarios (Worked Examples)
+ 
+### Scenario A — Happy path with alternatives
+ 
+1. Customer preference: Suggest Alternatives
+ 
+2. Merchant marks Item X as unavailable with alternatives Y, Z
+ 
+3. Customer notified → selects Y
+ 
+4. Total increases by 5 EGP → customer sees "more money" message
+ 
+5. Merchant receives update → confirms order
+ 
+### Scenario B — Remove and continue
+ 
+1. Customer preference: Remove and Continue
+ 
+2. Merchant marks Item X unavailable (no self-replacement)
+ 
+3. System removes X, recalculates, confirms remaining items
+ 
+4. Customer notified that items were removed
+ 
+### Scenario C — Different quantity
+ 
+1. Customer ordered 3× Item X
+ 
+2. Merchant selects X as replacement with quantity 2
+ 
+3. Customer sees quantity difference text
+ 
+4. On confirm, same item replaced at lower quantity
+ 
+### Scenario D — Multi-merchant decline
+ 
+1. Order has Restaurant A + B
+ 
+2. All A items unavailable; customer selects no replacements
+ 
+3. Restaurant A removed; order continues with B only
+ 
+### Scenario E — Cancel preference
+ 
+1. Customer preference: Cancel Order
+ 
+2. Merchant marks items unavailable without alternatives
+ 
+3. Restaurant portion rejected; whole order rejected if single merchant
+ 
+---
+ 
+## 24. System Component Map
+ 
+```mermaid
+ 
+graph LR
+ 
+    subgraph Presentation
+ 
+        RP[Restaurant Portal]
+ 
+        CA[Customer App]
+ 
+    end
+ 
+    subgraph APIs
+ 
+        RAPI[TalabatkRestaurants API]
+ 
+        CAPI[TalabatkAPIs Order API]
+ 
+    end
+ 
+    subgraph Application
+ 
+        NTC[NotifyCustomerToReplaceItemsCommand]
+ 
+        CIT[CalculateItemsReplacementTotalCommand]
+ 
+        GOI[GetOrderUnavailableItemsQuery]
+ 
+        NCJ[NotifyCustomerForOrderActionJob]
+ 
+    end
+ 
+    subgraph Domain
+ 
+        ORD[Order / OrderDetails]
+ 
+        MIR[MenuItemReplacement]
+ 
+        ODR[OrderDetailReplacement]
+ 
+    end
+ 
+    subgraph Infrastructure
+ 
+        DB[(SQL Server)]
+ 
+        HF[Hangfire]
+ 
+        PUSH[FCM Push]
+ 
+        ZIWO[Ziwo Robocall]
+ 
+    end
+ 
+    RP --> RAPI --> NTC
+ 
+    CA --> CAPI --> GOI
+ 
+    CA --> CAPI --> CIT
+ 
+    NTC --> ORD
+ 
+    CIT --> ORD
+ 
+    NTC --> HF --> NCJ --> PUSH
+ 
+    NTC --> ZIWO
+ 
+    ORD --> DB
+ 
+    MIR --> DB
+ 
+    ODR --> DB
+ 
+```
+ 
+---
+ 
+## 25. Glossary
+ 
+| Term | Definition |
+ 
+|------|------------|
+ 
+| **Alternative** | A different menu item offered instead of an unavailable one |
+ 
+| **Self-replacement** | Same item offered at a lower quantity |
+ 
+| **Notify Customer** | Merchant action that triggers customer-facing workflow |
+ 
+| **Commit Update** | Customer confirmation that persists replacement changes |
+ 
+| **Preview** | Customer views new total without saving |
+ 
+---
+ 
+## 26. Key Source Files
+ 
+| Layer | Path |
+ 
+|-------|------|
+ 
+| Notify merchant → customer | `Shared/TalabatkApplication/Commands/NotifyCustomerToReplaceItemsCommand/` |
+ 
+| Customer replacement commit | `Shared/TalabatkApplication/Commands/CalculateItemsReplacementTotalCommand/` |
+ 
+| Customer unavailable items query | `Shared/TalabatkApplication/Queries/GetOrderUnavailableItemsQuery/` |
+ 
+| Domain — order detail replacement | `Shared/TalabatkLogic/TalabatkModels/OrderDetailReplacement.cs` |
+ 
+| Domain — menu item replacement | `Shared/TalabatkLogic/TalabatkModels/MenuItemReplacement.cs` |
+ 
+| Restaurant UI | `TalabatkRestaurants/ClientApp/src/app/orders/New-OrderDetails/` |
+ 
+| Alternatives popup | `TalabatkRestaurants/ClientApp/src/app/shared-components/alternatives-popup/` |
+ 
+| Customer API endpoints | `TalabatkAPIs/Controllers/Order/OrderController.cs` |
+ 
+| Restaurant API endpoint | `TalabatkRestaurants/Controllers/Orders/OrdersController.cs` |
+ 
+| Push notification job | `Shared/TalabatkApplication/Commands/NotifyCustomerToReplaceItemsCommand/NotifyCustomerForOrderActionJob.cs` |
+ 
+| Robocall scheduler | `Shared/TalabatkApplication/Helper/RobocallScheduler.cs` |
+ 
+| Feature flag constant | `Shared/TalabatkLogic/Constants/Features.cs` |

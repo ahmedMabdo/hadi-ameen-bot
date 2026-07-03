@@ -1,0 +1,16 @@
+# انسخ السطور دي لملف .gitignore في جذر المشروع
+.env
+.env.*
+!.env.example
+node_modules/
+*.log
+.DS_Store
+
+# ملفات إعداد محلية فيها أسرار حقيقية أو خاصة بجهاز معين — القوالب بديلها في setup/
+.mcp.json
+.claude/settings.local.json
+
+# ملفات تشغيل محلية (مش محتاجينها في السحابة)
+*.bat
+mcp-status.txt
+diag-done.flag
