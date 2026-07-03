@@ -2,8 +2,13 @@
 """متابعة يومية لهادي أمين على ديسكورد — Discord REST API v10 مباشرة.
 
 الأوامر:
-  python3 discord_followup.py fetch          -> يطبع رسائل اليوم (قناة الدعم) كـ JSON على stdout
-  python3 discord_followup.py post "<نص>"    -> يبعت النص كرسالة في قناة الدعم
+  python3 discord_followup.py fetch                -> يطبع رسائل اليوم (قناة الدعم) كـ JSON على stdout
+  python3 discord_followup.py post "<نص>"          -> يبعت النص كرسالة في قناة الدعم
+  python3 discord_followup.py post --dry-run "<نص>" -> وضع تجربة: ما يبعتش في القناة العامة
+
+وضع التجربة (dry-run) بيتفعّل لو env `FOLLOWUP_DRY_RUN` قيمته true/1/yes، أو بفلاج
+`--dry-run` في الأمر. في وضع التجربة الملخص بيتطبع في stdout بس، وبيتبعت DM خاص
+لو `FOLLOWUP_DM_USER_ID` محدد — من غير أي نشر في القناة العامة.
 
 كل خطأ بيتطبع بصيغة "FOLLOWUP: ..." على stderr وبيرجع exit code != 0 من غير ما يكسر باقي الروتين.
 """
@@ -40,6 +45,16 @@ def load_env_file(path: str = ".env") -> None:
                     os.environ[key] = value
     except OSError as exc:
         log(f"تعذر قراءة {path}: {exc}")
+
+
+def is_truthy(value: str | None) -> bool:
+    if not value:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def is_dry_run(cli_flag: bool = False) -> bool:
+    return cli_flag or is_truthy(os.environ.get("FOLLOWUP_DRY_RUN"))
 
 
 def get_token() -> str:
@@ -213,7 +228,39 @@ def resolve_user_id(name: str) -> str | None:
     return user_id
 
 
-def post_message(content: str) -> bool:
+def open_dm_channel(user_id: str) -> str | None:
+    result = api_post("/users/@me/channels", {"recipient_id": user_id})
+    if not result:
+        log(f"مقدرش أفتح DM مع المستخدم {user_id}")
+        return None
+    return result.get("id")
+
+
+def send_dm(user_id: str, content: str) -> bool:
+    dm_channel_id = open_dm_channel(user_id)
+    if not dm_channel_id:
+        return False
+
+    result = api_post(f"/channels/{dm_channel_id}/messages", {"content": content})
+    return result is not None
+
+
+def post_message(content: str, dry_run: bool = False) -> bool:
+    if dry_run:
+        print("FOLLOWUP: DRY RUN — لم يُنشر في القناة العامة")
+        print(content)
+
+        dm_user_id = os.environ.get("FOLLOWUP_DM_USER_ID")
+        if dm_user_id:
+            if send_dm(dm_user_id, content):
+                log(f"تم إرسال نسخة تجريبية DM للمستخدم {dm_user_id}")
+            else:
+                log(f"فشل إرسال DM التجريبي للمستخدم {dm_user_id}")
+        else:
+            log("FOLLOWUP_DM_USER_ID مش محدد — الملخص اتطبع في stdout بس من غير DM")
+
+        return True
+
     channel_id = resolve_channel_id()
     if not channel_id:
         return False
@@ -229,11 +276,17 @@ def post_message(content: str) -> bool:
 def main() -> None:
     load_env_file()
 
-    if len(sys.argv) < 2:
-        print("Usage: discord_followup.py fetch | post \"<text>\"", file=sys.stderr)
+    args = sys.argv[1:]
+    cli_dry_run = "--dry-run" in args
+    if cli_dry_run:
+        args = [a for a in args if a != "--dry-run"]
+
+    if not args:
+        print("Usage: discord_followup.py [--dry-run] fetch | post \"<text>\"", file=sys.stderr)
         sys.exit(1)
 
-    command = sys.argv[1]
+    command = args[0]
+    dry_run = is_dry_run(cli_dry_run)
 
     if command == "fetch":
         messages = fetch_today_messages()
@@ -241,10 +294,10 @@ def main() -> None:
         return
 
     if command == "post":
-        if len(sys.argv) < 3:
+        if len(args) < 2:
             log("محتاج تبعت النص اللي عايز تنشره: post \"<text>\"")
             sys.exit(1)
-        ok = post_message(sys.argv[2])
+        ok = post_message(args[1], dry_run=dry_run)
         sys.exit(0 if ok else 1)
 
     print(f"Unknown command: {command}", file=sys.stderr)
