@@ -30,11 +30,11 @@ process environment):
   AZURE_DEVOPS_PAT    ADO personal access token, Work Items Read & Write
                       (same one ado_client.py uses) — needed for `file-cr`.
   ADO_CR_AREA_PATH    default `0_Projects_Team\\Change Requests`.
-  ADO_CR_TYPE         work item type to create; default "Issue" (same type
-                      the Support Team board uses in this process). If your
-                      Change Requests board expects a different type, set
-                      this — on a type error the script prints the valid
-                      type names for the project to pick from.
+  ADO_CR_TYPE         work item type to create; default "Change Request"
+                      (the type the Change Requests board uses in this
+                      process — same as discord_orderpo.py). On a type error
+                      the script prints the valid type names for the project
+                      to pick from.
 
 Like discord_delivery.py, per-call failures print a clear error and exit
 non-zero instead of raising tracebacks, so Hadi can read what went wrong
@@ -58,7 +58,7 @@ DEFAULT_PO_CHANNEL_ID = "1358833733699899704"
 DEFAULT_MARS_CHANNEL_ID = "1136668686044909761"
 
 ADO_CR_AREA_PATH = os.environ.get("ADO_CR_AREA_PATH", r"0_Projects_Team\Change Requests")
-ADO_CR_TYPE = os.environ.get("ADO_CR_TYPE", "Issue")
+ADO_CR_TYPE = os.environ.get("ADO_CR_TYPE", "Change Request")
 
 
 def _bot_token():
