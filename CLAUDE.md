@@ -224,9 +224,10 @@
 **الخطوات (SOP):**
 1. لما حد يقول "عايز أرفع issue/CR"، اسأله الأسئلة الناقصة بس — لو قال حاجة كفاية متسألش عليها تاني.
 2. اعرض عليه **ملخص التذكرة قبل الرفع** (النوع، العنوان، الوصف، التطبيق) واطلب تأكيد صريح ("أرفعها كده؟").
-3. بعد التأكيد، اعمل الـ work item في مشروع `0_Projects_Team` بالأداة، وحدّد الـ **AreaPath** حسب النوع:
-   - **Change Request** → `System.AreaPath = 0_Projects_Team\Change Requests` (عشان تظهر على الـ CR board).
-   - **Customer Issue** → `System.AreaPath = 0_Projects_Team\Support Team` (عشان تظهر على الـ Support board).
+3. بعد التأكيد، اعمل الـ work item في مشروع `0_Projects_Team` بالأداة، وحدّد **نوع الـ work item والـ AreaPath** حسب النوع — القاعدة ثابتة:
+   - **Change Request** → النوع `Change Request` + `System.AreaPath = 0_Projects_Team\Change Requests` (عشان تظهر على الـ CR board).
+   - **Customer Issue** → النوع `Issue` + `System.AreaPath = 0_Projects_Team\Support Team` (عشان تظهر على الـ Support board).
+   - **متلخبطش بينهم**: اللي بيتحط على بورد السابورت نوعه `Issue`، واللي بيتحط على بورد الـ CR نوعه `Change Request` — مش `Issue`.
    وحط تاج `from-discord` دايمًا، وتاج `posthog` لو مصدرها من تقارير PostHog.
 4. **إلزامي:** بعد ما التذكرة تترفع، ابعت **لينكها على طول في نفس الرد** بصيغة:
    `https://hadafsolutions.visualstudio.com/0_Projects_Team/_workitems/edit/{ID}`
