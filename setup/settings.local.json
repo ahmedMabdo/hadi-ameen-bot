@@ -3,27 +3,11 @@
     "allow": [
       "mcp__plugin_discord_discord__reply",
 
-      "mcp__azure-devops__core_list_projects",
-      "mcp__azure-devops__core_list_project_teams",
-      "mcp__azure-devops__search_workitem",
-      "mcp__azure-devops__wit_get_work_item",
-      "mcp__azure-devops__wit_get_work_items_batch_by_ids",
-      "mcp__azure-devops__wit_get_work_item_type",
-      "mcp__azure-devops__wit_query_by_wiql",
-      "mcp__azure-devops__wit_my_work_items",
-      "mcp__azure-devops__wit_list_backlog_work_items",
-      "mcp__azure-devops__wit_list_backlogs",
-      "mcp__azure-devops__work_list_iterations",
-      "mcp__azure-devops__work_list_team_iterations",
-      "mcp__azure-devops__work_get_team_settings",
-
-      "mcp__azure-devops__wit_create_work_item",
-      "mcp__azure-devops__wit_add_work_item_comment",
-      "mcp__azure-devops__wit_add_child_work_items"
+      "Bash(python3 po_channel_cr.py:*)",
+      "Bash(python3 ado_cli.py:*)",
+      "Bash(python3 discord_followup.py:*)",
+      "Bash(python3 discord_orderpo.py:*)"
     ],
-    "deny": [
-      "mcp__azure-devops__wit_update_work_item",
-      "mcp__azure-devops__wit_update_work_items_batch"
-    ]
+    "deny": []
   }
 }

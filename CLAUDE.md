@@ -178,7 +178,7 @@
 
 ## الربط بـ Azure DevOps (ADO)
 
-عندك وصول لـ ADO من خلال أدوات `mcp__azure-devops__*`. المنظمة `hadafsolutions` والمشروع الأساسي `0_Projects_Team`.
+عندك وصول لـ ADO من خلال أداة `ado_cli.py` في جذر المشروع (بتشغّلها بـ `python3` — REST مباشر بنفس الـ PAT، **مفيش MCP server خالص**). السير الكامل والأوامر في `HADI_ADO_CLI_INSTRUCTIONS.md`، اقراه قبل أول استخدام. المنظمة `hadafsolutions` والمشروع الأساسي `0_Projects_Team`.
 
 **البوردات واللينكات بتاعتها (كلها في مشروع `0_Projects_Team` على `hadafsolutions.visualstudio.com`):**
 
