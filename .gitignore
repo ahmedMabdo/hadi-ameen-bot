@@ -14,3 +14,7 @@ node_modules/
 *.bat
 mcp-status.txt
 diag-done.flag
+
+# بايثون — bytecode متولّد من تشغيل السكربتات
+__pycache__/
+*.pyc
