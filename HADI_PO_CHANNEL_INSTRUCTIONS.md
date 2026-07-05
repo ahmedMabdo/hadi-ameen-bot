@@ -94,9 +94,6 @@ python3 po_channel_cr.py post --channel mars --text "..."   # جروب مارس 
 - فشل أي خطوة بيطبع سبب واضح (صلاحية ناقصة، توكن غايب، نوع work item مختلف).
   لو `file-cr` فشل بسبب نوع الـ work item، السكربت بيطبع الأنواع المتاحة —
   اضبط `ADO_CR_TYPE` بالقيمة الصح وأعد المحاولة.
-- **ملحوظة عن نوع الـ work item:** الافتراضي في السكربت `ADO_CR_TYPE=Issue`، بينما
-  روتين `discord_orderpo.py` بيستخدم النوع `Change Request`. لو البورد بيرفض `Issue`
-  على الـ Area Path ده، حط في `.env`:
-  ```
-  ADO_CR_TYPE=Change Request
-  ```
+- **نوع الـ work item:** الافتراضي `ADO_CR_TYPE=Change Request` — نفس النوع اللي
+  بيستخدمه روتين `discord_orderpo.py` على نفس البورد (متأكدين منه من آسر).
+  متغيّرهوش إلا لو الـ process نفسه اتغير.
