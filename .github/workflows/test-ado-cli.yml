@@ -1,0 +1,41 @@
+name: Test ADO CLI
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: list-projects (needs broader PAT scope than Work Items — may 403)
+        continue-on-error: true
+        env:
+          AZURE_DEVOPS_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
+        run: python3 ado_cli.py list-projects
+
+      - name: list-teams (project-scoped)
+        continue-on-error: true
+        env:
+          AZURE_DEVOPS_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
+        run: python3 ado_cli.py list-teams
+
+      - name: wiql sample query (Work Items scope — should work)
+        continue-on-error: true
+        env:
+          AZURE_DEVOPS_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
+        run: python3 ado_cli.py wiql "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '0_Projects_Team'" --top 5
+
+      - name: list-iterations (project-scoped)
+        continue-on-error: true
+        env:
+          AZURE_DEVOPS_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
+        run: python3 ado_cli.py list-iterations
