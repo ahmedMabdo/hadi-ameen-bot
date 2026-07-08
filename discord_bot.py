@@ -28,6 +28,13 @@ if not TOKEN:
 if not ALLOWED_USER_IDS:
     raise RuntimeError("ALLOWED_USER_IDS غير موجود في ملف .env")
 
+HADAF_GUILD_ID = 1016740895544049724
+AUTHORIZED_CHANNEL_IDS = {
+    1136668686044909761,  # mars-team
+    1179369466279235584,  # 8orders-issues
+    1358833733699899704,  # 8orders-po
+}
+
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -88,14 +95,19 @@ async def on_message(message: discord.Message):
         return
 
     # الرسائل الخاصة DM فقط حاليًا
-    if message.guild is not None:
-        return
-
-    if message.author.id not in ALLOWED_USER_IDS:
-        await message.channel.send("الحساب ده غير مصرح له باستخدام هادي.")
-        return
-
-    content = message.content.strip()
+    if message.guild is None:
+        if message.author.id not in ALLOWED_USER_IDS:
+            await message.channel.send("الحساب ده غير مصرح له باستخدام هادي.")
+            return
+        content = message.content.strip()
+    else:
+        if (
+            message.guild.id != HADAF_GUILD_ID
+            or message.channel.id not in AUTHORIZED_CHANNEL_IDS
+            or client.user not in message.mentions
+        ):
+            return
+        content = f"[{message.author.display_name}] {message.clean_content.strip()}"
 
     if not content:
         await message.channel.send("ابعت رسالة نصية.")
