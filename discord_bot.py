@@ -1,19 +1,18 @@
 import asyncio
 import os
-import subprocess
 from pathlib import Path
 
 import discord
+from openai import APITimeoutError, OpenAI
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
 TOKEN = os.getenv("DISCORD_BOT_TOKEN", "").strip()
-CLAUDE_BIN = os.getenv(
-    "CLAUDE_BIN",
-    "/home/ubuntu/.local/bin/claude",
-).strip()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.5").strip() or "gpt-5.5"
+OPENAI_TIMEOUT_SECONDS = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "300") or 300)
 
 ALLOWED_USER_IDS = {
     int(user_id.strip())
@@ -26,6 +25,9 @@ if not TOKEN:
 
 if not ALLOWED_USER_IDS:
     raise RuntimeError("ALLOWED_USER_IDS غير موجود في ملف .env")
+
+if not OPENAI_API_KEY:
+    raise RuntimeError("OPENAI_API_KEY غير موجود في ملف .env")
 
 HADAF_GUILD_ID = 1016740895544049724
 AUTHORIZED_CHANNEL_IDS = {
@@ -41,10 +43,19 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 client = discord.Client(intents=intents)
-claude_lock = asyncio.Lock()
+openai_client = OpenAI(api_key=OPENAI_API_KEY, timeout=OPENAI_TIMEOUT_SECONDS)
+openai_lock = asyncio.Lock()
 
 
-def ask_claude(user_message: str, author_name: str, history: str = "") -> str:
+def load_hadi_instructions() -> str:
+    instructions_path = BASE_DIR / "CLAUDE.md"
+    try:
+        return instructions_path.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return ""
+
+
+def ask_openai(user_message: str, author_name: str, history: str = "") -> str:
     history_block = (
         f"""
 آخر رسايل القناة دي (الأقدم فالأحدث) — سياق فقط، دوّر فيها قبل ما تقول "مش لاقي معلومة":
@@ -54,13 +65,17 @@ def ask_claude(user_message: str, author_name: str, history: str = "") -> str:
         else ""
     )
 
-    prompt = f"""
+    system_prompt = f"""
 أنت هادي أمين، مساعد فريق Hadaf داخل Discord.
-التزم بتعليمات ملف CLAUDE.md الموجود داخل المشروع.
 رد بالعربية المصرية الواضحة إلا لو المستخدم طلب لغة أخرى.
 لا تعرض أي tokens أو passwords أو بيانات من ملف .env.
 لا تنفذ حذفًا أو تعديلات خطرة دون تأكيد واضح من المستخدم.
 
+التزم بتعليمات هادي التالية:
+{load_hadi_instructions()}
+""".strip()
+
+    user_prompt = f"""
 اللي بعت الرسالة الحالية هو: {author_name}. رد عليه/عليها بالاسم ده تحديدًا،
 ومتفترضش إنها من آسر إلا لو {author_name} هو آسر بالفعل.
 {history_block}
@@ -68,27 +83,19 @@ def ask_claude(user_message: str, author_name: str, history: str = "") -> str:
 {user_message}
 """.strip()
 
-    result = subprocess.run(
-        [
-            CLAUDE_BIN,
-            "-p",
-            prompt,
-            "--model",
-            "claude-haiku-4-5-20251001",
+    response = openai_client.responses.create(
+        model=OPENAI_MODEL,
+        input=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
         ],
-        cwd=BASE_DIR,
-        env=os.environ.copy(),
-        capture_output=True,
-        text=True,
-        timeout=300,
-        check=False,
     )
 
-    if result.returncode != 0:
-        error = (result.stderr or result.stdout).strip()
-        raise RuntimeError(error[-1500:] or "Claude لم يُرجع نتيجة")
+    answer = (response.output_text or "").strip()
+    if not answer:
+        raise RuntimeError("OpenAI لم يُرجع نتيجة")
 
-    return result.stdout.strip()
+    return answer
 
 
 async def build_channel_history(channel, before_message, limit: int = HISTORY_LIMIT) -> str:
@@ -163,11 +170,11 @@ async def on_message(message: discord.Message):
     if message.guild is not None:
         history_text = await build_channel_history(message.channel, message)
 
-    async with claude_lock:
+    async with openai_lock:
         try:
             async with message.channel.typing():
                 response = await asyncio.to_thread(
-                    ask_claude,
+                    ask_openai,
                     content,
                     author_name,
                     history_text,
@@ -179,7 +186,7 @@ async def on_message(message: discord.Message):
                 reply_to=message if message.guild is not None else None,
             )
 
-        except subprocess.TimeoutExpired:
+        except APITimeoutError:
             await message.reply(
                 "الطلب استغرق وقتًا طويلاً. جرّب سؤالًا أقصر",
                 mention_author=False,
