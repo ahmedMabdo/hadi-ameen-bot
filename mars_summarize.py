@@ -39,7 +39,7 @@ period = "صباحاً" if hour < 12 else "مساءً"
 date_str = datetime.now().strftime("%Y-%m-%d")
 summary = (
     f"📊 ملخص Mars Team — {date_str} {period}\n"
-    f"عدد الرسائل: {count} | المشاركون: {{', '.join(authors[:8])}"
+    f"عدد الرسائل: {count} | المشاركون: {', '.join(authors[:8])}"
 )
 
 cmd = [sys.executable, SCRIPT] + (["--dry-run"] if DRY_RUN else []) + ["post", summary]
