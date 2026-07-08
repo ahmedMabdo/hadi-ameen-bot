@@ -6,7 +6,6 @@ from pathlib import Path
 import discord
 from dotenv import load_dotenv
 
-
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
@@ -35,6 +34,8 @@ AUTHORIZED_CHANNEL_IDS = {
     1358833733699899704,  # 8orders-po
 }
 
+# عدد رسايل السياق اللي بتتقرا من القناة قبل الرد (تستبعد رسايل البوتات)
+HISTORY_LIMIT = 30
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -43,16 +44,27 @@ client = discord.Client(intents=intents)
 claude_lock = asyncio.Lock()
 
 
-def ask_claude(user_message: str) -> str:
+def ask_claude(user_message: str, author_name: str, history: str = "") -> str:
+    history_block = (
+        f"""
+آخر رسايل القناة دي (الأقدم فالأحدث) — سياق فقط، دوّر فيها قبل ما تقول "مش لاقي معلومة":
+{history}
+"""
+        if history
+        else ""
+    )
+
     prompt = f"""
 أنت هادي أمين، مساعد فريق Hadaf داخل Discord.
-
 التزم بتعليمات ملف CLAUDE.md الموجود داخل المشروع.
 رد بالعربية المصرية الواضحة إلا لو المستخدم طلب لغة أخرى.
 لا تعرض أي tokens أو passwords أو بيانات من ملف .env.
 لا تنفذ حذفًا أو تعديلات خطرة دون تأكيد واضح من المستخدم.
 
-رسالة آسر:
+اللي بعت الرسالة الحالية هو: {author_name}. رد عليه/عليها بالاسم ده تحديدًا،
+ومتفترضش إنها من آسر إلا لو {author_name} هو آسر بالفعل.
+{history_block}
+رسالة {author_name}:
 {user_message}
 """.strip()
 
@@ -60,7 +72,7 @@ def ask_claude(user_message: str) -> str:
         [
             CLAUDE_BIN,
             "-p",
-                      prompt,
+            prompt,
             "--model",
             "claude-haiku-4-5-20251001",
         ],
@@ -79,11 +91,36 @@ def ask_claude(user_message: str) -> str:
     return result.stdout.strip()
 
 
-async def send_long_message(channel, text: str) -> None:
-    text = text.strip() or "لم يتم إرجاع رد."
+async def build_channel_history(channel, before_message, limit: int = HISTORY_LIMIT) -> str:
+    """يقرا آخر رسايل القناة (غير رسايل البوتات) قبل الرسالة الحالية، عشان
+    هادي يقدر يرجع لمحتوى المحادثة نفسها لو اتسأل عن حاجة اتقالت قبل كده،
+    بدل ما يقول إنه مش لاقي معلومة من غير ما يدور."""
+    lines = []
+    try:
+        async for prev in channel.history(limit=limit, before=before_message):
+            if prev.author.bot:
+                continue
+            text = prev.clean_content.strip()
+            if not text:
+                continue
+            lines.append(f"[{prev.author.display_name}] {text}")
+    except discord.HTTPException:
+        return ""
 
-    for start in range(0, len(text), 1900):
-        await channel.send(text[start:start + 1900])
+    lines.reverse()
+    return "\n".join(lines)
+
+
+async def send_long_message(channel, text: str, reply_to: discord.Message = None) -> None:
+    text = text.strip() or "لم يتم إرجاع رد."
+    chunks = [text[start:start + 1900] for start in range(0, len(text), 1900)]
+
+    for i, chunk in enumerate(chunks):
+        if i == 0 and reply_to is not None:
+            # رد مباشر (Discord reply) على رسالة الشخص اللي عمل المينشن تحديدًا
+            await reply_to.reply(chunk, mention_author=False)
+        else:
+            await channel.send(chunk)
 
 
 @client.event
@@ -96,11 +133,14 @@ async def on_message(message: discord.Message):
     if message.author.bot:
         return
 
+    history_text = ""
+
     # الرسائل الخاصة DM فقط حاليًا
     if message.guild is None:
         if message.author.id not in ALLOWED_USER_IDS:
             await message.channel.send("الحساب ده غير مصرح له باستخدام هادي.")
             return
+        author_name = message.author.display_name
         content = message.content.strip()
     else:
         if (
@@ -109,7 +149,8 @@ async def on_message(message: discord.Message):
             or client.user not in message.mentions
         ):
             return
-        content = f"[{message.author.display_name}] {message.clean_content.strip()}"
+        author_name = message.author.display_name
+        content = message.clean_content.strip()
 
     if not content:
         await message.channel.send("ابعت رسالة نصية.")
@@ -119,25 +160,36 @@ async def on_message(message: discord.Message):
         await message.channel.send("HADI_OK")
         return
 
+    if message.guild is not None:
+        history_text = await build_channel_history(message.channel, message)
+
     async with claude_lock:
         try:
             async with message.channel.typing():
                 response = await asyncio.to_thread(
                     ask_claude,
                     content,
+                    author_name,
+                    history_text,
                 )
 
-            await send_long_message(message.channel, response)
+            await send_long_message(
+                message.channel,
+                response,
+                reply_to=message if message.guild is not None else None,
+            )
 
         except subprocess.TimeoutExpired:
-            await message.channel.send(
-                "الطلب استغرق وقتًا طويلًا. جرّب طلبًا أقصر."
+            await message.reply(
+                "الطلب استغرق وقتًا طويلاً. جرّب سؤالًا أقصر",
+                mention_author=False,
             )
 
         except Exception as error:
             print(f"ERROR: {type(error).__name__}: {error}")
-            await message.channel.send(
-                f"حصل خطأ أثناء تشغيل هادي: {type(error).__name__}"
+            await message.reply(
+                f"حصل خطأ أثناء تشغيل هادي: {type(error).__name__}",
+                mention_author=False,
             )
 
 
