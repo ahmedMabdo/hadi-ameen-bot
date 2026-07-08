@@ -61,6 +61,8 @@ def ask_claude(user_message: str) -> str:
             CLAUDE_BIN,
             "-p",
                       prompt,
+            "--model",
+            "claude-haiku-4-5-20251001",
         ],
         cwd=BASE_DIR,
         env=os.environ.copy(),
