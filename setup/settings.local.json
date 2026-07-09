@@ -7,6 +7,8 @@
       "Bash(python3 ado_cli.py:*)",
       "Bash(python3 discord_followup.py:*)",
       "Bash(python3 discord_orderpo.py:*)",
+      "Bash(python3 memory.py:*)",
+      "Bash(python3 schedule.py:*)",
 
       "WebSearch",
       "WebFetch"
