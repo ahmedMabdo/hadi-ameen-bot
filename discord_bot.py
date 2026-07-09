@@ -3,16 +3,16 @@ import os
 from pathlib import Path
 
 import discord
-from openai import APITimeoutError, OpenAI
+from anthropic import Anthropic, APITimeoutError
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
 TOKEN = os.getenv("DISCORD_BOT_TOKEN", "").strip()
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.5").strip() or "gpt-5.5"
-OPENAI_TIMEOUT_SECONDS = float(os.getenv("OPENAI_TIMEOUT_SECONDS", "300") or 300)
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
+CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-5").strip() or "claude-sonnet-5"
+CLAUDE_TIMEOUT_SECONDS = float(os.getenv("CLAUDE_TIMEOUT_SECONDS", "300") or 300)
 
 ALLOWED_USER_IDS = {
     int(user_id.strip())
@@ -26,8 +26,8 @@ if not TOKEN:
 if not ALLOWED_USER_IDS:
     raise RuntimeError("ALLOWED_USER_IDS غير موجود في ملف .env")
 
-if not OPENAI_API_KEY:
-    raise RuntimeError("OPENAI_API_KEY غير موجود في ملف .env")
+if not ANTHROPIC_API_KEY:
+    raise RuntimeError("ANTHROPIC_API_KEY غير موجود في ملف .env")
 
 HADAF_GUILD_ID = 1016740895544049724
 AUTHORIZED_CHANNEL_IDS = {
@@ -43,8 +43,8 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 client = discord.Client(intents=intents)
-openai_client = OpenAI(api_key=OPENAI_API_KEY, timeout=OPENAI_TIMEOUT_SECONDS)
-openai_lock = asyncio.Lock()
+claude_client = Anthropic(api_key=ANTHROPIC_API_KEY, timeout=CLAUDE_TIMEOUT_SECONDS)
+claude_lock = asyncio.Lock()
 
 
 def load_hadi_instructions() -> str:
@@ -55,7 +55,7 @@ def load_hadi_instructions() -> str:
         return ""
 
 
-def ask_openai(user_message: str, author_name: str, history: str = "") -> str:
+def ask_claude(user_message: str, author_name: str, history: str = "") -> str:
     history_block = (
         f"""
 آخر رسايل القناة دي (الأقدم فالأحدث) — سياق فقط، دوّر فيها قبل ما تقول "مش لاقي معلومة":
@@ -83,17 +83,20 @@ def ask_openai(user_message: str, author_name: str, history: str = "") -> str:
 {user_message}
 """.strip()
 
-    response = openai_client.responses.create(
-        model=OPENAI_MODEL,
-        input=[
-            {"role": "system", "content": system_prompt},
+    response = claude_client.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=2048,
+        system=system_prompt,
+        messages=[
             {"role": "user", "content": user_prompt},
         ],
     )
 
-    answer = (response.output_text or "").strip()
+    answer = "".join(
+        block.text for block in response.content if block.type == "text"
+    ).strip()
     if not answer:
-        raise RuntimeError("OpenAI لم يُرجع نتيجة")
+        raise RuntimeError("Claude لم يُرجع نتيجة")
 
     return answer
 
@@ -170,11 +173,11 @@ async def on_message(message: discord.Message):
     if message.guild is not None:
         history_text = await build_channel_history(message.channel, message)
 
-    async with openai_lock:
+    async with claude_lock:
         try:
             async with message.channel.typing():
                 response = await asyncio.to_thread(
-                    ask_openai,
+                    ask_claude,
                     content,
                     author_name,
                     history_text,
