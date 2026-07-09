@@ -1,10 +1,13 @@
 import asyncio
+import json
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 import discord
+from discord.ext import tasks
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -38,6 +41,10 @@ AUTHORIZED_CHANNEL_IDS = {
 # عدد رسايل السياق اللي بتتقرا من القناة قبل الرد (قابل للتعديل من .env)
 HISTORY_LIMIT = int(os.getenv("HISTORY_LIMIT", "30") or "30")
 
+# ذاكرة هادي الدائمة + مخزن التذكيرات
+MEMORY_FILE = BASE_DIR / "knowledge" / "memory.md"
+REMINDERS_FILE = BASE_DIR / "reminders.json"
+
 # الرد على النداء بالاسم من غير مينشن (هادي / يا هادي / Hadi) — on افتراضيًا.
 # للتعطيل: NAME_TRIGGER=off في .env
 NAME_TRIGGER = os.getenv("NAME_TRIGGER", "on").strip().lower() not in {
@@ -45,9 +52,6 @@ NAME_TRIGGER = os.getenv("NAME_TRIGGER", "on").strip().lower() not in {
 }
 
 # نداء صريح فقط — عشان كلمة "هادي" كصفة ("الوضع هادي") متشغلش البوت:
-#   - "هادي..." أو "يا هادي..." أو "هادي أمين..." في أول الرسالة
-#   - "يا هادي" في أي مكان في الرسالة (صيغة نداء صريحة)
-#   - "Hadi" / "ya hadi" بنفس المنطق
 NAME_CALL_RE = re.compile(
     r"(?:^\s*(?:يا\s+)?هاد[يى](?:\s+[أا]مين)?\b)"
     r"|(?:\bيا\s+هاد[يى]\b)"
@@ -69,6 +73,16 @@ client = discord.Client(intents=intents)
 claude_lock = asyncio.Lock()
 
 
+def load_memory() -> str:
+    """يقرأ ذاكرة هادي الدائمة عشان تتحقن في كل محادثة (أي قناة)."""
+    try:
+        txt = MEMORY_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+    has_notes = any(l.strip().startswith("-") for l in txt.splitlines())
+    return txt if has_notes else ""
+
+
 def ask_claude(
     user_message: str,
     author_name: str,
@@ -82,6 +96,16 @@ def ask_claude(
 {history}
 """
         if history
+        else ""
+    )
+
+    mem = load_memory()
+    memory_block = (
+        f"""
+ذاكرة هادي الدائمة (معلومات محفوظة سابقًا — اعتمد عليها وهي صحيحة لحد ما تتحدّث):
+{mem}
+"""
+        if mem
         else ""
     )
 
@@ -104,7 +128,7 @@ def ask_claude(
 
 اللي بعت الرسالة الحالية هو: {author_name}. رد عليه/عليها بالاسم ده تحديدًا،
 ومتفترضش إنها من آسر إلا لو {author_name} هو آسر بالفعل.
-{reply_block}{history_block}
+{memory_block}{reply_block}{history_block}
 رسالة {author_name}:
 {user_message}
 """.strip()
@@ -136,8 +160,7 @@ async def build_channel_history(channel, before_message, limit: int = HISTORY_LI
     """يقرا آخر رسايل القناة قبل الرسالة الحالية عشان هادي يفهم سياق المحادثة.
 
     بيستبعد رسايل البوتات التانية، لكن بيدخّل رسايل هادي نفسه (معلّمة
-    بـ "هادي (أنت)") — من غيرها هادي مش بيشوف ردوده، وأي متابعة زي
-    "اعملها 48 ساعة" بتوصله من غير التقرير اللي المفروض يتعدل."""
+    بـ "هادي (أنت)") — من غيرها هادي مش بيشوف ردوده."""
     lines = []
     try:
         async for prev in channel.history(limit=limit, before=before_message):
@@ -189,15 +212,84 @@ async def send_long_message(channel, text: str, reply_to: discord.Message = None
 
     for i, chunk in enumerate(chunks):
         if i == 0 and reply_to is not None:
-            # رد مباشر (Discord reply) على رسالة الشخص اللي نادى هادي تحديدًا
             await reply_to.reply(chunk, mention_author=False)
         else:
             await channel.send(chunk)
 
 
+def _load_reminders():
+    if REMINDERS_FILE.exists():
+        try:
+            return json.loads(REMINDERS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+    return []
+
+
+def _save_reminders(items):
+    tmp = REMINDERS_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(REMINDERS_FILE)
+
+
+async def _fire_reminder(item):
+    text = (item.get("text") or "").strip()
+    target = item.get("target") or {}
+    body = f"⏰ تذكير: {text}"
+    if target.get("kind") == "dm":
+        for uid in ALLOWED_USER_IDS:
+            user = client.get_user(uid) or await client.fetch_user(uid)
+            await user.send(body)
+    elif target.get("kind") == "channel":
+        cid = int(target["id"])
+        ch = client.get_channel(cid) or await client.fetch_channel(cid)
+        await ch.send(body)
+    else:
+        raise ValueError(f"unknown target: {target}")
+
+
+@tasks.loop(seconds=30)
+async def reminder_loop():
+    """يفحص التذكيرات المجدولة وينفّذ اللي حان ميعاده. آمن ضد الإضافة المتزامنة:
+    بيجمع التحديثات بالـ id وبيعيد التحميل قبل الحفظ عشان ميمسحش تذكير جديد."""
+    items = _load_reminders()
+    if not items:
+        return
+    now = time.time()
+    updates = {}
+    for item in items:
+        if item.get("fired") or float(item.get("at_epoch", 0)) > now:
+            continue
+        try:
+            await _fire_reminder(item)
+            updates[item["id"]] = {"fired": True}
+            print(f"REMINDER FIRED: #{item.get('id')} {(item.get('text') or '')[:40]}")
+        except Exception as error:
+            att = int(item.get("attempts", 0)) + 1
+            upd = {"attempts": att}
+            if att >= 5:
+                upd["fired"] = True
+                print(f"REMINDER GIVEN UP: #{item.get('id')}")
+            updates[item["id"]] = upd
+            print(f"REMINDER FAIL #{item.get('id')}: {type(error).__name__}: {error}")
+    if updates:
+        current = _load_reminders()
+        for it in current:
+            if it.get("id") in updates:
+                it.update(updates[it["id"]])
+        _save_reminders(current)
+
+
+@reminder_loop.before_loop
+async def _before_reminder_loop():
+    await client.wait_until_ready()
+
+
 @client.event
 async def on_ready():
     print(f"HADI ONLINE: {client.user} | ID: {client.user.id}")
+    if not reminder_loop.is_running():
+        reminder_loop.start()
 
 
 @client.event
@@ -224,7 +316,6 @@ async def on_message(message: discord.Message):
 
         mentioned = client.user in message.mentions
         named = NAME_TRIGGER and is_addressed_to_hadi(message.clean_content)
-        # ريبلاي مباشر على رسالة هادي = استكمال محادثة، حتى من غير مينشن ولا اسم
         replying_to_hadi = bool(
             message.reference
             and message.reference.resolved
