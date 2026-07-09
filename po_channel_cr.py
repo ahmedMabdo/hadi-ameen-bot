@@ -1,22 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-PO-channel -> Change Requests board bridge, built as a CLI for Hadi (the
+Discord channel -> ADO boards bridge, built as a CLI for Hadi (the
 interactive Discord agent on AWS) to call as a tool. Hadi does the judgment
 (summarize the discussion, decide what counts as a NEW idea); this script
 does the deterministic I/O:
 
-  fetch    read the latest messages from the PO Discord channel
-           (default channel 1358833733699899704) over the Discord REST API
-           using the same bot token as discord_delivery.py.
+  fetch    read the latest messages from a Discord channel
+           (default: the PO channel 1358833733699899704) over the Discord
+           REST API using the same bot token as discord_delivery.py.
   file-cr  create one Change Request work item on the ADO
            "Change Requests" board (Project 0_Projects_Team, Area Path
            `0_Projects_Team\\Change Requests`, Stories board), deduped by a
            `po-msg-<message_id>` tag so the same idea is never filed twice.
            Prints the work item's browser URL on success.
-  post     send a message back into the PO channel (the summary + CR links).
+  post     send a message into a channel (the summary + CR links).
 
-The intended workflow (full text in HADI_PO_CHANNEL.md):
+Channels: aliases po (default) / mars / issues, or any raw channel id.
+
+The intended workflow (full text in HADI_PO_CHANNEL_INSTRUCTIONS.md):
   1. fetch --json           -> Hadi reads and summarizes the discussion
   2. file-cr ... per idea   -> one CR per genuinely new idea, link printed
   3. post --text "..."      -> summary + CR links back into the channel
@@ -24,17 +26,20 @@ The intended workflow (full text in HADI_PO_CHANNEL.md):
 Env (read from a `.env` file alongside this script if present, else the
 process environment):
   DISCORD_BOT_TOKEN   bot token — same one discord_delivery.py uses. The bot
-                      needs View Channel + Read Message History on the PO
+                      needs View Channel + Read Message History on the
                       channel (and Send Messages for `post`).
   PO_CHANNEL_ID       PO channel id; defaults to 1358833733699899704.
+  MARS_CHANNEL_ID     Mars channel id; defaults to 1136668686044909761.
+  ISSUES_CHANNEL_ID   8orders-issues channel id; defaults to
+                      1179369466279235584.
   AZURE_DEVOPS_PAT    ADO personal access token, Work Items Read & Write
                       (same one ado_client.py uses) — needed for `file-cr`.
   ADO_CR_AREA_PATH    default `0_Projects_Team\\Change Requests`.
   ADO_CR_TYPE         work item type to create; default "Change Request"
-                      (the type the Change Requests board uses in this
-                      process — same as discord_orderpo.py). On a type error
-                      the script prints the valid type names for the project
-                      to pick from.
+                      (confirmed: the Change Requests board uses this type —
+                      NOT "Issue", that's the Support board's type). On a
+                      type error the script prints the valid type names for
+                      the project to pick from.
 
 Like discord_delivery.py, per-call failures print a clear error and exit
 non-zero instead of raising tracebacks, so Hadi can read what went wrong
@@ -56,6 +61,7 @@ from ado_client import ADO_BASE, ADO_API_VERSION, ADO_CUSTOMER, ADO_APPLICATION
 API_BASE = "https://discord.com/api/v10"
 DEFAULT_PO_CHANNEL_ID = "1358833733699899704"
 DEFAULT_MARS_CHANNEL_ID = "1136668686044909761"
+DEFAULT_ISSUES_CHANNEL_ID = "1179369466279235584"
 
 ADO_CR_AREA_PATH = os.environ.get("ADO_CR_AREA_PATH", r"0_Projects_Team\Change Requests")
 ADO_CR_TYPE = os.environ.get("ADO_CR_TYPE", "Change Request")
@@ -73,15 +79,29 @@ def _discord_headers():
 
 
 def _channel_id(args):
-    """Resolve --channel: the aliases 'po' / 'mars', a raw channel id, or the
-    PO channel by default — so Hadi can relay a DM request like 'send this to
-    the Mars group' without knowing snowflake ids."""
+    """Resolve --channel: the aliases 'po' / 'mars' / 'issues', a raw channel
+    id, or the PO channel by default — so Hadi can relay a request like 'send
+    this to the Mars group' without knowing snowflake ids."""
     raw = (args.channel or "po").strip().lower()
     if raw == "po":
         return os.environ.get("PO_CHANNEL_ID", DEFAULT_PO_CHANNEL_ID)
     if raw == "mars":
         return os.environ.get("MARS_CHANNEL_ID", DEFAULT_MARS_CHANNEL_ID)
+    if raw == "issues":
+        return os.environ.get("ISSUES_CHANNEL_ID", DEFAULT_ISSUES_CHANNEL_ID)
     return args.channel.strip()
+
+
+def _channel_label(channel_id):
+    """Human label for the source channel, used in CR descriptions so the
+    ticket never claims a wrong origin."""
+    if channel_id == os.environ.get("PO_CHANNEL_ID", DEFAULT_PO_CHANNEL_ID):
+        return "قناة الـ PO"
+    if channel_id == os.environ.get("MARS_CHANNEL_ID", DEFAULT_MARS_CHANNEL_ID):
+        return "قناة مارس"
+    if channel_id == os.environ.get("ISSUES_CHANNEL_ID", DEFAULT_ISSUES_CHANNEL_ID):
+        return "قناة 8orders-issues"
+    return f"قناة Discord ({channel_id})"
 
 
 def _cairo(ts_iso):
@@ -172,6 +192,7 @@ def _list_work_item_types(headers):
 def cmd_file_cr(args):
     headers = ado_client._auth_headers()
     channel_id = _channel_id(args)
+    channel_label = _channel_label(channel_id)
 
     dedup_tag = f"po-msg-{args.source_msg}" if args.source_msg else None
     if dedup_tag:
@@ -184,9 +205,9 @@ def cmd_file_cr(args):
     source_note = ""
     if args.source_msg:
         link = _jump_link(args.guild, channel_id, args.source_msg)
-        source_note = (f"<div>المصدر: رسالة في قناة الـ PO — "
+        source_note = (f"<div>المصدر: رسالة في {channel_label} — "
                        f"<a href=\"{link}\">{link}</a></div>")
-    desc = (f"<div><strong>فكرة من قناة الـ PO (رفعها هادي)</strong></div>"
+    desc = (f"<div><strong>فكرة من {channel_label} (رفعها هادي)</strong></div>"
             f"<div>{args.brief}</div>{source_note}")
 
     tags = "po-channel; change-request" + (f"; {dedup_tag}" if dedup_tag else "")
@@ -213,8 +234,8 @@ def cmd_file_cr(args):
         if "work item type" in msg.lower() or r.status_code == 404:
             try:
                 types = _list_work_item_types(headers)
-                msg += f"\nValid work item types in this project: {', '.join(types)}" \
-                       f"\nSet ADO_CR_TYPE to the right one."
+                msg += (f"\nValid work item types in this project: {', '.join(types)}"
+                        f"\nSet ADO_CR_TYPE to the right one.")
             except Exception:
                 pass
         sys.exit(f"FAILED to create CR: HTTP {r.status_code} {msg}")
@@ -257,12 +278,14 @@ def main():
 
     def add_channel_arg(sp):
         sp.add_argument("--channel",
-                        help="'po' (default), 'mars', or a raw channel id "
-                             f"(po={DEFAULT_PO_CHANNEL_ID}, "
-                             f"mars={DEFAULT_MARS_CHANNEL_ID}; override via "
-                             "env PO_CHANNEL_ID / MARS_CHANNEL_ID)")
+                        help="'po' (default), 'mars', 'issues', or a raw "
+                             f"channel id (po={DEFAULT_PO_CHANNEL_ID}, "
+                             f"mars={DEFAULT_MARS_CHANNEL_ID}, "
+                             f"issues={DEFAULT_ISSUES_CHANNEL_ID}; override "
+                             "via env PO_CHANNEL_ID / MARS_CHANNEL_ID / "
+                             "ISSUES_CHANNEL_ID)")
 
-    f = sub.add_parser("fetch", help="read the latest PO-channel messages")
+    f = sub.add_parser("fetch", help="read the latest channel messages")
     add_channel_arg(f)
     f.add_argument("--limit", type=int, default=50, help="how many (max 100)")
     f.add_argument("--after-msg", help="only messages after this message id")
@@ -281,7 +304,7 @@ def main():
     c.add_argument("--dry-run", action="store_true")
     c.set_defaults(func=cmd_file_cr)
 
-    o = sub.add_parser("post", help="post a message into the PO channel")
+    o = sub.add_parser("post", help="post a message into a channel")
     add_channel_arg(o)
     o.add_argument("--text", help="message text (or pipe on stdin)")
     o.set_defaults(func=cmd_post)
