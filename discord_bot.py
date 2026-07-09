@@ -1,18 +1,19 @@
 import asyncio
 import os
+import subprocess
 from pathlib import Path
 
 import discord
-from anthropic import Anthropic, APITimeoutError
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
 TOKEN = os.getenv("DISCORD_BOT_TOKEN", "").strip()
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
-CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-5").strip() or "claude-sonnet-5"
-CLAUDE_TIMEOUT_SECONDS = float(os.getenv("CLAUDE_TIMEOUT_SECONDS", "300") or 300)
+CLAUDE_BIN = os.getenv(
+    "CLAUDE_BIN",
+    "/home/ubuntu/.local/bin/claude",
+).strip()
 
 ALLOWED_USER_IDS = {
     int(user_id.strip())
@@ -25,9 +26,6 @@ if not TOKEN:
 
 if not ALLOWED_USER_IDS:
     raise RuntimeError("ALLOWED_USER_IDS غير موجود في ملف .env")
-
-if not ANTHROPIC_API_KEY:
-    raise RuntimeError("ANTHROPIC_API_KEY غير موجود في ملف .env")
 
 HADAF_GUILD_ID = 1016740895544049724
 AUTHORIZED_CHANNEL_IDS = {
@@ -43,16 +41,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 client = discord.Client(intents=intents)
-claude_client = Anthropic(api_key=ANTHROPIC_API_KEY, timeout=CLAUDE_TIMEOUT_SECONDS)
 claude_lock = asyncio.Lock()
-
-
-def load_hadi_instructions() -> str:
-    instructions_path = BASE_DIR / "CLAUDE.md"
-    try:
-        return instructions_path.read_text(encoding="utf-8").strip()
-    except FileNotFoundError:
-        return ""
 
 
 def ask_claude(user_message: str, author_name: str, history: str = "") -> str:
@@ -65,17 +54,13 @@ def ask_claude(user_message: str, author_name: str, history: str = "") -> str:
         else ""
     )
 
-    system_prompt = f"""
+    prompt = f"""
 أنت هادي أمين، مساعد فريق Hadaf داخل Discord.
+التزم بتعليمات ملف CLAUDE.md الموجود داخل المشروع.
 رد بالعربية المصرية الواضحة إلا لو المستخدم طلب لغة أخرى.
 لا تعرض أي tokens أو passwords أو بيانات من ملف .env.
 لا تنفذ حذفًا أو تعديلات خطرة دون تأكيد واضح من المستخدم.
 
-التزم بتعليمات هادي التالية:
-{load_hadi_instructions()}
-""".strip()
-
-    user_prompt = f"""
 اللي بعت الرسالة الحالية هو: {author_name}. رد عليه/عليها بالاسم ده تحديدًا،
 ومتفترضش إنها من آسر إلا لو {author_name} هو آسر بالفعل.
 {history_block}
@@ -83,22 +68,27 @@ def ask_claude(user_message: str, author_name: str, history: str = "") -> str:
 {user_message}
 """.strip()
 
-    response = claude_client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=2048,
-        system=system_prompt,
-        messages=[
-            {"role": "user", "content": user_prompt},
+    result = subprocess.run(
+        [
+            CLAUDE_BIN,
+            "-p",
+            prompt,
+            "--model",
+            "claude-sonnet-5",
         ],
+        cwd=BASE_DIR,
+        env=os.environ.copy(),
+        capture_output=True,
+        text=True,
+        timeout=300,
+        check=False,
     )
 
-    answer = "".join(
-        block.text for block in response.content if block.type == "text"
-    ).strip()
-    if not answer:
-        raise RuntimeError("Claude لم يُرجع نتيجة")
+    if result.returncode != 0:
+        error = (result.stderr or result.stdout).strip()
+        raise RuntimeError(error[-1500:] or "Claude لم يُرجع نتيجة")
 
-    return answer
+    return result.stdout.strip()
 
 
 async def build_channel_history(channel, before_message, limit: int = HISTORY_LIMIT) -> str:
@@ -189,7 +179,7 @@ async def on_message(message: discord.Message):
                 reply_to=message if message.guild is not None else None,
             )
 
-        except APITimeoutError:
+        except subprocess.TimeoutExpired:
             await message.reply(
                 "الطلب استغرق وقتًا طويلاً. جرّب سؤالًا أقصر",
                 mention_author=False,
