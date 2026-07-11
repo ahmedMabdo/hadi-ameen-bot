@@ -12,5 +12,19 @@
     "created": "2026-07-10 18:03",
     "fired": false,
     "attempts": 0
+  },
+  {
+    "id": "80e47cf9",
+    "type": "reminder",
+    "at_epoch": 1783843200.0,
+    "at_human": "2026-07-12 11:00 القاهرة",
+    "target": {
+      "kind": "dm"
+    },
+    "text": "ببلش (publish) النسخ الجديدة للتطبيق — زي ما اتفقنا مع Marco في قناة الـ PO",
+    "requester": "آسر",
+    "created": "2026-07-11 21:02",
+    "fired": false,
+    "attempts": 0
   }
 ]
