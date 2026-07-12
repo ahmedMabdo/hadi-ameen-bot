@@ -1,9 +1,13 @@
 import asyncio
+import base64
 import json
 import os
 import re
 import subprocess
 import time
+import urllib.error
+import urllib.request
+from datetime import date, datetime
 from pathlib import Path
 
 import discord
@@ -45,6 +49,15 @@ HISTORY_LIMIT = int(os.getenv("HISTORY_LIMIT", "30") or "30")
 MEMORY_FILE = BASE_DIR / "knowledge" / "memory.md"
 REMINDERS_FILE = BASE_DIR / "reminders.json"
 
+# --- مناعة الـ ADO: فحص دوري + إنذار مبكر قبل انتهاء الـ PAT + طابور طلبات معلقة ---
+ADO_ORG_URL = os.getenv(
+    "AZURE_DEVOPS_ORG_URL", "https://hadafsolutions.visualstudio.com"
+).strip().rstrip("/")
+# اختياري في .env: AZURE_DEVOPS_PAT_EXPIRES=YYYY-MM-DD (تاريخ انتهاء التوكن للإنذار المبكر)
+# اختياري في .env: ADO_WARN_DAYS (افتراضي 14) — قبل الانتهاء بكام يوم يبدأ التنبيه
+ADO_WARN_DAYS = int(os.getenv("ADO_WARN_DAYS", "14") or "14")
+PENDING_TICKETS_FILE = BASE_DIR / "knowledge" / "pending_tickets.md"
+
 # الرد على النداء بالاسم من غير مينشن (هادي / يا هادي / Hadi) — on افتراضيًا.
 # للتعطيل: NAME_TRIGGER=off في .env
 NAME_TRIGGER = os.getenv("NAME_TRIGGER", "on").strip().lower() not in {
@@ -83,6 +96,31 @@ def load_memory() -> str:
     return txt if has_notes else ""
 
 
+def run_claude(prompt: str, timeout: int = 300) -> str:
+    """يشغّل Claude CLI بالبرومبت المطلوب ويرجّع الرد النصي."""
+    result = subprocess.run(
+        [
+            CLAUDE_BIN,
+            "-p",
+            prompt,
+            "--model",
+            "claude-sonnet-5",
+        ],
+        cwd=BASE_DIR,
+        env=os.environ.copy(),
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+
+    if result.returncode != 0:
+        error = (result.stderr or result.stdout).strip()
+        raise RuntimeError(error[-1500:] or "Claude لم يُرجع نتيجة")
+
+    return result.stdout.strip()
+
+
 def ask_claude(
     user_message: str,
     author_name: str,
@@ -91,7 +129,7 @@ def ask_claude(
 ) -> str:
     history_block = (
         f"""
-آخر رسايل القناة دي (الأقدم فالأحدث) — سياق فقط، دوّر فيها قبل ما تقول "مش لاقي معلومة".
+آخر رسايل المحادثة دي (الأقدم فالأحدث) — سياق فقط، دوّر فيها قبل ما تقول "مش لاقي معلومة".
 رسايلك انت معلّمة بـ [هادي (أنت)] — استخدمها عشان تفهم لو الطلب الحالي متابعة لحاجة انت عملتها:
 {history}
 """
@@ -126,6 +164,18 @@ def ask_claude(
 لا تعرض أي tokens أو passwords أو بيانات من ملف .env.
 لا تنفذ حذفًا أو تعديلات خطرة دون تأكيد واضح من المستخدم.
 
+قواعد فشل الـ ADO (مهمة جدًا):
+- لو أمر ado_cli.py رجّع خطأ مصادقة (صفحة Sign-In أو HTML بدل JSON أو 401/203):
+  متسألش المستخدم يتصرف ومتقولوش "جدد الـ PAT" — في فحص أوتوماتيكي بينبّه المسؤولين لوحده.
+  سجّل المطلوب فورًا كبند كامل في knowledge/pending_tickets.md (سطر يبدأ بـ "- " وفيه:
+  نوع العملية create-work-item/add-comment + نوع الـ work item + العنوان + الوصف + المشروع
+  وأي تفاصيل تانية كفاية لتنفيذه لاحقًا من غير الرجوع للمحادثة)، وبعدين قول للمستخدم باختصار:
+  "في مشكلة اتصال مؤقتة بـ ADO — حفظت الطلب وهيتنفذ أوتوماتيك أول ما الاتصال يرجع وهبلغك هنا."
+- لو الخطأ شكله اتصال مؤقت (timeout / network): أعد المحاولة مرتين الأول، ولو فضل فاشل
+  اعمل نفس الحفظ في knowledge/pending_tickets.md بنفس الأسلوب.
+- طلبات القراية من ADO وقت العطل: قول إن البيانات مش متاحة مؤقتًا وهتجيبها أول ما يرجع —
+  من غير أي تفاصيل تقنية عن التوكن.
+
 اللي بعت الرسالة الحالية هو: {author_name}. رد عليه/عليها بالاسم ده تحديدًا،
 ومتفترضش إنها من آسر إلا لو {author_name} هو آسر بالفعل.
 {memory_block}{reply_block}{history_block}
@@ -133,31 +183,39 @@ def ask_claude(
 {user_message}
 """.strip()
 
-    result = subprocess.run(
-        [
-            CLAUDE_BIN,
-            "-p",
-            prompt,
-            "--model",
-            "claude-sonnet-5",
-        ],
-        cwd=BASE_DIR,
-        env=os.environ.copy(),
-        capture_output=True,
-        text=True,
-        timeout=300,
-        check=False,
-    )
+    return run_claude(prompt)
 
-    if result.returncode != 0:
-        error = (result.stderr or result.stdout).strip()
-        raise RuntimeError(error[-1500:] or "Claude لم يُرجع نتيجة")
 
-    return result.stdout.strip()
+def extract_forwarded_text(message: discord.Message) -> str:
+    """لو الرسالة فورورد (Forward)، بيطلّع محتوى الرسالة الأصلية من الـ snapshots.
+
+    الرسالة المحوّلة بتوصل بـ content فاضي — المحتوى الحقيقي بيبقى في
+    message.message_snapshots (محتاجة discord.py 2.5+). بيرجّع "" لو مفيش فورورد،
+    وبيتعامل بأمان مع الإصدارات الأقدم عن طريق getattr."""
+    snapshots = getattr(message, "message_snapshots", None) or []
+    parts = []
+    for snap in snapshots:
+        block_lines = []
+        text = (getattr(snap, "content", "") or "").strip()
+        if text:
+            block_lines.append(text)
+        for emb in getattr(snap, "embeds", None) or []:
+            emb_text = " — ".join(
+                piece for piece in ((emb.title or ""), (emb.description or "")) if piece
+            ).strip()
+            if emb_text:
+                block_lines.append(f"[Embed] {emb_text}")
+        attachments = getattr(snap, "attachments", None) or []
+        if attachments:
+            names = ", ".join(att.filename for att in attachments)
+            block_lines.append(f"[مرفقات: {names}]")
+        if block_lines:
+            parts.append("\n".join(block_lines))
+    return "\n---\n".join(parts).strip()
 
 
 async def build_channel_history(channel, before_message, limit: int = HISTORY_LIMIT) -> str:
-    """يقرا آخر رسايل القناة قبل الرسالة الحالية عشان هادي يفهم سياق المحادثة.
+    """يقرا آخر رسايل المحادثة (قناة أو DM) قبل الرسالة الحالية عشان هادي يفهم السياق.
 
     بيستبعد رسايل البوتات التانية، لكن بيدخّل رسايل هادي نفسه (معلّمة
     بـ "هادي (أنت)") — من غيرها هادي مش بيشوف ردوده."""
@@ -167,6 +225,11 @@ async def build_channel_history(channel, before_message, limit: int = HISTORY_LI
             if prev.author.bot and prev.author.id != client.user.id:
                 continue
             text = prev.clean_content.strip()
+            if not text:
+                # ممكن تكون رسالة فورورد — محتواها في الـ snapshots مش في content
+                fwd = extract_forwarded_text(prev)
+                if fwd:
+                    text = f"(فورورد) {fwd}"
             if not text:
                 continue
             label = "هادي (أنت)" if prev.author.id == client.user.id else prev.author.display_name
@@ -184,6 +247,12 @@ async def build_reply_context(message: discord.Message) -> str:
     if not ref or not ref.message_id:
         return ""
 
+    # الفورورد بيجي هو كمان في message.reference لكنه مش ريبلاي —
+    # محتواه بيتقري من extract_forwarded_text فمنكرروش هنا.
+    forward_type = getattr(getattr(discord, "MessageReferenceType", None), "forward", None)
+    if forward_type is not None and getattr(ref, "type", None) == forward_type:
+        return ""
+
     replied = ref.resolved
     if replied is None or isinstance(replied, discord.DeletedReferencedMessage):
         try:
@@ -195,6 +264,8 @@ async def build_reply_context(message: discord.Message) -> str:
         return ""
 
     text = (replied.clean_content or "").strip()
+    if not text:
+        text = extract_forwarded_text(replied)
     if not text:
         return ""
 
@@ -215,6 +286,94 @@ async def send_long_message(channel, text: str, reply_to: discord.Message = None
             await reply_to.reply(chunk, mention_author=False)
         else:
             await channel.send(chunk)
+
+
+async def dm_allowed_users(text: str) -> None:
+    """يبعت DM لكل المستخدمين المصرح لهم (تنبيهات الفحص والطلبات المعلقة)."""
+    for uid in ALLOWED_USER_IDS:
+        try:
+            user = client.get_user(uid) or await client.fetch_user(uid)
+            await user.send(text)
+        except discord.HTTPException as error:
+            print(f"DM FAIL {uid}: {type(error).__name__}: {error}")
+
+
+def _current_pat() -> str:
+    """يعيد قراءة .env قبل ما يرجّع الـ PAT — عشان التوكن المتجدد يتلقط من غير restart."""
+    load_dotenv(BASE_DIR / ".env", override=True)
+    return os.getenv("AZURE_DEVOPS_PAT", "").strip()
+
+
+def check_ado_auth():
+    """يختبر مصادقة ADO بالـ PAT الحالي ويرجّع (status, detail).
+
+    status واحدة من:
+    - "ok": المصادقة سليمة (رد JSON).
+    - "auth": PAT منتهي/غلط (401/203 أو صفحة Sign-In بدل JSON).
+    - "network": مشكلة اتصال مؤقتة.
+    - "config": مفيش AZURE_DEVOPS_PAT في .env أصلاً.
+    """
+    pat = _current_pat()
+    if not pat:
+        return "config", "AZURE_DEVOPS_PAT مش موجود في .env"
+
+    url = f"{ADO_ORG_URL}/_apis/projects?api-version=7.1&$top=1"
+    token = base64.b64encode(f":{pat}".encode()).decode()
+    request = urllib.request.Request(
+        url,
+        headers={"Authorization": f"Basic {token}", "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as resp:
+            ctype = (resp.headers.get("Content-Type") or "").lower()
+            if resp.status == 200 and "json" in ctype:
+                return "ok", "المصادقة سليمة"
+            return "auth", f"HTTP {resp.status} والرد مش JSON — غالبًا الـ PAT منتهي"
+    except urllib.error.HTTPError as error:
+        if error.code in (203, 401):
+            return "auth", f"HTTP {error.code} — الـ PAT منتهي أو صلاحياته ناقصة"
+        return "network", f"HTTP {error.code}"
+    except (urllib.error.URLError, TimeoutError, OSError) as error:
+        return "network", f"{type(error).__name__}: {error}"
+
+
+def pat_expiry_days():
+    """الأيام المتبقية على انتهاء الـ PAT لو AZURE_DEVOPS_PAT_EXPIRES متظبطة، وإلا None."""
+    raw = os.getenv("AZURE_DEVOPS_PAT_EXPIRES", "").strip()
+    if not raw:
+        return None
+    try:
+        expires = datetime.strptime(raw, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+    return (expires - date.today()).days
+
+
+def _pending_items_exist() -> bool:
+    """هل في بنود معلقة فعلية في knowledge/pending_tickets.md؟"""
+    try:
+        txt = PENDING_TICKETS_FILE.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return any(line.strip().startswith("-") for line in txt.splitlines())
+
+
+ADO_RENEW_HINT = (
+    "التجديد: صفحة Personal Access Tokens في Azure DevOps ← New Token "
+    "(Scopes: Work Items Read & Write) ← حدّثوا AZURE_DEVOPS_PAT (وتاريخ "
+    "AZURE_DEVOPS_PAT_EXPIRES) في ملف .env على السيرفر — البوت بيقرا التوكن "
+    "الجديد لوحده من غير restart، وأي طلبات معلقة هتتنفذ أوتوماتيك ويوصلكم بلاغ بيها."
+)
+
+PENDING_FLUSH_PROMPT = """
+أنت هادي أمين (نفس وكيل الديسكورد) شغال في مهمة خلفية أوتوماتيكية من غير مستخدم قدامك.
+ملف knowledge/pending_tickets.md فيه طلبات ADO اتأجلت بسبب مشكلة مصادقة، والمصادقة رجعت شغالة دلوقتي.
+اقرأ CLAUDE.md (الأدوات والسياق) وبعدين:
+1) نفّذ كل بند معلق بـ ado_cli.py (create-work-item / add-comment / add-child حسب البند) وهات لينك كل work item.
+2) شيل البنود اللي نجحت من knowledge/pending_tickets.md — لو بند فشل لسبب غير المصادقة سيبه مكانه واكتب سبب الفشل جنبه.
+3) رد بملخص قصير بالعربية المصرية: اللي اتنفذ (عنوان + لينك) واللي لسه معلق وليه — الملخص ده هيتبعت DM لآسر والفريق.
+ممنوع أي update أو delete — تنفيذ البنود المعلقة فقط.
+""".strip()
 
 
 def _load_reminders():
@@ -280,8 +439,72 @@ async def reminder_loop():
         _save_reminders(current)
 
 
+@tasks.loop(hours=24)
+async def ado_health_loop():
+    """فحص يومي لمصادقة ADO وقرب انتهاء الـ PAT — إنذار مبكر في الـ DM بدل مفاجأة وقت الشغل.
+
+    أول فحص بيحصل فور تشغيل البوت، فأي مشكلة بتبان في نفس لحظة النشر مش بعد يوم."""
+    status, detail = await asyncio.to_thread(check_ado_auth)
+
+    if status == "auth":
+        await dm_allowed_users(
+            f"⚠️ فحص ADO اليومي: المصادقة واقعة ({detail}).\n{ADO_RENEW_HINT}"
+        )
+        return
+    if status == "config":
+        await dm_allowed_users(f"⚠️ فحص ADO اليومي: {detail}.\n{ADO_RENEW_HINT}")
+        return
+    if status == "network":
+        # مشكلة شبكة مؤقتة مش بتستاهل إزعاج — بتتسجل في اللوج بس
+        print(f"ADO HEALTH: مشكلة شبكة مؤقتة — {detail}")
+        return
+
+    days = pat_expiry_days()
+    if days is None or days > ADO_WARN_DAYS:
+        return
+    if days < 0:
+        await dm_allowed_users(
+            "ℹ️ فحص ADO: المصادقة شغالة لكن تاريخ AZURE_DEVOPS_PAT_EXPIRES في .env عدّى — "
+            "لو التوكن اتجدد حدّثوا التاريخ عشان الإنذار المبكر يفضل دقيق."
+        )
+        return
+    await dm_allowed_users(
+        f"⏰ تنبيه مبكر: الـ ADO PAT هينتهي خلال {days} يوم.\n{ADO_RENEW_HINT}"
+    )
+
+
+@tasks.loop(minutes=30)
+async def pending_tickets_loop():
+    """كل نص ساعة: لو في طلبات معلقة والمصادقة رجعت شغالة — ينفذها ويبلغ في الـ DM."""
+    if not _pending_items_exist():
+        return
+    status, _ = await asyncio.to_thread(check_ado_auth)
+    if status != "ok":
+        return
+
+    async with claude_lock:
+        try:
+            summary = await asyncio.to_thread(run_claude, PENDING_FLUSH_PROMPT, 600)
+        except (subprocess.TimeoutExpired, RuntimeError) as error:
+            print(f"PENDING FLUSH FAIL: {type(error).__name__}: {error}")
+            return
+
+    if summary:
+        await dm_allowed_users(f"📌 تحديث الطلبات المعلقة:\n{summary}")
+
+
 @reminder_loop.before_loop
 async def _before_reminder_loop():
+    await client.wait_until_ready()
+
+
+@ado_health_loop.before_loop
+async def _before_ado_health_loop():
+    await client.wait_until_ready()
+
+
+@pending_tickets_loop.before_loop
+async def _before_pending_tickets_loop():
     await client.wait_until_ready()
 
 
@@ -290,15 +513,16 @@ async def on_ready():
     print(f"HADI ONLINE: {client.user} | ID: {client.user.id}")
     if not reminder_loop.is_running():
         reminder_loop.start()
+    if not ado_health_loop.is_running():
+        ado_health_loop.start()
+    if not pending_tickets_loop.is_running():
+        pending_tickets_loop.start()
 
 
 @client.event
 async def on_message(message: discord.Message):
     if message.author.bot:
         return
-
-    history_text = ""
-    reply_context = ""
 
     # الرسائل الخاصة DM فقط حاليًا
     if message.guild is None:
@@ -328,6 +552,13 @@ async def on_message(message: discord.Message):
         author_name = message.author.display_name
         content = message.clean_content.strip()
 
+    # الرسالة المحوّلة (Forward) بتوصل بـ content فاضي — محتواها الحقيقي في الـ snapshots.
+    # من غير السطور دي هادي كان بيرد على أي فورورد بـ "ابعت رسالة نصية."
+    forwarded_text = extract_forwarded_text(message)
+    if forwarded_text:
+        forward_block = f"[رسالة محوّلة (Forward) — محتواها]:\n{forwarded_text}"
+        content = f"{content}\n\n{forward_block}" if content else forward_block
+
     if not content:
         await message.channel.send("ابعت رسالة نصية.")
         return
@@ -336,9 +567,10 @@ async def on_message(message: discord.Message):
         await message.channel.send("HADI_OK")
         return
 
-    if message.guild is not None:
-        history_text = await build_channel_history(message.channel, message)
-        reply_context = await build_reply_context(message)
+    # السياق (آخر الرسايل + الريبلاي) بيتبني للـ DM والقنوات على حد سواء —
+    # قبل كده كان بيتبني للقنوات بس، فهادي كان بيرد في الـ DM من غير أي سياق.
+    history_text = await build_channel_history(message.channel, message)
+    reply_context = await build_reply_context(message)
 
     async with claude_lock:
         try:
