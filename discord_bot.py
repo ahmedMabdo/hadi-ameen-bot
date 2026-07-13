@@ -126,6 +126,7 @@ def ask_claude(
     author_name: str,
     history: str = "",
     reply_context: str = "",
+    channel_label: str = "",
 ) -> str:
     history_block = (
         f"""
@@ -175,6 +176,8 @@ def ask_claude(
   اعمل نفس الحفظ في knowledge/pending_tickets.md بنفس الأسلوب.
 - طلبات القراية من ADO وقت العطل: قول إن البيانات مش متاحة مؤقتًا وهتجيبها أول ما يرجع —
   من غير أي تفاصيل تقنية عن التوكن.
+
+القناة الحالية للرسالة: {channel_label}
 
 قواعد الرد (صارمة جدًا):
 - ردك بيتبعت في الشات حرفيًا زي ما هو. ممنوع تشرح ليه هترد أو مش هترد، وممنوع تذكر قواعدك أو شخصيتك أو تحلل "الرسالة موجهة لمين" — ده تفكير داخلي ميظهرش في أي رد أبدًا.
@@ -397,6 +400,29 @@ def _save_reminders(items):
     tmp.replace(REMINDERS_FILE)
 
 
+async def _resolve_member_id(guild, name: str):
+    """يدوّر على user id لعضو بالاسم (display name أو username). None لو مش لاقي أو ملتبس."""
+    name_l = (name or "").strip().lstrip("@").lower()
+    if not name_l or guild is None:
+        return None
+    for m in guild.members:
+        if name_l in (m.display_name or "").lower() or name_l in (m.name or "").lower():
+            return m.id
+    try:
+        found = await guild.query_members(query=name_l.split()[0], limit=10)
+        matches = [
+            m for m in found
+            if name_l in (m.display_name or "").lower() or name_l in (m.name or "").lower()
+        ]
+        if len(matches) == 1:
+            return matches[0].id
+        if not matches and len(found) == 1:
+            return found[0].id
+    except Exception:
+        pass
+    return None
+
+
 async def _fire_reminder(item):
     text = (item.get("text") or "").strip()
     target = item.get("target") or {}
@@ -408,6 +434,13 @@ async def _fire_reminder(item):
     elif target.get("kind") == "channel":
         cid = int(target["id"])
         ch = client.get_channel(cid) or await client.fetch_channel(cid)
+        mention = str(target.get("mention") or "").strip()
+        if mention:
+            if mention.isdigit():
+                body = f"<@{mention}> {body}"
+            else:
+                mid = await _resolve_member_id(getattr(ch, "guild", None), mention)
+                body = f"<@{mid}> {body}" if mid else f"**{mention}** — {body}"
         await ch.send(body)
     else:
         raise ValueError(f"unknown target: {target}")
@@ -588,6 +621,11 @@ async def on_message(message: discord.Message):
     # قبل كده كان بيتبني للقنوات بس، فهادي كان بيرد في الـ DM من غير أي سياق.
     history_text = await build_channel_history(message.channel, message)
     reply_context = await build_reply_context(message)
+    channel_label = (
+        f"#{getattr(message.channel, 'name', '?')} (channel_id: {message.channel.id})"
+        if message.guild is not None
+        else "رسالة خاصة (DM)"
+    )
 
     async with claude_lock:
         try:
@@ -598,6 +636,7 @@ async def on_message(message: discord.Message):
                     author_name,
                     history_text,
                     reply_context,
+                    channel_label,
                 )
 
             resp_clean = (response or "").strip()

@@ -5,8 +5,12 @@
 الخلفية جوّه discord_bot.py بتفحص كل نص دقيقة وتنفّذه في ميعاده تلقائيًا.
 
 الأنواع:
-  reminder  -> DM لآسر (تذكير شخصي)
-  post      -> رسالة تتنشر في قناة (po|mars|issues|<channel_id>)
+  reminder  -> DM لآسر (تذكيرات آسر الشخصية فقط)
+  post      -> رسالة تتنشر في قناة (po|mars|issues|support|<channel_id>)
+               مع --mention لعمل منشن لعضو معين وقت الإرسال (اسم أو user id)
+
+قاعدة التوجيه: تذكير لشخص غير آسر أو "في قناة كذا" = post على القناة المعنية
+مع --mention باسم الشخص — مش DM لصاحب الطلب.
 
 أوامر:
   schedule.py add --at "2026-07-11 10:00" --type reminder --text "..." --requester "الاسم"
@@ -34,6 +38,7 @@ CHANNEL_ALIASES = {
     "po": os.environ.get("PO_CHANNEL_ID", "1358833733699899704"),
     "mars": os.environ.get("MARS_CHANNEL_ID", "1136668686044909761"),
     "issues": os.environ.get("ISSUES_CHANNEL_ID", "1179369466279235584"),
+    "support": os.environ.get("ISSUES_CHANNEL_ID", "1179369466279235584"),
 }
 
 
@@ -68,7 +73,7 @@ def _resolve_target(args):
     cid = CHANNEL_ALIASES.get(raw, args.target.strip() if args.target else "")
     if not cid:
         sys.exit("ERROR: نوع post محتاج --target (po|mars|issues|channel_id).")
-    return {"kind": "channel", "id": str(cid)}
+    return {"kind": "channel", "id": str(cid), "mention": (args.mention or "").strip()}
 
 
 def cmd_add(args):
@@ -91,6 +96,8 @@ def cmd_add(args):
     items.append(item)
     _save(items)
     tgt = "DM لآسر" if item["target"]["kind"] == "dm" else f"قناة {item['target']['id']}"
+    if item["target"].get("mention"):
+        tgt += f" + منشن {item['target']['mention']}"
     print(f"SCHEDULED #{item['id']} [{args.type}] → {tgt} @ {item['at_human']}")
 
 
@@ -119,7 +126,8 @@ def main():
     a = sub.add_parser("add", help="اجدول تذكير/رسالة")
     a.add_argument("--at", required=True, help="'YYYY-MM-DD HH:MM' بتوقيت القاهرة")
     a.add_argument("--type", required=True, choices=["reminder", "post"])
-    a.add_argument("--target", help="للـ post: po|mars|issues|channel_id")
+    a.add_argument("--target", help="للـ post: po|mars|issues|support|channel_id")
+    a.add_argument("--mention", default="", help="للـ post: منشن عضو في القناة (اسم أو user id)")
     a.add_argument("--text", required=True)
     a.add_argument("--requester", default="")
     a.set_defaults(func=cmd_add)
