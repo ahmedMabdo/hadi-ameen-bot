@@ -18,3 +18,8 @@ diag-done.flag
 # بايثون — bytecode متولّد من تشغيل السكربتات
 __pycache__/
 *.pyc
+reminders.json
+reminders.json.tmp
+
+# صور مؤقتة بينزلها البوت للتحليل
+tmp_images/

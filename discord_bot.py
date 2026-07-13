@@ -48,6 +48,8 @@ HISTORY_LIMIT = int(os.getenv("HISTORY_LIMIT", "30") or "30")
 # ذاكرة هادي الدائمة + مخزن التذكيرات
 MEMORY_FILE = BASE_DIR / "knowledge" / "memory.md"
 REMINDERS_FILE = BASE_DIR / "reminders.json"
+IMAGES_DIR = BASE_DIR / "tmp_images"
+IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")
 
 # --- مناعة الـ ADO: فحص دوري + إنذار مبكر قبل انتهاء الـ PAT + طابور طلبات معلقة ---
 ADO_ORG_URL = os.getenv(
@@ -127,6 +129,7 @@ def ask_claude(
     history: str = "",
     reply_context: str = "",
     channel_label: str = "",
+    images: list | None = None,
 ) -> str:
     history_block = (
         f"""
@@ -154,6 +157,17 @@ def ask_claude(
 {reply_context}
 """
         if reply_context
+        else ""
+    )
+
+    images_list = "\n".join(images) if images else ""
+    images_block = (
+        f"""
+مرفق مع الرسالة صور محفوظة كملفات محلية. اقرأ كل ملف منها بأداة Read — دي صور هتشوفها فعليًا —
+وحلل محتواها كجزء أساسي من ردك، ومن غير ما تذكر مسارات الملفات في ردك:
+{images_list}
+"""
+        if images_list
         else ""
     )
 
@@ -185,9 +199,12 @@ def ask_claude(
 - لو الرد على رسالتك موجه في الحقيقة لحد تاني غيرك → NO_REPLY.
 - لو هترد: مختصر ومباشر — سطر لتلات سطور، إلا لو المطلوب تقرير/تذكرة/تفاصيل اتطلبت صراحة. من غير مقدمات ولا خواتيم ولا فلسفة.
 
-اللي بعت الرسالة الحالية هو: {author_name}. رد عليه/عليها بالاسم ده تحديدًا،
-ومتفترضش إنها من آسر إلا لو {author_name} هو آسر بالفعل.
-{memory_block}{reply_block}{history_block}
+اللي بعت الرسالة الحالية هو: {author_name} — ده اسم حسابه على ديسكورد وغالبًا بالإنجليزي،
+ومتفترضش إنها من آسر إلا لو الاسم ده بيطابق آسر بالفعل.
+النداء بالاسم (مهم جدًا): طابق اسم الحساب على جدول «بنناديه» في CLAUDE.md بالنطق حتى لو مكتوب بالإنجليزي
+(مثال: Muhammed Essam = محمد عصام ← ناديه «يا عصام»)، واستخدم دايمًا صيغة النداء الودية من الجدول،
+مش اسم الحساب الإنجليزي ولا الاسم الثنائي الرسمي. باشمهندس أحمد وباشمهندس محمود دايمًا «باشمهندس».
+{memory_block}{reply_block}{history_block}{images_block}
 رسالة {author_name}:
 {user_message}
 """.strip()
@@ -223,6 +240,36 @@ def extract_forwarded_text(message: discord.Message) -> str:
     return "\n---\n".join(parts).strip()
 
 
+def _is_image_attachment(att) -> bool:
+    ct = (att.content_type or "").lower()
+    return ct.startswith("image/") or att.filename.lower().endswith(IMAGE_EXTS)
+
+
+async def save_image_attachments(message: discord.Message, limit: int = 4) -> list:
+    """ينزل الصور المرفقة (من الرسالة والريبلاي والفورورد) كملفات محلية عشان Claude يقراها بأداة Read."""
+    atts = [a for a in (message.attachments or []) if _is_image_attachment(a)]
+    ref = message.reference.resolved if message.reference else None
+    if isinstance(ref, discord.Message):
+        atts += [a for a in (ref.attachments or []) if _is_image_attachment(a)]
+    for snap in (getattr(message, "message_snapshots", None) or []):
+        atts += [a for a in (getattr(snap, "attachments", None) or []) if _is_image_attachment(a)]
+    IMAGES_DIR.mkdir(exist_ok=True)
+    paths = []
+    for i, att in enumerate(atts[:limit]):
+        if att.size and att.size > 8 * 1024 * 1024:
+            continue
+        ext = Path(att.filename).suffix.lower()
+        if ext not in IMAGE_EXTS:
+            ext = ".png"
+        path = IMAGES_DIR / f"{message.id}_{i}{ext}"
+        try:
+            await att.save(path)
+            paths.append(str(path))
+        except Exception as error:
+            print(f"IMAGE SAVE ERROR: {error}")
+    return paths
+
+
 async def build_channel_history(channel, before_message, limit: int = HISTORY_LIMIT) -> str:
     """يقرا آخر رسايل المحادثة (قناة أو DM) قبل الرسالة الحالية عشان هادي يفهم السياق.
 
@@ -239,6 +286,8 @@ async def build_channel_history(channel, before_message, limit: int = HISTORY_LI
                 fwd = extract_forwarded_text(prev)
                 if fwd:
                     text = f"(فورورد) {fwd}"
+            if not text and any(_is_image_attachment(a) for a in (prev.attachments or [])):
+                text = "(بعت صورة مرفقة)"
             if not text:
                 continue
             label = "هادي (أنت)" if prev.author.id == client.user.id else prev.author.display_name
@@ -609,9 +658,12 @@ async def on_message(message: discord.Message):
         forward_block = f"[رسالة محوّلة (Forward) — محتواها]:\n{forwarded_text}"
         content = f"{content}\n\n{forward_block}" if content else forward_block
 
-    if not content:
+    image_paths = await save_image_attachments(message)
+    if not content and not image_paths:
         await message.channel.send("ابعت رسالة نصية.")
         return
+    if not content:
+        content = "(بعت صورة من غير نص — بص على الصور المرفقة ورد بناء عليها)"
 
     if content.lower() == "!ping":
         await message.channel.send("HADI_OK")
@@ -637,6 +689,7 @@ async def on_message(message: discord.Message):
                     history_text,
                     reply_context,
                     channel_label,
+                    image_paths,
                 )
 
             resp_clean = (response or "").strip()
@@ -665,5 +718,12 @@ async def on_message(message: discord.Message):
                 mention_author=False,
             )
 
+
+        finally:
+            for _p in image_paths:
+                try:
+                    Path(_p).unlink()
+                except OSError:
+                    pass
 
 client.run(TOKEN)
