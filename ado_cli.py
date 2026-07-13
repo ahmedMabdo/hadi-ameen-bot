@@ -255,9 +255,11 @@ def _build_create_ops(args):
         {"op": "add", "path": "/fields/System.Title", "value": args.title},
         {"op": "add", "path": "/fields/System.AreaPath", "value": args.area_path},
         {"op": "add", "path": "/fields/myagile.Customer", "value": ADO_CUSTOMER},
-        {"op": "add", "path": "/fields/Custom.Application", "value": ADO_APPLICATION},
         {"op": "add", "path": "/fields/System.State", "value": args.state},
     ]
+    # Custom.Application مش حقل صالح على نوع Customer Issue — يتضاف بس للأنواع التانية
+    if args.type != "Customer Issue":
+        ops.insert(3, {"op": "add", "path": "/fields/Custom.Application", "value": ADO_APPLICATION})
     if args.description:
         ops.append({"op": "add", "path": "/fields/System.Description", "value": args.description})
     if args.tags:

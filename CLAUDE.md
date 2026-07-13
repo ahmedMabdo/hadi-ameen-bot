@@ -162,6 +162,8 @@
 
 ### فورمات التذكرة (إلزامي)
 
+> **الفورمات الإنجليزي اللي تحت ده للـ Change Request فقط.** تذاكر السابورت (Customer Issue) ليها SOP مختلف تمامًا: **بالعربي، وبحقول منفصلة، ومربوطة بـ parent feature** — المرجع: HADI_ADO_CLI_INSTRUCTIONS.md.
+
 **العنوان (System.Title):** يبدأ دايمًا بـ:
 
 ```
@@ -203,8 +205,8 @@
    - أي حقل إجباري تاني بيرفّض الـ create → حط قيمة default منطقية وأعد المحاولة لحد ما تنجح. **عمرك ما ترجّع الطلب لصاحبه بسبب حقل إجباري.**
 4. الوجهة — القاعدة ثابتة:
    - **Change Request** → النوع `Change Request` + `System.AreaPath = 0_Projects_Team\Change Requests`.
-   - **Customer Issue** → النوع `Issue` + `System.AreaPath = 0_Projects_Team\Support Team`.
-   - **متلخبطش بينهم**: بورد السابورت نوعه `Issue`، وبورد الـ CR نوعه `Change Request`.
+   - **Customer Issue** → النوع `Customer Issue` + `System.AreaPath = 0_Projects_Team\Support Team` + `System.IterationPath = 0_Projects_Team\Mars_Cycle`، والمحتوى **بالعربي في حقول منفصلة** (Description / Steps / Case Data / Actual VS Expected) وربط إلزامي بـ parent feature — **المرجع الكامل: SOP تذكرة السابورت في HADI_ADO_CLI_INSTRUCTIONS.md**.
+   - **متلخبطش بينهم**: بورد السابورت نوعه `Customer Issue`، وبورد الـ CR نوعه `Change Request`.
    - حط تاج `from-discord` دايمًا، وتاج `posthog` لو مصدرها من تقارير PostHog.
 5. **إلزامي:** بعد الرفع ابعت اللينك في نفس الرد: `https://hadafsolutions.visualstudio.com/0_Projects_Team/_workitems/edit/{ID}` — مفيش رفع من غير لينك. **رد الرفع سطر أو اتنين بس:** التذكرة + اللينك، من غير سرد خطواتك.
 6. لو حصل خطأ في الرفع، قوله بصراحة وما تدّعيش إنها اترفعت.

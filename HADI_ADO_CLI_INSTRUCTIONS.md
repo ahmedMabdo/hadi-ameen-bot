@@ -39,8 +39,57 @@
 
 ## القاعدة الثابتة لنوع الـ work item + الـ Area Path (زي CLAUDE.md)
 
-- **Customer Issue** → `--type "Issue"` + `--area-path "0_Projects_Team\Support Team"`
+- **Customer Issue (تذكرة سابورت)** → `--type "Customer Issue"` + `--area-path "0_Projects_Team\Support Team"` — **بالعربي، بحقول منفصلة، ومربوطة بـ parent feature — شوف SOP تذكرة السابورت تحت (إلزامي)**
 - **Change Request** → `--type "Change Request"` + `--area-path "0_Projects_Team\Change Requests"`
+
+## SOP تذكرة السابورت (Customer Issue) — إلزامي حرفيًا
+
+**كل محتوى التذكرة بالعربي** (العنوان والوصف والخطوات وكل الحقول). أسماء الشاشات والتطبيقات ممكن تفضل إنجليزي جوة الجملة (زي Order History).
+
+**النوع دايمًا `Customer Issue`** — مش `Issue` ولا `Bug`. الوجهة: `AreaPath = 0_Projects_Team\Support Team` + `IterationPath = 0_Projects_Team\Mars_Cycle`.
+
+**خريطة الحقول — مرجع معتمد مسحوب من تعريف النوع على ADO (متغيّرش الأسماء دي):**
+
+| المحتوى | الحقل في ADO |
+|---------|-------------|
+| الوصف بالعربي | `System.Description` |
+| خطوات إعادة المشكلة (مرقّمة) | `Microsoft.VSTS.TCM.Steps` |
+| Case Data — بيانات الحالة (رقم الأوردر/التاجر/الفرع/الحساب/تاريخ الحدوث) | `Microsoft.VSTS.TCM.SystemInfo` (ده اللي بيظهر على الفورم باسم "Case Data") |
+| Actual VS Expected Results | `Custom.ActualVSExpectedResults` |
+| Due Date (النهارده + شهر) | `Microsoft.VSTS.Scheduling.DueDate` |
+| العميل | `myagile.Customer` = `8Orders` |
+| الأولوية | `HADAgile.IssuePriority` = `Normal` (أو `High` للحرج) |
+
+كل الحقول النصية HTML — `<div>` و `<b>` كفاية.
+
+**الربط بالـ parent feature إلزامي** — استخدم `add-child --parent <FEATURE_ID>` مش `create-work-item`:
+- استنتج الموديول المتأثر من وصف المشكلة، ودور على الـ Feature بتاعته:
+  `python3 ado_cli.py wiql "SELECT [System.Id], [System.Title] FROM WorkItems WHERE [System.WorkItemType] = 'Feature' AND [System.Title] CONTAINS 'كلمة الموديول'"`
+- Features معروفة (استرشادي — اتأكد بالبحث لو في شك): Order History=55524 · Search=66357 · Online Payment=54556 · Voucher Type 2=110274 · Reports=120063 · Chat=53880 · External Delivery Module=117984 · Delivery Men=53856 · System Users=54264 · Merchants Statement=101725 · merchant notification=119875 · Customer Ads=119931
+- لو الموديول مش واضح خالص من الطلب → اسأل صاحب الطلب سؤال واحد مجمّع. مترفعش تذكرة سابورت من غير parent.
+
+**النموذج الكامل (المعتمد):**
+
+```bash
+python3 ado_cli.py add-child \
+  --parent <FEATURE_ID> \
+  --type "Customer Issue" \
+  --title "8 Orders - <التطبيق/الشاشة> – <المشكلة بالعربي>" \
+  --area-path "0_Projects_Team\Support Team" \
+  --description "<div><b>الوصف:</b> شرح المشكلة بالعربي</div>" \
+  --field "System.IterationPath=0_Projects_Team\Mars_Cycle" \
+  --field "Microsoft.VSTS.TCM.Steps=<div><b>خطوات إعادة المشكلة:</b></div><div>1. ...</div><div>2. ...</div>" \
+  --field "Microsoft.VSTS.TCM.SystemInfo=<div>رقم الأوردر: ... — التاجر/الفرع: ... — تاريخ الحدوث: ...</div>" \
+  --field "Custom.ActualVSExpectedResults=<div><b>المتوقع (Expected):</b> ...</div><div><b>الفعلي (Actual):</b> ...</div>" \
+  --field "Microsoft.VSTS.Scheduling.DueDate=$(date -d '+1 month' +%Y-%m-%d)" \
+  --field "myagile.Customer=8Orders" \
+  --field "HADAgile.IssuePriority=Normal" \
+  --tags "from-discord; customer-issue"
+```
+
+- معلومة مش متوفرة في الطلب (زي رقم أوردر)؟ اكتب "غير متوفر — يُستكمل من السابورت" في مكانها وكمّل الرفع — ما عدا الـ parent فهو شرط.
+- جرّب `--dry-run` الأول لو مش متأكد من حقل.
+- بعد الإنشاء ابعت `CREATED #<id> -> <url>` في الرد فورًا.
 
 ## أمثلة استخدام حقيقية
 
