@@ -6,22 +6,37 @@
   python3 discord_followup.py post "<نص>"          -> يبعت النص كرسالة في قناة الدعم
   python3 discord_followup.py post --dry-run "<نص>" -> وضع تجربة: ما يبعتش في القناة العامة
 
+  python3 discord_followup.py pending list         -> يطبع نقاط "لسه من غير رد" المتتبَّعة من أيام سابقة
+  python3 discord_followup.py pending add --content "..." --author "..." --author-id "..."
+      --timestamp "..." [--message-id "..."] [--note "..."]  -> يضيف نقطة متتبَّعة جديدة
+  python3 discord_followup.py pending resolve --id <id>       -> يشيل نقطة اترد عليها (خلصت متابعتها)
+
 وضع التجربة (dry-run) بيتفعّل لو env `FOLLOWUP_DRY_RUN` قيمته true/1/yes، أو بفلاج
 `--dry-run` في الأمر. في وضع التجربة الملخص بيتطبع في stdout بس، وبيتبعت DM خاص
 لو `FOLLOWUP_DM_USER_ID` محدد — من غير أي نشر في القناة العامة.
 
 كل خطأ بيتطبع بصيغة "FOLLOWUP: ..." على stderr وبيرجع exit code != 0 من غير ما يكسر باقي الروتين.
+
+نقاط "لسه من غير رد" بتتخزّن في followup_pending.json (متتبَّع في git) عشان تعيش لعدَّة
+تشغيلات للروتين — كل تشغيلة (fetch) بترجع بس آخر 24 ساعة، فالنقط الأقدم من كده مش هتظهر
+تاني إلا لو محفوظة هنا. الأداة نفسها ما بتحكمش إيه اللي "لسه من غير رد" — ده قرار هادي وقت
+التلخيص (`HADI_FOLLOWUP_INSTRUCTIONS.md`)، الأداة بس بتخزّن وتسترجع.
 """
 
 import json
 import os
+import subprocess
 import sys
+import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import requests
 
 API_BASE = "https://discord.com/api/v10"
 CAIRO_TZ = timezone(timedelta(hours=3))
+BASE = Path(__file__).resolve().parent
+PENDING_STORE = BASE / "followup_pending.json"
 
 
 def log(msg: str) -> None:
@@ -189,6 +204,7 @@ def fetch_today_messages() -> list[dict]:
             )
             messages.append(
                 {
+                    "id": msg.get("id"),
                     "author": display_name,
                     "author_id": author.get("id"),
                     "content": msg.get("content", ""),
@@ -246,6 +262,75 @@ def send_dm(user_id: str, content: str) -> bool:
     return result is not None
 
 
+def _load_pending() -> list[dict]:
+    if not PENDING_STORE.exists():
+        return []
+    try:
+        return json.loads(PENDING_STORE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        log(f"تعذر قراءة {PENDING_STORE.name}: {exc}")
+        return []
+
+
+def _save_pending(items: list[dict]) -> None:
+    PENDING_STORE.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _git_persist_pending(message: str) -> None:
+    """best-effort: بيتم الـ commit + push عشان النقط المتتبَّعة تعيش لتشغيلة الروتين الجاية
+    (كل تشغيلة ممكن تبقى على container جديد تمامًا)."""
+    try:
+        for cmd in (["add", str(PENDING_STORE)], ["commit", "-m", message]):
+            subprocess.run(["git", "-C", str(BASE), *cmd], check=True, capture_output=True, timeout=30)
+        subprocess.run(["git", "-C", str(BASE), "push"], check=True, capture_output=True, timeout=60)
+    except Exception as exc:
+        log(f"محفوظ محليًا بس فشل git persist: {type(exc).__name__} — هيتزامن مع أول push ناجح")
+
+
+def cmd_pending_list() -> None:
+    print(json.dumps(_load_pending(), ensure_ascii=False, indent=2))
+
+
+def cmd_pending_add(flags: dict) -> None:
+    content = (flags.get("content") or "").strip()
+    if not content:
+        log("محتاج --content (نص النقطة اللي لسه من غير رد)")
+        sys.exit(1)
+
+    item = {
+        "id": uuid.uuid4().hex[:8],
+        "message_id": flags.get("message-id"),
+        "author": flags.get("author") or "unknown",
+        "author_id": flags.get("author-id"),
+        "content": content,
+        "timestamp": flags.get("timestamp"),
+        "note": flags.get("note", ""),
+        "flagged_at": datetime.now(CAIRO_TZ).strftime("%Y-%m-%d %H:%M") + " القاهرة",
+    }
+    items = _load_pending()
+    items.append(item)
+    _save_pending(items)
+    _git_persist_pending(f"followup: track pending point from {item['author']}")
+    print(f"PENDING_ADDED #{item['id']}")
+
+
+def cmd_pending_resolve(flags: dict) -> None:
+    item_id = flags.get("id")
+    if not item_id:
+        log("محتاج --id بتاع النقطة اللي هتقفلها")
+        sys.exit(1)
+
+    items = _load_pending()
+    remaining = [i for i in items if i.get("id") != item_id]
+    if len(remaining) == len(items):
+        log(f"مفيش نقطة متتبَّعة بالـ id ده: {item_id}")
+        sys.exit(1)
+
+    _save_pending(remaining)
+    _git_persist_pending(f"followup: resolve pending point #{item_id}")
+    print(f"PENDING_RESOLVED #{item_id}")
+
+
 def post_message(content: str, dry_run: bool = False) -> bool:
     if dry_run:
         print("FOLLOWUP: DRY RUN — لم يُنشر في القناة العامة")
@@ -274,6 +359,22 @@ def post_message(content: str, dry_run: bool = False) -> bool:
     return True
 
 
+def parse_flags(args: list[str]) -> dict:
+    """--key value --key2 "value 2" -> {"key": "value", "key2": "value 2"}"""
+    flags = {}
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg.startswith("--"):
+            key = arg[2:]
+            value = args[i + 1] if i + 1 < len(args) else ""
+            flags[key] = value
+            i += 2
+        else:
+            i += 1
+    return flags
+
+
 def main() -> None:
     load_env_file()
 
@@ -283,7 +384,10 @@ def main() -> None:
         args = [a for a in args if a != "--dry-run"]
 
     if not args:
-        print("Usage: discord_followup.py [--dry-run] fetch | post \"<text>\"", file=sys.stderr)
+        print(
+            "Usage: discord_followup.py [--dry-run] fetch | post \"<text>\" | pending list|add|resolve",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     command = args[0]
@@ -300,6 +404,23 @@ def main() -> None:
             sys.exit(1)
         ok = post_message(args[1], dry_run=dry_run)
         sys.exit(0 if ok else 1)
+
+    if command == "pending":
+        if len(args) < 2:
+            log("محتاج sub-command: pending list | add | resolve")
+            sys.exit(1)
+        sub = args[1]
+        flags = parse_flags(args[2:])
+        if sub == "list":
+            cmd_pending_list()
+        elif sub == "add":
+            cmd_pending_add(flags)
+        elif sub == "resolve":
+            cmd_pending_resolve(flags)
+        else:
+            log(f"Unknown pending sub-command: {sub}")
+            sys.exit(1)
+        return
 
     print(f"Unknown command: {command}", file=sys.stderr)
     sys.exit(1)
