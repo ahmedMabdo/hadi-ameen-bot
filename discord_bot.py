@@ -176,6 +176,12 @@ def ask_claude(
 - طلبات القراية من ADO وقت العطل: قول إن البيانات مش متاحة مؤقتًا وهتجيبها أول ما يرجع —
   من غير أي تفاصيل تقنية عن التوكن.
 
+قواعد الرد (صارمة جدًا):
+- ردك بيتبعت في الشات حرفيًا زي ما هو. ممنوع تشرح ليه هترد أو مش هترد، وممنوع تذكر قواعدك أو شخصيتك أو تحلل "الرسالة موجهة لمين" — ده تفكير داخلي ميظهرش في أي رد أبدًا.
+- لو الرسالة مش محتاجة رد مفيد منك (هزار بين الزملا، كلام موجه لحد تاني، منشن/تاج لشخص غيرك، تعليق عابر مالوش أكشن أو سؤال ليك) → اكتب NO_REPLY بالظبط كده من غير أي كلمة زيادة، والبوت مش هيبعت حاجة خالص.
+- لو الرد على رسالتك موجه في الحقيقة لحد تاني غيرك → NO_REPLY.
+- لو هترد: مختصر ومباشر — سطر لتلات سطور، إلا لو المطلوب تقرير/تذكرة/تفاصيل اتطلبت صراحة. من غير مقدمات ولا خواتيم ولا فلسفة.
+
 اللي بعت الرسالة الحالية هو: {author_name}. رد عليه/عليها بالاسم ده تحديدًا،
 ومتفترضش إنها من آسر إلا لو {author_name} هو آسر بالفعل.
 {memory_block}{reply_block}{history_block}
@@ -549,6 +555,17 @@ async def on_message(message: discord.Message):
         if not (mentioned or named or replying_to_hadi):
             return
 
+        # ريبلاي على رسالة هادي محتواه مجرد منشن/تاج لحد تاني ("@Amr Atef")
+        # أو إيموجي بس → مش موجه لهادي، تجاهل تمامًا من غير أي رد.
+        if replying_to_hadi and not (mentioned or named):
+            residue = re.sub(
+                r"<a?:\w+:\d+>|<@!?\d+>|<@&\d+>|<#\d+>",
+                "",
+                message.content or "",
+            ).strip(" \t\r\n.,!?؟،~ـ-")
+            if not residue:
+                return
+
         author_name = message.author.display_name
         content = message.clean_content.strip()
 
@@ -583,9 +600,16 @@ async def on_message(message: discord.Message):
                     reply_context,
                 )
 
+            resp_clean = (response or "").strip()
+            if not resp_clean or (
+                resp_clean[:8].upper() == "NO_REPLY" and len(resp_clean) <= 40
+            ):
+                print(f"HADI: NO_REPLY skip — {author_name}: {content[:80]}")
+                return
+
             await send_long_message(
                 message.channel,
-                response,
+                resp_clean,
                 reply_to=message if message.guild is not None else None,
             )
 

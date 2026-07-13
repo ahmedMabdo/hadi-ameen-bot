@@ -33,7 +33,7 @@
 
 4. **ارفع الـ CR:**
    ```
-   python3 discord_orderpo.py create-cr --title "<عنوان مختصر>" --description "<وصف HTML>"
+   python3 discord_orderpo.py create-cr --title "8 Orders - {Admin|Customer|Merchant} – <short English title>" --description "<وصف HTML>"
    ```
    - **العنوان**: مختصر وبنفس لغة الفكرة، وبادئة المنتج بين أقواس مربعة لو معروفة — نفس العرف الموجود (مثال: `[Mart] فيتشر الهدية المجانية عند الحد الأدنى للطلب`).
    - **الوصف** (HTML): ملخص الفكرة + اقتباس نص الرسالة الأصلية حرفيًا + سطر «المصدر: #8order-po — الكاتب — التاريخ/الوقت».

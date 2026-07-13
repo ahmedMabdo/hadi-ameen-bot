@@ -45,7 +45,7 @@ python3 po_channel_cr.py fetch --limit 50 --json
 ### 4) ارفع كل فكرة كـ CR
 ```bash
 python3 po_channel_cr.py file-cr \
-  --title "عنوان عربي يوصف الفكرة نفسها" \
+  --title "8 Orders - {Admin|Customer|Merchant} – <short clear English title>" \
   --brief "2-4 أسطر: الفكرة، ليه، ومين اقترحها" \
   --source-msg <message_id>
 ```
