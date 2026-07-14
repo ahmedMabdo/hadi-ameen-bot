@@ -51,6 +51,7 @@ from urllib.parse import quote
 import requests
 
 import ado_client
+import cr_media
 from ado_client import ADO_ORG_BASE, ADO_PROJECT, ADO_API_VERSION, ADO_CUSTOMER, ADO_APPLICATION
 
 DEFAULT_FIELDS = ("System.Id,System.Title,System.State,System.WorkItemType,"
@@ -269,6 +270,8 @@ def _build_create_ops(args):
             sys.exit(f"ERROR: --field expects path=value, got: {extra}")
         path, value = extra.split("=", 1)
         ops.append({"op": "add", "path": f"/fields/{path}", "value": value})
+    _provided = {op["path"].split("/fields/", 1)[-1] for op in ops if "/fields/" in op.get("path", "")}
+    ops += cr_media.required_field_ops(args.type, _provided)
     return ops
 
 
@@ -291,10 +294,14 @@ def _create(args, ops, label):
     wi = r.json()
     url = wi.get("_links", {}).get("html", {}).get("href", "")
     print(f"CREATED #{wi['id']} -> {url}")
+    return wi
 
 
 def cmd_create_work_item(args):
-    _create(args, _build_create_ops(args), args.type)
+    wi = _create(args, _build_create_ops(args), args.type)
+    if wi:
+        _ch = cr_media.resolve_channel_id(getattr(args, "channel", None))
+        cr_media.maybe_attach_media(args, wi, _ch, _headers())
 
 
 def cmd_add_comment(args):
@@ -407,6 +414,10 @@ def main():
         sp.add_argument("--state", default="New")
         sp.add_argument("--field", action="append",
                          help="extra field as path=value, repeatable, e.g. --field Microsoft.VSTS.Common.Priority=1")
+        sp.add_argument("--source-msg", help="Discord message id to auto-attach its image/video")
+        sp.add_argument("--channel", help="Discord channel for --source-msg: po/mars/support or raw id")
+        sp.add_argument("--attach-url", action="append", default=[], help="image/video URL(s) to attach (repeatable)")
+        sp.add_argument("--no-media", action="store_true", help="skip attaching media")
         sp.add_argument("--dry-run", action="store_true")
 
     s = sub.add_parser("create-work-item", help="create a work item")

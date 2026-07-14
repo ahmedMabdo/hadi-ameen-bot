@@ -117,3 +117,9 @@ python3 ado_cli.py list-team-iterations --team "Mars Team"
 ## الأخطاء
 
 كل خطأ بيتطبع بصيغة `ERROR: ...` أو `FAILED ...` على stdout/stderr مع سبب واضح (401 توكن غلط، 403 صلاحية ناقصة، 404 مش موجود، أو نص رسالة ADO). لو حصل خطأ، قول للعضو بصراحة إن في مشكلة تقنية — ما تختلقش رد بديل.
+
+##   +    create-work-item ()
+-  /    work item:  `--source-msg <id> --channel support|po|mars`.   : `--attach-url <url>` ().   25MB    .
+-            `--field Ref=Value`:
+  - Customer Issue ( ): `Custom.IssueSeverity`=  Critical | Major | Minor | Low `Custom.freshdeskid`=<id> `--description`=  `Microsoft.VSTS.TCM.Steps`=  . area-path = `0_Projects_Team\Support Team`.
+  - Change Request:    PO (WorkType/CRorStoryCategory/StoryApplication).

@@ -12,5 +12,19 @@
     "created": "2026-07-10 18:03",
     "fired": false,
     "attempts": 0
+  },
+  {
+    "id": "64e40bbf",
+    "type": "reminder",
+    "at_epoch": 1783943400.0,
+    "at_human": "2026-07-13 14:50 القاهرة",
+    "target": {
+      "kind": "dm"
+    },
+    "text": "تابع مع إسماعيل إبراهيم تيكت #121851 (إشعار قسم الفاوتشرز بيفتح Restaurant) — شوفه وصل لإيه",
+    "requester": "Asser Gameel",
+    "created": "2026-07-13 13:50",
+    "fired": true,
+    "attempts": 0
   }
 ]

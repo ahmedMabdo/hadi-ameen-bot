@@ -97,3 +97,12 @@ python3 po_channel_cr.py post --channel mars --text "..."   # جروب مارس 
 - **نوع الـ work item:** الافتراضي `ADO_CR_TYPE=Change Request` — نفس النوع اللي
   بيستخدمه روتين `discord_orderpo.py` على نفس البورد (متأكدين منه من آسر).
   متغيّرهوش إلا لو الـ process نفسه اتغير.
+
+##  / +  ( )
+-  `file-cr`   `--source-msg <id>`:     /    (   )   Attachments  CR.    25MB    .
+-       :   `--attach-url <url>` ().
+-            `--field Ref=Value`:
+  - `Custom.WorkType` =  : API | Automation | Desktop | Desktop + Mobile | Desktop + Web | Desktop + Web + Mobile | Mobile | Web | Web + Mobile
+  - `Custom.CRorStoryCategory` =  : Admin Enhancement | Cust App Enhancement | Delivery Enhancement | Design Revamp | Integration / New Feature | Merchant App Enhancement | New Feature | New Report | Operation Automation | Stores Web Enhancement
+  - `Custom.StoryApplication` =  : Admin Web | CST App | Customer Web | Delivery App | Delivery Web | Merchant App | Stores Web - Operator Web
+  - : `Custom.Impact`=  `Custom.EstimatedHours`=.

@@ -98,7 +98,7 @@ def load_memory() -> str:
     return txt if has_notes else ""
 
 
-def run_claude(prompt: str, timeout: int = 300) -> str:
+def _run_claude_once(prompt: str, timeout: int = 300) -> str:
     """يشغّل Claude CLI بالبرومبت المطلوب ويرجّع الرد النصي."""
     result = subprocess.run(
         [
@@ -121,6 +121,31 @@ def run_claude(prompt: str, timeout: int = 300) -> str:
         raise RuntimeError(error[-1500:] or "Claude لم يُرجع نتيجة")
 
     return result.stdout.strip()
+
+
+def run_claude(prompt: str, timeout: int = 300) -> str:
+    """Retry once on transient API/server errors (e.g. Server error mid-response)."""
+    try:
+        return _run_claude_once(prompt, timeout)
+    except RuntimeError as error:
+        msg = str(error).lower()
+        transient = any(
+            s in msg
+            for s in (
+                "server error",
+                "overloaded",
+                "api error",
+                "internal server",
+                "connection",
+                "econnreset",
+                "socket hang up",
+            )
+        )
+        if not transient:
+            raise
+        print(f"HADI: transient API error, retrying once - {str(error)[-200:]}")
+        time.sleep(5)
+        return _run_claude_once(prompt, min(timeout, 300))
 
 
 def ask_claude(
@@ -209,7 +234,7 @@ def ask_claude(
 {user_message}
 """.strip()
 
-    return run_claude(prompt)
+    return run_claude(prompt, timeout=480)
 
 
 def extract_forwarded_text(message: discord.Message) -> str:
@@ -570,9 +595,12 @@ async def pending_tickets_loop():
     if status != "ok":
         return
 
+    if claude_lock.locked():
+        return
+
     async with claude_lock:
         try:
-            summary = await asyncio.to_thread(run_claude, PENDING_FLUSH_PROMPT, 600)
+            summary = await asyncio.to_thread(run_claude, PENDING_FLUSH_PROMPT, 300)
         except (subprocess.TimeoutExpired, RuntimeError) as error:
             print(f"PENDING FLUSH FAIL: {type(error).__name__}: {error}")
             return
@@ -653,6 +681,11 @@ async def on_message(message: discord.Message):
 
     # الرسالة المحوّلة (Forward) بتوصل بـ content فاضي — محتواها الحقيقي في الـ snapshots.
     # من غير السطور دي هادي كان بيرد على أي فورورد بـ "ابعت رسالة نصية."
+    try:
+        await message.add_reaction("👀")
+    except Exception:
+        pass
+
     forwarded_text = extract_forwarded_text(message)
     if forwarded_text:
         forward_block = f"[رسالة محوّلة (Forward) — محتواها]:\n{forwarded_text}"
@@ -682,6 +715,7 @@ async def on_message(message: discord.Message):
     async with claude_lock:
         try:
             async with message.channel.typing():
+                _t0 = time.time()
                 response = await asyncio.to_thread(
                     ask_claude,
                     content,
@@ -692,6 +726,7 @@ async def on_message(message: discord.Message):
                     image_paths,
                 )
 
+            print(f"HADI: claude run {time.time()-_t0:.0f}s - {author_name}: {content[:60]}")
             resp_clean = (response or "").strip()
             if not resp_clean or (
                 resp_clean[:8].upper() == "NO_REPLY" and len(resp_clean) <= 40
@@ -706,8 +741,9 @@ async def on_message(message: discord.Message):
             )
 
         except subprocess.TimeoutExpired:
+            print(f"HADI: TIMEOUT (480s) - {author_name}: {content[:60]}")
             await message.reply(
-                "الطلب استغرق وقتًا طويلاً. جرّب سؤالًا أقصر",
+                "الطلب خد وقت أطول من الحد المسموح (8 دقايق) واتوقف. لو كان طلب تيكت، راجع البورد الأول قبل ما تكرر الطلب.",
                 mention_author=False,
             )
 

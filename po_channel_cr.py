@@ -56,6 +56,7 @@ import requests
 # reuse the proven ADO plumbing (env parsing, org/project/base URL, auth,
 # mandatory Customer/Application field values) from the existing client
 import ado_client
+import cr_media
 from ado_client import ADO_BASE, ADO_API_VERSION, ADO_CUSTOMER, ADO_APPLICATION
 
 API_BASE = "https://discord.com/api/v10"
@@ -141,6 +142,7 @@ def _message_row(m, guild_id, channel_id):
         "author": author.get("global_name") or author.get("username") or "?",
         "bot": bool(author.get("bot")),
         "content": content,
+        "media": cr_media.media_from_message(m),
         "jump_link": _jump_link(guild_id, channel_id, m["id"]),
     }
 
@@ -220,6 +222,12 @@ def cmd_file_cr(args):
         {"op": "add", "path": "/fields/Custom.Application", "value": ADO_APPLICATION},
         {"op": "add", "path": "/fields/System.State", "value": "New"},
     ]
+    for _extra in (args.field or []):
+        if "=" in _extra:
+            _p, _v = _extra.split("=", 1)
+            payload.append({"op": "add", "path": f"/fields/{_p.strip()}", "value": _v})
+    _provided = {op["path"].split("/fields/", 1)[-1] for op in payload if "/fields/" in op.get("path", "")}
+    payload += cr_media.required_field_ops(ADO_CR_TYPE, _provided)
 
     if args.dry_run:
         print(f"DRY-RUN would create {ADO_CR_TYPE} in '{ADO_CR_AREA_PATH}': {args.title}")
@@ -243,6 +251,7 @@ def cmd_file_cr(args):
     wi = r.json()
     url = wi.get("_links", {}).get("html", {}).get("href", "")
     print(f"CREATED CR #{wi['id']} -> {url}")
+    cr_media.maybe_attach_media(args, wi, channel_id, headers)
 
 
 def cmd_post(args):
@@ -301,7 +310,12 @@ def main():
     c.add_argument("--guild", help="guild id for the jump link (default env "
                                    "DISCORD_GUILD_ID)",
                    default=os.environ.get("DISCORD_GUILD_ID"))
+    c.add_argument("--attach-url", action="append", default=[],
+                   help="image/video URLs from the conversation to attach (repeatable)")
+    c.add_argument("--no-media", action="store_true", help="skip auto-attaching media")
     c.add_argument("--dry-run", action="store_true")
+    c.add_argument("--field", action="append", default=[],
+                   help="set any field: Ref=Value (repeatable), e.g. Custom.WorkType=Mobile")
     c.set_defaults(func=cmd_file_cr)
 
     o = sub.add_parser("post", help="post a message into a channel")
