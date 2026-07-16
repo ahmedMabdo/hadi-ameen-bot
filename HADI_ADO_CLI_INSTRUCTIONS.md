@@ -123,3 +123,18 @@ python3 ado_cli.py list-team-iterations --team "Mars Team"
 -            `--field Ref=Value`:
   - Customer Issue ( ): `Custom.IssueSeverity`=  Critical | Major | Minor | Low `Custom.freshdeskid`=<id> `--description`=  `Microsoft.VSTS.TCM.Steps`=  . area-path = `0_Projects_Team\Support Team`.
   - Change Request:    PO (WorkType/CRorStoryCategory/StoryApplication).
+
+
+
+## إرفاق ميديا على تذكرة موجودة (attach-media)
+
+لما حد يطلب "ارفع الصورة/الفيديو ده على التذكرة #123" (من غير إنشاء تذكرة جديدة):
+
+```bash
+python3 ado_cli.py attach-media 123 --source-msg <msg_id> --channel <channel_id أو po/mars/issues>
+```
+
+- بيسحب صور/فيديوهات الرسالة دي (والرسالة اللي هي ريبلاي عليها) وبيرفعها على قسم Attachments بتاع التذكرة.
+- الملف لحد 25MB بيترفع كامل؛ الأكبر بيتحط لينكه في الـ discussion تلقائيًا.
+- لينكات مباشرة كمان: `--attach-url <url>` (تتكرر). العملية إضافة فقط — مفيش أي تعديل على حقول التذكرة.
+- id الرسالة الحالية بيوصلك في البرومبت مع كل رسالة فيها ميديا، وid القناة في سطر "القناة الحالية للرسالة".

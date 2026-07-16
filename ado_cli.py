@@ -341,6 +341,25 @@ def cmd_add_child(args):
 # CLI
 # --------------------------------------------------------------------------
 
+def cmd_attach_media(args):
+    """Attach Discord media / URLs to an EXISTING work item.
+
+    Additive only (AttachedFile relations + a discussion note for oversized
+    files via cr_media) — no field updates, consistent with the create-only
+    write policy of this CLI."""
+    if not (args.source_msg or args.attach_url):
+        sys.exit("ERROR: pass --source-msg and/or --attach-url")
+    if args.dry_run:
+        print(f"DRY-RUN would attach media to #{args.id} "
+              f"(source_msg={args.source_msg}, urls={len(args.attach_url)})")
+        return
+    args.no_media = False
+    channel = cr_media.resolve_channel_id(getattr(args, "channel", None) or "po")
+    cr_media.maybe_attach_media(args, {"id": args.id}, channel, _headers())
+    print(f"ATTACH-MEDIA DONE for #{args.id}")
+
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     p.add_argument("--project", default=ADO_PROJECT, help=f"ADO project (default {ADO_PROJECT})")
@@ -423,6 +442,16 @@ def main():
     s = sub.add_parser("create-work-item", help="create a work item")
     add_create_args(s)
     s.set_defaults(func=cmd_create_work_item)
+
+    s = sub.add_parser("attach-media",
+                       help="attach Discord media to an EXISTING work item (additive only)")
+    s.add_argument("id")
+    s.add_argument("--source-msg", help="Discord message id whose image/video to attach")
+    s.add_argument("--channel", help="channel of --source-msg: po/mars/issues/support or raw id (default po)")
+    s.add_argument("--attach-url", action="append", default=[], help="media URL(s) to attach (repeatable)")
+    s.add_argument("--dry-run", action="store_true")
+    s.set_defaults(func=cmd_attach_media)
+
 
     s = sub.add_parser("add-comment", help="add a comment to a work item")
     s.add_argument("id")

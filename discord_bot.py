@@ -3,6 +3,7 @@ import base64
 import json
 import os
 import re
+import shutil
 import subprocess
 import time
 import urllib.error
@@ -50,6 +51,8 @@ MEMORY_FILE = BASE_DIR / "knowledge" / "memory.md"
 REMINDERS_FILE = BASE_DIR / "reminders.json"
 IMAGES_DIR = BASE_DIR / "tmp_images"
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")
+VIDEO_EXTS = (".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v")
+MAX_VIDEO_BYTES = 25 * 1024 * 1024  # نفس حد إرفاق ADO في cr_media.py
 
 # --- مناعة الـ ADO: فحص دوري + إنذار مبكر قبل انتهاء الـ PAT + طابور طلبات معلقة ---
 ADO_ORG_URL = os.getenv(
@@ -155,6 +158,8 @@ def ask_claude(
     reply_context: str = "",
     channel_label: str = "",
     images: list | None = None,
+    message_id: str = "",
+    media_notes: str = "",
 ) -> str:
     history_block = (
         f"""
@@ -188,11 +193,29 @@ def ask_claude(
     images_list = "\n".join(images) if images else ""
     images_block = (
         f"""
-مرفق مع الرسالة صور محفوظة كملفات محلية. اقرأ كل ملف منها بأداة Read — دي صور هتشوفها فعليًا —
-وحلل محتواها كجزء أساسي من ردك، ومن غير ما تذكر مسارات الملفات في ردك:
+مرفق مع الرسالة صور محفوظة كملفات محلية (ومنها فريمات متاخدة من الفيديوهات المرفقة لو موجودة).
+اقرأ كل ملف منها بأداة Read — دي صور هتشوفها فعليًا — وحلل محتواها كجزء أساسي من ردك،
+ومن غير ما تذكر مسارات الملفات في ردك:
 {images_list}
 """
         if images_list
+        else ""
+    )
+
+    media_block = (
+        f"""
+ميديا الرسالة (الحالية + الريبلاي + الفورورد):
+{media_notes}
+قدراتك على الميديا حقيقية ومتاحة فعلًا — ممنوع تمامًا تقول "مش قادر أشوف الصور/الفيديوهات" أو "مش قادر أرفعها على Azure":
+- الصور بتشوفها فعليًا (بأداة Read)، والفيديوهات بتشوف فريمات مستخرجة منها لو متاحة (من غير صوت).
+- رفع/إرفاق الميديا على Azure DevOps بيتم عن طريق التذاكر:
+  * مع إنشاء تذكرة جديدة: po_channel_cr.py file-cr أو ado_cli.py create-work-item/add-child
+    مع --source-msg {message_id} و --channel <channel_id بتاع الرسالة> —
+    بيرفق كل صور/فيديوهات الرسالة (والريبلاي بتاعها) تلقائيًا (الملف لحد 25MB، والأكبر بيتحط لينكه في الـ discussion).
+  * على تذكرة موجودة: ado_cli.py attach-media <work_item_id> --source-msg {message_id} --channel <channel_id>.
+- id الرسالة الحالية: {message_id} — ده اللي بتحطه في --source-msg، وid القناة موجود في سطر "القناة الحالية للرسالة".
+"""
+        if media_notes
         else ""
     )
 
@@ -229,7 +252,7 @@ def ask_claude(
 النداء بالاسم (مهم جدًا): طابق اسم الحساب على جدول «بنناديه» في CLAUDE.md بالنطق حتى لو مكتوب بالإنجليزي
 (مثال: Muhammed Essam = محمد عصام ← ناديه «يا عصام»)، واستخدم دايمًا صيغة النداء الودية من الجدول،
 مش اسم الحساب الإنجليزي ولا الاسم الثنائي الرسمي. باشمهندس أحمد وباشمهندس محمود دايمًا «باشمهندس».
-{memory_block}{reply_block}{history_block}{images_block}
+{memory_block}{reply_block}{history_block}{images_block}{media_block}
 رسالة {author_name}:
 {user_message}
 """.strip()
@@ -268,6 +291,128 @@ def extract_forwarded_text(message: discord.Message) -> str:
 def _is_image_attachment(att) -> bool:
     ct = (att.content_type or "").lower()
     return ct.startswith("image/") or att.filename.lower().endswith(IMAGE_EXTS)
+
+
+
+
+def _is_video_attachment(att) -> bool:
+    ct = (att.content_type or "").lower()
+    return ct.startswith("video/") or att.filename.lower().endswith(VIDEO_EXTS)
+
+
+def _collect_attachments(message, pred):
+    """كل المرفقات المطابقة من الرسالة نفسها + الريبلاي + الفورورد."""
+    atts = [a for a in (message.attachments or []) if pred(a)]
+    ref = message.reference.resolved if message.reference else None
+    if isinstance(ref, discord.Message):
+        atts += [a for a in (ref.attachments or []) if pred(a)]
+    for snap in (getattr(message, "message_snapshots", None) or []):
+        atts += [a for a in (getattr(snap, "attachments", None) or []) if pred(a)]
+    return atts
+
+
+def media_manifest(message) -> str:
+    """قايمة نصية بكل ميديا الرسالة (صور وفيديوهات) عشان البرومبت."""
+    rows = []
+    for att in _collect_attachments(
+        message, lambda a: _is_image_attachment(a) or _is_video_attachment(a)
+    ):
+        kind = "صورة" if _is_image_attachment(att) else "فيديو"
+        size_mb = (att.size or 0) / (1024 * 1024)
+        rows.append(f"- {kind}: {att.filename} ({size_mb:.1f}MB)")
+    return "\n".join(rows)
+
+
+def _extract_frames(video_path, out_prefix, count: int = 3) -> list:
+    """يستخرج لغاية count فريم موزعين على مدة الفيديو (بيشتغل في thread)."""
+    try:
+        probe = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "csv=p=0", str(video_path)],
+            capture_output=True, text=True, timeout=30, check=False,
+        )
+        duration = float((probe.stdout or "").strip() or 0)
+    except (ValueError, subprocess.TimeoutExpired):
+        duration = 0.0
+    points = [duration * 0.1, duration * 0.5, duration * 0.9] if duration > 1 else [0.0]
+    frames = []
+    for j, ts in enumerate(points[:count]):
+        out = Path(f"{out_prefix}_f{j}.jpg")
+        try:
+            proc = subprocess.run(
+                ["ffmpeg", "-y", "-ss", f"{max(ts, 0):.2f}", "-i", str(video_path),
+                 "-frames:v", "1", "-q:v", "3", str(out)],
+                capture_output=True, timeout=60, check=False,
+            )
+        except subprocess.TimeoutExpired:
+            continue
+        if proc.returncode == 0 and out.exists() and out.stat().st_size > 0:
+            frames.append(str(out))
+    return frames
+
+
+async def save_video_frames(message: discord.Message, limit_videos: int = 2) -> tuple:
+    """ينزّل الفيديوهات المرفقة مؤقتًا ويستخرج منها فريمات يشوفها هادي.
+
+    بيرجع (frame_paths, notes): الفريمات بتتضاف لقايمة الصور، والـ notes بتشرح
+    حالة كل فيديو للبرومبت. الفيديو نفسه بيتمسح فورًا بعد الاستخراج."""
+    vids = _collect_attachments(message, _is_video_attachment)
+    frame_paths, notes = [], []
+    if not vids:
+        return frame_paths, notes
+    IMAGES_DIR.mkdir(exist_ok=True)
+    have_ffmpeg = bool(shutil.which("ffmpeg") and shutil.which("ffprobe"))
+    for i, att in enumerate(vids[:limit_videos]):
+        size_mb = (att.size or 0) / (1024 * 1024)
+        label = f"{att.filename} ({size_mb:.1f}MB)"
+        if att.size and att.size > MAX_VIDEO_BYTES:
+            notes.append(f"- الفيديو {label}: أكبر من 25MB فمشفتش محتواه — عند الإرفاق على ADO هيتحط لينكه تلقائيًا")
+            continue
+        if not have_ffmpeg:
+            notes.append(f"- الفيديو {label}: مفيش أداة استخراج فريمات على السيرفر — متاح للإرفاق على ADO فقط")
+            continue
+        ext = Path(att.filename).suffix.lower() or ".mp4"
+        video_path = IMAGES_DIR / f"{message.id}_vid{i}{ext}"
+        try:
+            await att.save(video_path)
+            got = await asyncio.to_thread(
+                _extract_frames, video_path, IMAGES_DIR / f"{message.id}_vid{i}"
+            )
+            frame_paths += got
+            if got:
+                notes.append(f"- الفيديو {label}: اتاخد منه {len(got)} فريمات — موجودة ضمن الصور اللي هتقراها")
+            else:
+                notes.append(f"- الفيديو {label}: معرفتش أستخرج فريمات (صيغة غير مدعومة غالبًا) — متاح للإرفاق على ADO")
+        except Exception as error:
+            print(f"VIDEO FRAMES ERROR: {error}")
+            notes.append(f"- الفيديو {label}: حصل خطأ في قراءته — متاح للإرفاق على ADO")
+        finally:
+            try:
+                video_path.unlink()
+            except OSError:
+                pass
+    for att in vids[limit_videos:]:
+        notes.append(f"- فيديو إضافي: {att.filename} — موجود في الرسالة وبيترفق برضه مع --source-msg")
+    return frame_paths, notes
+
+
+REACTION_RULES = [
+    (re.compile(r"شكر|متشكر|تسلم|thanks|thank\s*you|thx|جزاك|يعطيك العافية", re.IGNORECASE), "\U0001F64F"),
+    (re.compile(r"مبروك|تهانينا|congrat", re.IGNORECASE), "\U0001F389"),
+    (re.compile(r"خلصنا|اتقفل|اتحل|تم التسليم|اترفع|نجح|اشتغلت|fixed|done|deployed|released|passed", re.IGNORECASE), "\u2705"),
+    (re.compile("\U0001F602|\U0001F923|ههه|هزار|لو+ل|lol", re.IGNORECASE), "\U0001F604"),
+    (re.compile(r"مشكل|عطل|واقع|وقع|باج|بايظ|مش شغال|مش راضي|فشل|bug|error|crash|exception|fail|\bdown\b", re.IGNORECASE), "\U0001FAE1"),
+    (re.compile(r"عاجل|ضروري|مستعجل|urgent|asap|فورًا|فورا|حالًا|حالا", re.IGNORECASE), "\u26A1"),
+]
+
+
+def pick_reaction(text: str) -> str:
+    """رياكشن استلام متناسب مع مضمون الرسالة — 👀 للمحايد (بقرا/سؤال)."""
+    t = (text or "").strip()
+    for rx, emoji in REACTION_RULES:
+        if rx.search(t):
+            return emoji
+    return "\U0001F440"
 
 
 async def save_image_attachments(message: discord.Message, limit: int = 4) -> list:
@@ -311,8 +456,8 @@ async def build_channel_history(channel, before_message, limit: int = HISTORY_LI
                 fwd = extract_forwarded_text(prev)
                 if fwd:
                     text = f"(فورورد) {fwd}"
-            if not text and any(_is_image_attachment(a) for a in (prev.attachments or [])):
-                text = "(بعت صورة مرفقة)"
+            if not text and any(_is_image_attachment(a) or _is_video_attachment(a) for a in (prev.attachments or [])):
+                text = "(بعت مرفق ميديا — صورة أو فيديو)"
             if not text:
                 continue
             label = "هادي (أنت)" if prev.author.id == client.user.id else prev.author.display_name
@@ -682,7 +827,7 @@ async def on_message(message: discord.Message):
     # الرسالة المحوّلة (Forward) بتوصل بـ content فاضي — محتواها الحقيقي في الـ snapshots.
     # من غير السطور دي هادي كان بيرد على أي فورورد بـ "ابعت رسالة نصية."
     try:
-        await message.add_reaction("👀")
+        await message.add_reaction(pick_reaction(content))
     except Exception:
         pass
 
@@ -692,11 +837,15 @@ async def on_message(message: discord.Message):
         content = f"{content}\n\n{forward_block}" if content else forward_block
 
     image_paths = await save_image_attachments(message)
-    if not content and not image_paths:
+    frame_paths, video_notes = await save_video_frames(message)
+    image_paths = image_paths + frame_paths
+    manifest = media_manifest(message)
+    media_notes = "\n".join(([manifest] if manifest else []) + video_notes)
+    if not content and not image_paths and not media_notes:
         await message.channel.send("ابعت رسالة نصية.")
         return
     if not content:
-        content = "(بعت صورة من غير نص — بص على الصور المرفقة ورد بناء عليها)"
+        content = "(بعت مرفقات من غير نص — بص على الصور وبيانات الميديا المرفقة ورد بناء عليها)"
 
     if content.lower() == "!ping":
         await message.channel.send("HADI_OK")
@@ -724,6 +873,8 @@ async def on_message(message: discord.Message):
                     reply_context,
                     channel_label,
                     image_paths,
+                    str(message.id),
+                    media_notes,
                 )
 
             print(f"HADI: claude run {time.time()-_t0:.0f}s - {author_name}: {content[:60]}")
