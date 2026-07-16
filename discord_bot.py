@@ -253,6 +253,8 @@ def ask_claude(
 (مثال: Muhammed Essam = محمد عصام ← ناديه «يا عصام»)، واستخدم دايمًا صيغة النداء الودية من الجدول،
 مش اسم الحساب الإنجليزي ولا الاسم الثنائي الرسمي. باشمهندس أحمد وباشمهندس محمود دايمًا «باشمهندس».
 {memory_block}{reply_block}{history_block}{images_block}{media_block}
+
+أول سطر في ردك لازم يكون: REACT: X — حيث X إيموجي واحد بس من دول: 👀 🙏 🎉 ✅ 😄 🫡 ⚡ 👋 🤔 💪 🔥 ❤️ 😢 👍. اختاره كرياكشن استلام يناسب رسالة {author_name} دي بالذات (مضمونها ونبرتها والميديا بتاعتها): طلب شغل/تنفيذ → 🫡 أو 👍، استفسار محايد → 👀 أو 🤔، سلام/تحية → 👋، مجهود أو إنجاز كبير → 💪 أو 🔥، خبر محزن → 😢. بعد سطر REACT سيب سطر فاضي وابتدي ردك الطبيعي، ومتكتبش REACT في أي حتة تانية. لو مش هترد، اكتب NO_REPLY من غير سطر REACT.
 رسالة {author_name}:
 {user_message}
 """.strip()
@@ -413,6 +415,42 @@ def pick_reaction(text: str) -> str:
         if rx.search(t):
             return emoji
     return "\U0001F440"
+
+
+ALLOWED_REACTIONS = {
+    "\U0001F440", "\U0001F64F", "\U0001F389", "\u2705", "\U0001F604",
+    "\U0001FAE1", "\u26A1", "\U0001F44B", "\U0001F914", "\U0001F4AA",
+    "\U0001F525", "\u2764\uFE0F", "\U0001F622", "\U0001F44D",
+}
+
+REACT_RX = re.compile(r"^\s*REACT:\s*(\S{1,8})\s*(?:\n+|$)", re.IGNORECASE)
+
+
+def split_react_directive(text):
+    """يفصل سطر REACT: <إيموجي> من أول رد الموديل — بيرجع (emoji|None, باقي الرد)."""
+    m = REACT_RX.match(text or "")
+    if not m:
+        return None, (text or "")
+    emoji = m.group(1).strip()
+    rest = (text[m.end():] or "").strip()
+    if emoji not in ALLOWED_REACTIONS:
+        emoji = None
+    return emoji, rest
+
+
+async def swap_ack_reaction(message, old_emoji, new_emoji):
+    """يبدّل رياكشن الاستلام المبدئي بالرياكشن اللي اختاره الموديل من السياق الكامل."""
+    if not new_emoji or new_emoji == old_emoji:
+        return
+    try:
+        await message.add_reaction(new_emoji)
+        me = message.guild.me if message.guild else client.user
+        if old_emoji and me:
+            await message.remove_reaction(old_emoji, me)
+    except Exception as error:
+        print(f"REACTION SWAP ERROR: {error}")
+
+
 
 
 async def save_image_attachments(message: discord.Message, limit: int = 4) -> list:
@@ -826,8 +864,9 @@ async def on_message(message: discord.Message):
 
     # الرسالة المحوّلة (Forward) بتوصل بـ content فاضي — محتواها الحقيقي في الـ snapshots.
     # من غير السطور دي هادي كان بيرد على أي فورورد بـ "ابعت رسالة نصية."
+    ack_emoji = pick_reaction(content)
     try:
-        await message.add_reaction(pick_reaction(content))
+        await message.add_reaction(ack_emoji)
     except Exception:
         pass
 
@@ -879,6 +918,8 @@ async def on_message(message: discord.Message):
 
             print(f"HADI: claude run {time.time()-_t0:.0f}s - {author_name}: {content[:60]}")
             resp_clean = (response or "").strip()
+            react_emoji, resp_clean = split_react_directive(resp_clean)
+            asyncio.create_task(swap_ack_reaction(message, ack_emoji, react_emoji))
             if not resp_clean or (
                 resp_clean[:8].upper() == "NO_REPLY" and len(resp_clean) <= 40
             ):
