@@ -23,3 +23,7 @@ reminders.json.tmp
 
 # صور مؤقتة بينزلها البوت للتحليل
 tmp_images/
+
+# حالة جلسات المحرك (Agent SDK) — حالة تشغيل محلية، مش بتترفع
+sessions.json
+sessions.json.tmp

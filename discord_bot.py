@@ -18,11 +18,11 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
+# محرك هادي (Claude Agent SDK + fallback CLI) — لازم يتستورد بعد load_dotenv
+# عشان يقرا إعدادات .env (HADI_ENGINE / CLAUDE_MODEL / HADI_MAX_CONCURRENCY ...).
+import hadi_engine
+
 TOKEN = os.getenv("DISCORD_BOT_TOKEN", "").strip()
-CLAUDE_BIN = os.getenv(
-    "CLAUDE_BIN",
-    "/home/ubuntu/.local/bin/claude",
-).strip()
 
 ALLOWED_USER_IDS = {
     int(user_id.strip())
@@ -88,7 +88,18 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 client = discord.Client(intents=intents)
-claude_lock = asyncio.Lock()
+
+# قفل لكل محادثة (قناة أو DM) بدل القفل العالمي القديم — محادثات مختلفة بتتخدم
+# بالتوازي، والحد الأقصى الإجمالي متحكم فيه بـ HADI_MAX_CONCURRENCY جوه hadi_engine.
+_conv_locks: dict = {}
+
+
+def get_conv_lock(key: str) -> asyncio.Lock:
+    """قفل خاص بالمحادثة دي — بيحافظ على ترتيب الرسايل جوه نفس القناة/الـ DM."""
+    lock = _conv_locks.get(key)
+    if lock is None:
+        lock = _conv_locks.setdefault(key, asyncio.Lock())
+    return lock
 
 
 def load_memory() -> str:
@@ -101,57 +112,7 @@ def load_memory() -> str:
     return txt if has_notes else ""
 
 
-def _run_claude_once(prompt: str, timeout: int = 300) -> str:
-    """يشغّل Claude CLI بالبرومبت المطلوب ويرجّع الرد النصي."""
-    result = subprocess.run(
-        [
-            CLAUDE_BIN,
-            "-p",
-            prompt,
-            "--model",
-            "claude-sonnet-5",
-        ],
-        cwd=BASE_DIR,
-        env=os.environ.copy(),
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        check=False,
-    )
-
-    if result.returncode != 0:
-        error = (result.stderr or result.stdout).strip()
-        raise RuntimeError(error[-1500:] or "Claude لم يُرجع نتيجة")
-
-    return result.stdout.strip()
-
-
-def run_claude(prompt: str, timeout: int = 300) -> str:
-    """Retry once on transient API/server errors (e.g. Server error mid-response)."""
-    try:
-        return _run_claude_once(prompt, timeout)
-    except RuntimeError as error:
-        msg = str(error).lower()
-        transient = any(
-            s in msg
-            for s in (
-                "server error",
-                "overloaded",
-                "api error",
-                "internal server",
-                "connection",
-                "econnreset",
-                "socket hang up",
-            )
-        )
-        if not transient:
-            raise
-        print(f"HADI: transient API error, retrying once - {str(error)[-200:]}")
-        time.sleep(5)
-        return _run_claude_once(prompt, min(timeout, 300))
-
-
-def ask_claude(
+async def ask_claude(
     user_message: str,
     author_name: str,
     history: str = "",
@@ -160,6 +121,7 @@ def ask_claude(
     images: list | None = None,
     message_id: str = "",
     media_notes: str = "",
+    conv_key: str = "",
 ) -> str:
     history_block = (
         f"""
@@ -259,7 +221,7 @@ def ask_claude(
 {user_message}
 """.strip()
 
-    return run_claude(prompt, timeout=480)
+    return await hadi_engine.run_agent(prompt, conv_key=conv_key, timeout=480)
 
 
 def extract_forwarded_text(message: discord.Message) -> str:
@@ -778,13 +740,14 @@ async def pending_tickets_loop():
     if status != "ok":
         return
 
-    if claude_lock.locked():
+    bg_lock = get_conv_lock("bg:pending")
+    if bg_lock.locked():
         return
 
-    async with claude_lock:
+    async with bg_lock:
         try:
-            summary = await asyncio.to_thread(run_claude, PENDING_FLUSH_PROMPT, 300)
-        except (subprocess.TimeoutExpired, RuntimeError) as error:
+            summary = await hadi_engine.run_oneshot(PENDING_FLUSH_PROMPT, timeout=300)
+        except RuntimeError as error:
             print(f"PENDING FLUSH FAIL: {type(error).__name__}: {error}")
             return
 
@@ -810,12 +773,35 @@ async def _before_pending_tickets_loop():
 @client.event
 async def on_ready():
     print(f"HADI ONLINE: {client.user} | ID: {client.user.id}")
+    print(f"HADI ENGINE: {hadi_engine.describe()}")
     if not reminder_loop.is_running():
         reminder_loop.start()
     if not ado_health_loop.is_running():
         ado_health_loop.start()
     if not pending_tickets_loop.is_running():
         pending_tickets_loop.start()
+
+
+async def _progress_notice(message: discord.Message, delay: int = 20):
+    """لو الرد اتأخر عن delay ثانية، بيبعت رسالة حالة مؤقتة — وبتتمسح أول ما الرد يجهز.
+
+    التاسك بتتلغى (cancel) لما المعالجة تخلص: لو لسه في فترة الانتظار الأولى
+    مفيش أي رسالة اتبعتت أصلًا، ولو اتبعتت بتتمسح في الـ finally."""
+    note = None
+    try:
+        await asyncio.sleep(delay)
+        note = await message.channel.send("⏳ شغال على طلبك — هوافيك بالرد أول ما يخلص.")
+        await asyncio.sleep(24 * 3600)
+    except asyncio.CancelledError:
+        pass
+    except Exception as error:
+        print(f"PROGRESS NOTICE ERROR: {type(error).__name__}: {error}")
+    finally:
+        if note is not None:
+            try:
+                await note.delete()
+            except Exception:
+                pass
 
 
 @client.event
@@ -901,12 +887,17 @@ async def on_message(message: discord.Message):
         else "رسالة خاصة (DM)"
     )
 
-    async with claude_lock:
+    conv_key = (
+        f"dm:{message.author.id}"
+        if message.guild is None
+        else f"ch:{message.channel.id}"
+    )
+    progress_task = asyncio.create_task(_progress_notice(message))
+    async with get_conv_lock(conv_key):
         try:
             async with message.channel.typing():
                 _t0 = time.time()
-                response = await asyncio.to_thread(
-                    ask_claude,
+                response = await ask_claude(
                     content,
                     author_name,
                     history_text,
@@ -915,6 +906,7 @@ async def on_message(message: discord.Message):
                     image_paths,
                     str(message.id),
                     media_notes,
+                    conv_key=conv_key,
                 )
 
             print(f"HADI: claude run {time.time()-_t0:.0f}s - {author_name}: {content[:60]}")
@@ -933,7 +925,7 @@ async def on_message(message: discord.Message):
                 reply_to=message if message.guild is not None else None,
             )
 
-        except subprocess.TimeoutExpired:
+        except hadi_engine.EngineTimeout:
             print(f"HADI: TIMEOUT (480s) - {author_name}: {content[:60]}")
             await message.reply(
                 "الطلب خد وقت أطول من الحد المسموح (8 دقايق) واتوقف. لو كان طلب تيكت، راجع البورد الأول قبل ما تكرر الطلب.",
@@ -949,6 +941,7 @@ async def on_message(message: discord.Message):
 
 
         finally:
+            progress_task.cancel()
             for _p in image_paths:
                 try:
                     Path(_p).unlink()
