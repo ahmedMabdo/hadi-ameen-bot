@@ -64,8 +64,14 @@ SECTION_LABELS = {
 SECTION_ORDER = {"decisions": 0, "sprint": 1, "notes": 2, "general": 3}
 
 _LINE_RX = re.compile(r"^-\s*\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\s*—\s*([^\]]+)\]\s*(.+)$")
+# تحصين الذاكرة: الميتا بقت بتحمل كمان مصدر الملاحظة ومستوى الثقة.
+# الجروبات الاختيارية بتخلي السطور القديمة (من غير src/trust) تفضل تتقرا عادي.
 _META_RX = re.compile(
-    r"\s*\{type=(semantic|episodic|procedural)(?:\s+expires=(\d{4}-\d{2}-\d{2}))?\}\s*$"
+    r"\s*\{type=(semantic|episodic|procedural)"
+    r"(?:\s+expires=(\d{4}-\d{2}-\d{2}))?"
+    r"(?:\s+src=([^\s{}]+))?"
+    r"(?:\s+trust=(direct|forwarded|external))?"
+    r"\}\s*$"
 )
 _DIACRITICS_RX = re.compile(r"[ً-ْٰـ]")
 _TOKEN_RX = re.compile(r"[0-9A-Za-zء-ي٠-٩]+")
@@ -95,15 +101,18 @@ def parse_line(raw: str, section: str = "general"):
     if not m:
         return None
     noted_at, author, body = m.group(1), m.group(2).strip(), m.group(3).strip()
-    mtype, expires = "semantic", ""
+    mtype, expires, source, trust = "semantic", "", "", "direct"
     meta = _META_RX.search(body)
     if meta:
         mtype = meta.group(1)
         expires = meta.group(2) or ""
+        source = meta.group(3) or ""
+        trust = meta.group(4) or "direct"
         body = body[: meta.start()].strip()
     return {
         "section": section, "mtype": mtype, "author": author,
         "noted_at": noted_at, "expires": expires, "body": body,
+        "source": source, "trust": trust,
         "raw": raw.strip(), "norm": normalize(body),
     }
 

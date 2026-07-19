@@ -28,6 +28,7 @@ import sys
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import memory_guard  # تحصين الذاكرة ضد التسميم (OWASP ASI06)
 import state_lock  # بند 3.3 — تسلسل الكتابات المشتركة مع باقي أدوات الحالة
 
 BASE = Path(__file__).resolve().parent
@@ -64,14 +65,11 @@ def cmd_show(args):
     print(MEM.read_text(encoding="utf-8"))
 
 
-def _meta_suffix(mtype: str, expires: str) -> str:
-    """بند 4.2: وسم النوع/الصلاحية جوه السطر نفسه — الملف يفضل مصدر الحقيقة الوحيد."""
-    if mtype == "semantic" and not expires:
-        return ""
-    parts = [f"type={mtype}"]
-    if expires:
-        parts.append(f"expires={expires}")
-    return " {" + " ".join(parts) + "}"
+def _meta_suffix(mtype: str, expires: str, source: str = "",
+                 trust: str = "direct") -> str:
+    """بند 4.2 + تحصين الذاكرة: النوع/الصلاحية/المصدر/الثقة جوه السطر نفسه.
+    الملف يفضل مصدر الحقيقة الوحيد — الفهرس مشتق منه."""
+    return memory_guard.build_meta(mtype, expires, source, trust)
 
 
 def cmd_add(args):
@@ -89,7 +87,25 @@ def cmd_add(args):
         if mtype == "semantic":
             mtype = "episodic"  # تاريخ صلاحية = حدث بطبيعته
 
-    line = f"- [{_now()} — {author}] {args.text.strip()}{_meta_suffix(mtype, expires)}\n"
+    # تحصين الذاكرة (1)(3): المصدر إجباري، والمنقول ممنوع يبقى قاعدة سلوك
+    try:
+        source = memory_guard.clean_source(getattr(args, "source", ""))
+        trust = memory_guard.validate_trust(getattr(args, "trust", "direct"))
+        memory_guard.enforce_policy(mtype, trust)
+    except memory_guard.GuardError as e:
+        sys.exit(str(e))
+
+    # تحصين الذاكرة (2): قواعد السلوك بتستنى موافقة بني آدم
+    if mtype == "procedural":
+        pid = memory_guard.queue_pending(args.text.strip(), author,
+                                         args.section, source, trust)
+        print(f"QUEUED [{pid}] قاعدة سلوك مستنية مراجعة بشرية — "
+              "مادخلتش الذاكرة.\n"
+              "المراجعة: python3 memory.py pending  ثم  "
+              f"python3 memory.py approve --id {pid} --by \"اسمك\"")
+        return
+
+    line = f"- [{_now()} — {author}] {args.text.strip()}{_meta_suffix(mtype, expires, source, trust)}\n"
     text = MEM.read_text(encoding="utf-8")
 
     if header in text:
@@ -149,6 +165,74 @@ def _git_persist(msg):
               "(الذاكرة محفوظة على القرص، هتتزامن مع أول push ناجح)")
 
 
+def cmd_pending(args):
+    rows = memory_guard.load_pending()
+    if not rows:
+        print("الطابور فاضي — مفيش قواعد سلوك مستنية.")
+        return
+    print(f"# قواعد سلوك مستنية مراجعة ({len(rows)})\n")
+    for r in rows:
+        print(f"[{r['id']}] {r['text']}")
+        print(f"      قالها: {r['author']} | المصدر: {r['source']} | "
+              f"الثقة: {r['trust']} | الوقت: {r['queued_at']}\n")
+
+
+def cmd_approve(args):
+    try:
+        memory_guard.require_human("approve")
+        rec = memory_guard.drop_pending(args.pid)
+    except memory_guard.GuardError as e:
+        sys.exit(str(e))
+    by = (args.by or "").strip()
+    if not by:
+        sys.exit("ERROR: --by إجباري — مين اللي وافق؟")
+    _ensure()
+    header = SECTIONS.get(rec["section"], SECTIONS["general"])
+    meta = _meta_suffix("procedural", "", rec["source"], rec["trust"])
+    line = (f"- [{_now()} — {rec['author']}] {rec['text']}"
+            f" (وافق: {by}){meta}\n")
+    text = MEM.read_text(encoding="utf-8")
+    if header in text:
+        idx = text.index(header)
+        nl = text.index("\n", idx) + 1
+        while nl < len(text) and text[nl] == "\n":
+            nl += 1
+        tail = text[nl:]
+        sep = "\n" if tail.startswith("#") else ""
+        text = text[:nl] + line + sep + tail
+    else:
+        text += f"\n{header}\n\n{line}"
+    MEM.write_text(text, encoding="utf-8")
+    print(f"APPROVED [{args.pid}] بواسطة {by}: {rec['text']}")
+    _git_persist(f"memory: procedural rule approved by {by}")
+    _index_note(line, rec["section"])
+
+
+def cmd_revoke(args):
+    try:
+        memory_guard.require_human("revoke")
+        _ensure()
+        n = memory_guard.revoke_lines(args.match, args.by, args.reason)
+    except memory_guard.GuardError as e:
+        sys.exit(str(e))
+    print(f"REVOKED {n} سطر — اتنقلوا لقسم «مسحوبة».")
+    _git_persist(f"memory: revoke {n} note(s) by {args.by or 'unknown'}")
+    try:
+        import memory_store
+        memory_store.rebuild()
+        print("REBUILT (memory_index.db)")
+    except Exception as e:
+        print(f"WARN: إعادة بناء الفهرس فشلت ({type(e).__name__}) — "
+              "شغّل: python3 memory_store.py rebuild")
+
+
+def cmd_diff(args):
+    try:
+        print(memory_guard.memory_diff(args.days))
+    except memory_guard.GuardError as e:
+        sys.exit(str(e))
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -160,11 +244,36 @@ def main():
     a.add_argument("--section", default="general", choices=list(SECTIONS))
     a.add_argument("--text", required=True)
     a.add_argument("--author", default="")
+    a.add_argument("--source", default="",
+                   help="تحصين الذاكرة (1): إجباري — الملاحظة جاية منين "
+                        "(مثال: discord:#mars-team أو dm:asser)")
+    a.add_argument("--trust", default="direct",
+                   choices=list(memory_guard.TRUST_LEVELS),
+                   help="تحصين الذاكرة (3): مصدر الكلام — direct لعضو "
+                        "في الفريق، forwarded/external لمحتوى منقول")
     a.add_argument("--type", dest="mtype", default="semantic", choices=list(MEMORY_TYPES),
                    help="بند 4.2: نوع الملاحظة (افتراضي semantic)")
     a.add_argument("--expires", default="",
                    help="بند 4.2: YYYY-MM-DD — بعده الملاحظة بتسقط من حقن البرومبت (episodic)")
     a.set_defaults(func=cmd_add)
+
+    pn = sub.add_parser("pending", help="اعرض قواعد السلوك المستنية مراجعة")
+    pn.set_defaults(func=cmd_pending)
+
+    ap = sub.add_parser("approve", help="وافق على قاعدة سلوك (بني آدم بس)")
+    ap.add_argument("--id", dest="pid", required=True)
+    ap.add_argument("--by", required=True, help="مين اللي وافق")
+    ap.set_defaults(func=cmd_approve)
+
+    rv = sub.add_parser("revoke", help="اسحب ملاحظة من الذاكرة (بني آدم بس)")
+    rv.add_argument("--match", required=True, help="نص موجود في السطر")
+    rv.add_argument("--by", default="", help="مين اللي سحبها")
+    rv.add_argument("--reason", default="", help="السبب")
+    rv.set_defaults(func=cmd_revoke)
+
+    df = sub.add_parser("diff", help="إيه اللي اتغير في الذاكرة بالفترة")
+    df.add_argument("--days", type=int, default=7)
+    df.set_defaults(func=cmd_diff)
 
     q = sub.add_parser("search", help="دوّر في الذاكرة")
     q.add_argument("--query", required=True)

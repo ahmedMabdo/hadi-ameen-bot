@@ -52,3 +52,12 @@ evals/review_*.md
 # حالة النبضة (بند 8.1) — آخر تنبيه لكل عنصر. حالة تشغيل محلية
 logs/heartbeat_state.json
 logs/heartbeat_state.json.tmp
+
+# تحصين الذاكرة + تنضيف حالة التشغيل (يوليو 2026)
+*.bak-*
+*.bak2-*
+*.backup.*
+*.pre-*
+.venv/
+add_key.sh
+knowledge/memory_pending.jsonl
