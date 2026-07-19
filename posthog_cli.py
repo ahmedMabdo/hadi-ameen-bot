@@ -57,6 +57,8 @@ except Exception:
 
 STALE_HOURS = float(os.environ.get("HADI_PH_STALE_HOURS", "2") or "2")
 DOWN_HOURS = float(os.environ.get("HADI_PH_DOWN_HOURS", "24") or "24")
+# نسبة حجم آخر 24 ساعة للمعتاد اللي تحتها نعتبر الأنبوب مقطوع (افتراضي 5%)
+DOWN_RATIO = float(os.environ.get("HADI_PH_DOWN_RATIO", "0.05") or "0.05")
 
 _gen = None
 
@@ -96,14 +98,35 @@ def business_day(at=None) -> str:
 
 
 # ───────────────────────── الحارس ─────────────────────────
-def classify(hours_since):
+def classify(hours_since, last24=None, baseline=None):
+    """التصنيف بالحجم مش بآخر حدث بس.
+
+    الدرس اللي اتعلمناه من أول تشغيل حقيقي: أنبوب البيانات كان **مقطوع من 10 أيام**،
+    ومع ذلك حدثين يتامى إمبارح خلّوا التصنيف يطلع STALE («متأخرة شوية») بدل DOWN.
+    حدث واحد ≠ أنبوب شغال. فلو حجم آخر 24 ساعة أقل من DOWN_RATIO من المعتاد،
+    الحالة DOWN مهما كان آخر حدث قريب.
+    """
     if hours_since is None:
         return "DOWN", "مفيش ولا حدث مسجّل خالص"
+    if baseline and baseline > 0 and last24 is not None:
+        ratio = last24 / baseline
+        if ratio < DOWN_RATIO:
+            return "DOWN", (f"{last24:,} حدث في 24 ساعة مقابل {baseline:,.0f} المعتاد "
+                            f"({ratio*100:.1f}%) — الأنبوب مقطوع فعليًا")
     if hours_since >= DOWN_HOURS:
         return "DOWN", f"آخر حدث من {hours_since:.0f} ساعة — التتبع واقف"
     if hours_since >= STALE_HOURS:
         return "STALE", f"آخر حدث من {hours_since:.1f} ساعة — البيانات متأخرة"
     return "LIVE", f"آخر حدث من {hours_since*60:.0f} دقيقة"
+
+
+def baseline_daily():
+    """المعتاد اليومي = وسيط أعلى 7 أيام في آخر 30 — بيتجاهل أيام الانقطاع نفسها."""
+    rows = gen().hogql(
+        "SELECT count() AS c FROM events WHERE timestamp >= now() - INTERVAL 30 DAY "
+        "GROUP BY toDate(timestamp) ORDER BY c DESC LIMIT 7")
+    counts = sorted(int(r[0]) for r in rows if r and r[0])
+    return counts[len(counts) // 2] if counts else 0
 
 
 def freshness():
@@ -122,7 +145,7 @@ def freshness():
             hours = (now_cairo() - parsed).total_seconds() / 3600
         except Exception:
             hours = None
-    state, why = classify(hours)
+    state, why = classify(hours, int(last24 or 0), baseline_daily())
     return state, why, last, int(last24 or 0)
 
 
@@ -275,6 +298,13 @@ def selftest():
     assert classify(5)[0] == "STALE", classify(5)
     assert classify(50)[0] == "DOWN", classify(50)
     assert classify(None)[0] == "DOWN", "مفيش بيانات = DOWN"
+
+    # الحالة الحقيقية اللي كشفها أول تشغيل: أنبوب ميت + حدثين يتامى إمبارح.
+    # بالعمر بس دي كانت بتطلع STALE — والصح DOWN.
+    assert classify(22.9, last24=2, baseline=100_000)[0] == "DOWN", "حجم شبه صفري لازم DOWN"
+    assert classify(0.2, last24=3, baseline=100_000)[0] == "DOWN", "حدث لسه جاي مايخفيش أنبوب ميت"
+    assert classify(0.5, last24=95_000, baseline=100_000)[0] == "LIVE", "حجم طبيعي = LIVE"
+    assert classify(0.5, last24=50, baseline=0)[0] == "LIVE", "من غير خط أساس نرجع للعمر"
 
     from zoneinfo import ZoneInfo
     at = dt.datetime(2026, 7, 19, 1, 30, tzinfo=ZoneInfo(TZ_NAME))
