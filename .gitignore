@@ -38,3 +38,8 @@ logs/
 knowledge/memory_index.db
 knowledge/memory_index.db-wal
 knowledge/memory_index.db-shm
+
+# فهرس قاعدة المعرفة (بند 4.2 RAG) — مشتق من ملفات knowledge/، بيتبني بـ rebuild
+knowledge/knowledge_index.db
+knowledge/knowledge_index.db-wal
+knowledge/knowledge_index.db-shm

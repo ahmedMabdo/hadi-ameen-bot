@@ -186,3 +186,20 @@ git checkout master && sudo systemctl restart hadi-bot
 
 **Rollback:** رجّع سطر `mem = load_memory()` في discord_bot.py — أو سيبه: أي فشل
 في الفهرس بيرجع للحقن الكامل لوحده مع WARN في اللوج.
+
+---
+
+## بند 4.2 — مرحلة ج + RAG على /knowledge
+
+| المكوّن | الدور |
+|---------|-------|
+| `knowledge_store.py` (جديد) | فهرسة مقاطع لملفات `knowledge/` (docx بـ zipfile من stdlib + txt/md) في FTS5 بنفس التطبيع العربي؛ `search` / `get` / `rebuild` / `status` / `selftest` |
+| `memory_maintenance.py` (جديد) | صيانة شهرية: منتهي / مكرر / محتاج مراجعة → اقتراح للمراجعة البشرية (dry-run افتراضي)، و`apply --yes` **بيأرشف مش بيمسح** |
+| `discord_bot.py` | عند الإقلاع: `ensure_fresh()` بيعيد بناء الفهرس بس لو ملفات المعرفة اتغيرت — سطر `HADI KNOWLEDGE:` في اللوج |
+| `CLAUDE.md` | قاعدة صريحة: ابحث في المقاطع قبل قراءة أي ملف معرفة كامل، واذكر المصدر |
+
+**الأمان:** الفهرسان (`memory_index.db` و`knowledge_index.db`) حالة مشتقة في `.gitignore` — الملفات الأصلية وgit هما مصدر الحقيقة. الصيانة عمرها ما بتحذف: بتنقل لـ `knowledge/memory_archive.md` وبتعمل commit، فالتراجع `git revert` واحد.
+
+**التشغيل الشهري (اختياري):** `0 9 1 * * cd ~/hadi-ameen-bot && .venv/bin/python memory_maintenance.py review --write-report` — التقرير بس، والتنفيذ بعد المراجعة.
+
+**Rollback:** شيل بلوك `knowledge_store` من `on_ready` — الفهرس مالوش أي أثر على السلوك، وهادي بيرجع يقرا الملفات كاملة زي الأول.

@@ -800,6 +800,12 @@ async def _before_pending_tickets_loop():
 async def on_ready():
     print(f"HADI ONLINE: {client.user} | ID: {client.user.id}")
     print(f"HADI ENGINE: {hadi_engine.describe()}")
+    try:  # بند 4.2 (RAG): يعيد بناء فهرس /knowledge بس لو الملفات اتغيرت
+        import knowledge_store
+        print(f"HADI KNOWLEDGE: {knowledge_store.ensure_fresh()}")
+    except Exception as error:
+        print(f"HADI KNOWLEDGE: الفهرس مش شغال ({type(error).__name__}: {error})"
+              " — هادي هيقرا ملفات المعرفة كاملة زي الأول")
     if not reminder_loop.is_running():
         reminder_loop.start()
     if not ado_health_loop.is_running():
