@@ -17,6 +17,8 @@
     ويطبع السبب — البوت عمره ما يقف بسبب الترحيل.
 
 حالة الجلسات بتتخزن في sessions.json (حالة تشغيل — في .gitignore، مش بتترفع).
+سجل الاستخدام (كاش/تكلفة/زمن لكل تفاعل) بيتكتب JSONL في logs/usage.jsonl —
+تحليله: python3 usage_report.py (بند 3.1 — القياس قبل أي ادعاء توفير).
 """
 import asyncio
 import json
@@ -41,6 +43,8 @@ MAX_CONCURRENCY = max(1, int(os.getenv("HADI_MAX_CONCURRENCY", "2") or "2"))
 SESSION_TTL_HOURS = float(os.getenv("HADI_SESSION_TTL_HOURS", "6") or "6")
 MAX_TURNS = int(os.getenv("HADI_MAX_TURNS", "50") or "50")
 SESSIONS_FILE = BASE_DIR / "sessions.json"
+LOGS_DIR = BASE_DIR / "logs"
+USAGE_LOG = LOGS_DIR / "usage.jsonl"
 
 
 class EngineError(RuntimeError):
@@ -129,6 +133,34 @@ def reset_session(conv_key: str) -> None:
         _save_sessions(data)
 
 
+# --- سجل الاستخدام (بند 3.1/F5) ----------------------------------------
+def _log_usage(conv_key: str, resumed, final: dict) -> None:
+    """سطر JSONL لكل تفاعل: توكنز الكاش والتكلفة والزمن — الأساس الرقمي لأي قرار.
+
+    فشل الكتابة عمره ما يوقف الرد (best-effort)."""
+    u = final.get("usage") or {}
+    row = {
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "conv_key": conv_key or "-",
+        "model": MODEL,
+        "resumed": bool(resumed),
+        "input_tokens": int(u.get("input_tokens") or 0),
+        "cache_read": int(u.get("cache_read_input_tokens") or 0),
+        "cache_write": int(u.get("cache_creation_input_tokens") or 0),
+        "output_tokens": int(u.get("output_tokens") or 0),
+        "cost_usd": final.get("cost"),
+        "duration_ms": final.get("duration"),
+        "num_turns": final.get("num_turns"),
+        "session_id": final.get("session_id"),
+    }
+    try:
+        LOGS_DIR.mkdir(exist_ok=True)
+        with USAGE_LOG.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except OSError as error:
+        print(f"HADI ENGINE: usage log فشل ({error}) — مش بيوقف الرد")
+
+
 # --- حراس الأدوات (منع حتمي، مش تعليمات نصية) ------------------------------
 # .env هو ملف الأسرار — ممنوع قراءته أو نقله بأي أمر. (.env.example عادي.)
 _ENV_FILE_RX = re.compile(r"\.env(?!\.example)\b")
@@ -183,8 +215,18 @@ def _sdk_options(resume_id):
         model=MODEL,
         cwd=str(BASE_DIR),
         cli_path=CLAUDE_BIN if Path(CLAUDE_BIN).exists() else None,
-        # نفس سلوك `claude -p` بالظبط: برومبت النظام القياسي + إعدادات وذاكرة المشروع
-        system_prompt={"type": "preset", "preset": "claude_code"},
+        # نفس سلوك `claude -p` بالظبط: برومبت النظام القياسي + إعدادات وذاكرة المشروع.
+        # exclude_dynamic_sections (بند 3.1): بيشيل الأقسام المتغيرة (cwd / git status /
+        # auto-memory) من الـ system prompt ويحقنها في أول user message بدالها —
+        # فالـ prefix الثابت بيفضل byte-identical بين الجلسات والكاش بيصمد حتى بعد
+        # commits الذاكرة (memory.py بيعمل commit مع كل حفظ ← git status بيتغير ←
+        # من غير الخيار ده كل حفظة كانت بتكسر الكاش بالكامل للجلسات الجديدة).
+        # نسخ CLI قديمة بتتجاهله في صمت — بيبان فورًا في اللوج (cache_write عالي باستمرار).
+        system_prompt={
+            "type": "preset",
+            "preset": "claude_code",
+            "exclude_dynamic_sections": True,
+        },
         setting_sources=["project", "local"],
         permission_mode="default",
         resume=resume_id,
@@ -203,7 +245,8 @@ def _sdk_options(resume_id):
 async def _run_sdk_once(prompt: str, conv_key: str, timeout: int) -> str:
     resume_id = _get_resume(conv_key)
     parts: list = []
-    final: dict = {"result": None, "session_id": None, "cost": None, "duration": None}
+    final: dict = {"result": None, "session_id": None, "cost": None, "duration": None,
+                   "usage": None, "num_turns": None}
 
     async def _consume():
         async for msg in query(prompt=prompt, options=_sdk_options(resume_id)):
@@ -216,6 +259,8 @@ async def _run_sdk_once(prompt: str, conv_key: str, timeout: int) -> str:
                 final["cost"] = msg.total_cost_usd
                 final["duration"] = msg.duration_ms
                 final["result"] = msg.result
+                final["usage"] = msg.usage or {}
+                final["num_turns"] = msg.num_turns
                 if msg.is_error:
                     raise EngineError(str(msg.result or msg.subtype or "SDK error")[:1500])
 
@@ -226,10 +271,19 @@ async def _run_sdk_once(prompt: str, conv_key: str, timeout: int) -> str:
 
     if final["session_id"]:
         _remember_session(conv_key, final["session_id"])
+    u = final.get("usage") or {}
+    cache_read = int(u.get("cache_read_input_tokens") or 0)
+    cache_write = int(u.get("cache_creation_input_tokens") or 0)
+    raw_input = int(u.get("input_tokens") or 0)
+    denom = cache_read + cache_write + raw_input
+    hit_pct = (100.0 * cache_read / denom) if denom else 0.0
     if final["cost"] is not None or final["duration"] is not None:
         print(f"HADI ENGINE: sdk done key={conv_key or '-'} "
               f"cost=${final['cost'] or 0:.4f} dur={(final['duration'] or 0)/1000:.0f}s "
-              f"resume={'yes' if resume_id else 'new'}")
+              f"resume={'yes' if resume_id else 'new'} "
+              f"cache_read={cache_read} cache_write={cache_write} "
+              f"input={raw_input} hit={hit_pct:.0f}%")
+    _log_usage(conv_key, resume_id, final)
 
     text = (final["result"] or "".join(parts) or "").strip()
     if not text:

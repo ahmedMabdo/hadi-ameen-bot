@@ -90,3 +90,31 @@ git checkout master && sudo systemctl restart hadi-bot
 - **التكلفة:** مع الجلسات وprompt caching، الجزء الثابت (CLAUDE.md + HADI_PERSONA.md + التعليمات)
   بيتقري من الكاش بدل إعادة معالجة كاملة كل رسالة — وفر ملموس بيبان في لوج
   `HADI ENGINE: sdk done ... cost=$...` (المحرك بيطبع تكلفة كل تشغيلة).
+
+---
+
+## Prompt Caching (بند 3.1 من تقرير التحسينات)
+
+الكاشينج في الـ SDK شغال أوتوماتيك — الشغل هنا كان **منع كسره** و**قياسه**:
+
+| التغيير | الملف | الأثر |
+|---------|-------|-------|
+| `exclude_dynamic_sections: True` | `hadi_engine.py` | أكبر مصدر كسر للكاش كان `memory.py`: كل «احفظ» بتعمل commit ← git status جوه الـ system prompt بيتغير ← الكاش كله بيتكسر للجلسات الجديدة. الخيار ده بينقل (cwd/git status/auto-memory) لأول user message والـ prefix بيثبت |
+| سجل استخدام JSONL لكل تفاعل | `hadi_engine.py` → `logs/usage.jsonl` | `cache_read` / `cache_write` / `input` / التكلفة / الزمن / `hit%` — بيظهر كمان في سطر `HADI ENGINE: sdk done` |
+| `usage_report.py` (جديد) | تقرير KPIs | `python3 usage_report.py --days 7` → hit rate يومي، تكلفة/1000 تفاعل، P50 زمن، تفصيلة لكل محادثة |
+| `DISABLE_AUTOUPDATER=1` | `.env.example` | ترقية الـ CLI بتكسر الكاش وبتعيد معالجة الجلسات المستأنفة بالكامل — الترقية بقت قرار مجدول |
+| `claude-agent-sdk>=0.2.122` | `requirements.txt` | أقل نسخة متحقق فيها من دعم `exclude_dynamic_sections` |
+
+**اللي متغيرش:** سلوك هادي الظاهر — الأقسام المشالة من الـ system prompt بتتحقن أوتوماتيك في أول user message، فهادي لسه شايف نفس المعلومات.
+
+### التحقق بعد النشر (3 رسايل)
+
+1. رسالة تجربة → في اللوج: `cache_write` كبير و`cache_read` صغير (بناء الكاش — طبيعي).
+2. رسالة تانية في نفس القناة جوه ساعة → `cache_read` كبير و`hit%` عالي.
+3. «هادي احفظ إن …» (بتعمل git commit) ثم رسالة رابعة → **`hit%` لازم يفضل عالي**.
+   قبل التعديل ده كان بيصفّر — دي علامة نجاح الإصلاح نفسها.
+   لو `cache_write` فضل عالي باستمرار: نسخة الـ CLI قديمة وبتتجاهل الخيار → `claude update` مرة واحدة ثم ثبّت.
+
+### Rollback
+
+شيل سطر `"exclude_dynamic_sections": True` من `hadi_engine.py` وارجع شغّل — اللوج والتقرير مالهمش أي أثر على السلوك.
