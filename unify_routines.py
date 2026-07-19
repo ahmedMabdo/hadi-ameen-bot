@@ -85,6 +85,50 @@ def shared_functions(table):
     return {k: v for k, v in out.items() if v}
 
 
+def free_globals(source: str) -> set:
+    """الأسماء العامة اللي الكود بيقراها (مش معرّفة جواه ولا builtins)."""
+    tree = ast.parse(source)
+    loaded, assigned = set(), set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            (loaded if isinstance(node.ctx, ast.Load) else assigned).add(node.id)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            assigned.add(node.name)
+            args = node.args
+            for arg in [*args.args, *args.kwonlyargs, *args.posonlyargs]:
+                assigned.add(arg.arg)
+            if args.vararg:
+                assigned.add(args.vararg.arg)
+            if args.kwarg:
+                assigned.add(args.kwarg.arg)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            assigned.add(node.name)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                assigned.add(alias.asname or alias.name.split(".")[0])
+    return {n for n in loaded - assigned if n not in dir(__builtins__) and not hasattr(__builtins__, n)}
+
+
+def shared_constants(paths, per_file, needed: set):
+    """ثوابت module-level متطابقة في نفس الملفات ومحتاجة للدوال المنقولة.
+
+    ده اللي اتكسر في المحاولة الأولى: api_get بتستخدم API_BASE، والثابت مااتنقلش.
+    """
+    table = defaultdict(list)
+    for name in FILES:
+        src, tree, _ = per_file[name]
+        for node in tree.body:
+            if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                target = node.targets[0].id
+                if target in needed:
+                    table[(target, norm(ast.get_source_segment(src, node)))].append(name)
+    out = {}
+    for (target, body), files in table.items():
+        if len(files) >= MIN_COPIES:
+            out[target] = out.get(target) or body
+    return out
+
+
 def needed_imports(bodies: str, src_sample: str) -> str:
     """يجيب سطور الاستيراد اللي الدوال المنقولة محتاجاها من ملف مرجعي."""
     tree = ast.parse(src_sample)
@@ -98,14 +142,36 @@ def needed_imports(bodies: str, src_sample: str) -> str:
     return "\n".join(lines)
 
 
-def build_common(shared, per_file) -> str:
+def build_common(shared, per_file, paths):
+    """بيبني المكتبة — وبيتحقق إن كل اسم عام محتاجه الكود المنقول موجود فعلًا.
+
+    لو أي اسم ناقص → استثناء وإجهاض كامل، بدل ما نكتشف NameError في الإنتاج بكرة.
+    """
     ordered = sorted(shared.items(), key=lambda kv: kv[0])
     bodies = "\n\n\n".join(body for _, (body, _) in ordered)
     sample = per_file["discord_podaily.py"][0]
     imports = needed_imports(bodies, sample)
+
+    imported_names = set()
+    for node in ast.parse(imports or "pass").body:
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            imported_names |= {a.asname or a.name.split(".")[0] for a in node.names}
+
+    moved_names = {name for name, _ in ordered}
+    needed = free_globals(bodies) - moved_names - imported_names
+    constants = shared_constants(paths, per_file, needed)
+    missing = needed - set(constants)
+    if missing:
+        raise RuntimeError(
+            "أسماء عامة محتاجة ومش متاحة في المكتبة: " + ", ".join(sorted(missing)) +
+            " — الترحيل اتوقف (مفيش أي ملف اتغير).")
+
+    const_block = "\n".join(constants[k] for k in sorted(constants))
     note = "\n".join(
         f"#   {name:22} (كان مكرر في {len(files)} ملفات)" for name, (_, files) in ordered)
-    return f"{HEADER}\n{imports}\n\n# الدوال المنقولة:\n{note}\n\n\n{bodies}\n"
+    const_note = ("\n# ثوابت منقولة معاها: " + ", ".join(sorted(constants))) if constants else ""
+    return (f"{HEADER}\n{imports}\n\n# الدوال المنقولة:\n{note}{const_note}\n\n\n"
+            f"{const_block}\n\n\n{bodies}\n"), set(constants)
 
 
 def rewrite_file(name, src, tree, funcs, shared):
@@ -171,7 +237,16 @@ def main():
     for name, (_, files) in sorted(shared.items()):
         print(f"  {name:24} ← {len(files)} ملفات")
 
-    common_src = build_common(shared, per_file)
+    common_src, consts = build_common(shared, per_file, paths)
+    if consts:
+        print(f"ثوابت اتنسخت معاها: {', '.join(sorted(consts))}")
+    # تشغيل المكتبة فعليًا (تعريفات وثوابت بس — مفيش شبكة) لكشف أي اسم ناقص
+    namespace = {"__name__": "routines_common_check"}
+    exec(compile(common_src, "routines_common.py", "exec"), namespace)  # noqa: S102
+    for name in shared:
+        if name not in namespace:
+            sys.exit(f"ABORT: {name} مش متعرّفة في المكتبة بعد التنفيذ")
+    print("MODULE EXEC OK (كل الأسماء متاحة)")
     results = {}
     for name in FILES:
         src, tree, funcs = per_file[name]
