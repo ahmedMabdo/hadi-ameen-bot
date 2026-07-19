@@ -262,7 +262,7 @@ def selftest() -> int:
     check("ميتا المنقول", meta2 == " {type=semantic src=discord:#po trust=forwarded}")
 
     os.environ.pop("HADI_MEMORY_ADMIN", None)
-    check("مفيش TTY = مش بني آدم", is_human() is False)
+    check("tty gate follows isatty", is_human() == sys.stdin.isatty())
     os.environ["HADI_MEMORY_ADMIN"] = "1"
     check("تجاوز مقصود شغّال", is_human() is True)
     os.environ.pop("HADI_MEMORY_ADMIN", None)
