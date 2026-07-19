@@ -33,3 +33,8 @@ logs/
 
 # قفل الكتابة المشترك (بند 3.3) — حالة تشغيل محلية
 .locks/
+
+# فهرس الذاكرة المتدرجة (بند 4.2) — مشتق من memory.md وبيتبني بـ rebuild، مش بيترفع
+knowledge/memory_index.db
+knowledge/memory_index.db-wal
+knowledge/memory_index.db-shm

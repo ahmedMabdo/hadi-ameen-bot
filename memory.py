@@ -3,13 +3,21 @@
 """
 أداة الذاكرة الدائمة لهادي. بتضيف ملاحظات مؤرَّخة ومنسوبة لصاحبها في
 knowledge/memory.md، وبتعمل commit + push (best-effort) عشان الذاكرة تبقى
-دائمة وليها audit trail. البوت بيحمّل knowledge/memory.md مع كل محادثة،
-فأي حاجة اتحفظت تبقى متاحة في كل القنوات.
+دائمة وليها audit trail. البوت بيحمّل الذاكرة مع كل محادثة (بند 4.2:
+النواة + قواعد السلوك + الملاحظات ذات الصلة عبر memory_store)، فأي حاجة
+اتحفظت تبقى متاحة في كل القنوات.
 
 أوامر:
-  memory.py show
-  memory.py add --section <decisions|sprint|notes|general> --text "..." --author "الاسم"
-  memory.py search --query "..."
+    memory.py show
+    memory.py add --section <decisions|sprint|notes|general> --text "..." --author "الاسم"
+                  [--type <semantic|episodic|procedural>] [--expires YYYY-MM-DD]
+    memory.py search --query "..."
+
+أنواع الملاحظات (بند 4.2 مرحلة ب):
+    semantic   (الافتراضي) حقيقة دائمة — زي أي ملاحظة قديمة.
+    episodic   حدث بصلاحية — مع --expires بيسقط من حقن البرومبت بعد تاريخه
+               (بيفضل مؤرشف في الملف). مثال: أزمة كوتا بتخلص بتاريخ معروف.
+    procedural قاعدة سلوك متعلمة («متكتبش توقيع») — بتتحقن دايمًا.
 
 أي عضو في التيم يقدر يحفظ. كل سطر بيتسجّل: [التاريخ — مين] المعلومة.
 """
@@ -33,6 +41,8 @@ SECTIONS = {
     "general": "## عام",
 }
 
+MEMORY_TYPES = ("semantic", "episodic", "procedural")
+
 
 def _now():
     return dt.datetime.now(TZ).strftime("%Y-%m-%d %H:%M")
@@ -54,16 +64,37 @@ def cmd_show(args):
     print(MEM.read_text(encoding="utf-8"))
 
 
+def _meta_suffix(mtype: str, expires: str) -> str:
+    """بند 4.2: وسم النوع/الصلاحية جوه السطر نفسه — الملف يفضل مصدر الحقيقة الوحيد."""
+    if mtype == "semantic" and not expires:
+        return ""
+    parts = [f"type={mtype}"]
+    if expires:
+        parts.append(f"expires={expires}")
+    return " {" + " ".join(parts) + "}"
+
+
 def cmd_add(args):
     _ensure()
     header = SECTIONS.get(args.section, SECTIONS["general"])
     author = (args.author or "غير معروف").strip()
-    line = f"- [{_now()} — {author}] {args.text.strip()}\n"
+
+    mtype = (args.mtype or "semantic").strip()
+    expires = (args.expires or "").strip()
+    if expires:
+        try:
+            dt.datetime.strptime(expires, "%Y-%m-%d")
+        except ValueError:
+            sys.exit(f"ERROR: صيغة --expires غلط '{expires}'. استخدم YYYY-MM-DD.")
+        if mtype == "semantic":
+            mtype = "episodic"  # تاريخ صلاحية = حدث بطبيعته
+
+    line = f"- [{_now()} — {author}] {args.text.strip()}{_meta_suffix(mtype, expires)}\n"
     text = MEM.read_text(encoding="utf-8")
 
     if header in text:
         idx = text.index(header)
-        nl = text.index("\n", idx) + 1          # بعد سطر العنوان
+        nl = text.index("\n", idx) + 1  # بعد سطر العنوان
         while nl < len(text) and text[nl] == "\n":  # تخطّي السطر الفاضي
             nl += 1
         tail = text[nl:]
@@ -75,11 +106,31 @@ def cmd_add(args):
     MEM.write_text(text, encoding="utf-8")
     print(f"SAVED [{args.section}]: {args.text.strip()}")
     _git_persist(f"memory: {args.section} note by {author}")
+    _index_note(line, args.section)
+
+
+def _index_note(line: str, section: str):
+    """بند 4.2: فهرسة السطر الجديد في memory_index.db — فشلها عمره ما يمنع الحفظ."""
+    try:
+        import memory_store
+        memory_store.index_note(line.rstrip("\n"), section)
+        print("INDEXED (memory_index.db)")
+    except Exception as e:
+        print(f"WARN: الفهرسة فشلت ({type(e).__name__}) — الملف اتحفظ عادي؛ "
+              "صلّح الفهرس بـ: python3 memory_store.py rebuild")
 
 
 def cmd_search(args):
     _ensure()
     q = args.query.strip()
+    # بند 4.2: بحث مرتب بالصلة (FTS5/BM25 + تطبيع عربي) بدل substring — بfallback آمن
+    try:
+        import memory_store
+        hits = memory_store.search(q, k=10)
+        print("\n".join(h["raw"] for h in hits) if hits else "مفيش نتيجة في الذاكرة.")
+        return
+    except Exception as e:
+        print(f"WARN: بحث الفهرس فشل ({type(e).__name__}) — رجوع للبحث النصي")
     hits = [l for l in MEM.read_text(encoding="utf-8").splitlines()
             if q.lower() in l.lower() and l.strip().startswith("-")]
     print("\n".join(hits) if hits else "مفيش نتيجة في الذاكرة.")
@@ -109,6 +160,10 @@ def main():
     a.add_argument("--section", default="general", choices=list(SECTIONS))
     a.add_argument("--text", required=True)
     a.add_argument("--author", default="")
+    a.add_argument("--type", dest="mtype", default="semantic", choices=list(MEMORY_TYPES),
+                   help="بند 4.2: نوع الملاحظة (افتراضي semantic)")
+    a.add_argument("--expires", default="",
+                   help="بند 4.2: YYYY-MM-DD — بعده الملاحظة بتسقط من حقن البرومبت (episodic)")
     a.set_defaults(func=cmd_add)
 
     q = sub.add_parser("search", help="دوّر في الذاكرة")

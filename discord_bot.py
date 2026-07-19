@@ -113,6 +113,21 @@ def load_memory() -> str:
     return txt if has_notes else ""
 
 
+def get_memory_context(query_text: str) -> str:
+    """بند 4.2 — الذاكرة المتدرجة: نواة + قواعد سلوك + ملاحظات حسب صلة الرسالة.
+
+    الفهرس (memory_index.db) مشتق من knowledge/memory.md — المصدر والـ audit trail
+    لسه الملف وgit زي ما هما. تحت HADI_MEMORY_FULL_LIMIT حرف بيتحقن كله (سلوك
+    النهارده)، وفوقه بيتدرج لأقرب HADI_MEMORY_TOP_K ملاحظات. أي مشكلة في الفهرس
+    → رجوع آمن للحقن الكامل القديم."""
+    try:
+        import memory_store
+        return memory_store.memory_block(query_text)
+    except Exception as error:
+        print(f"MEMORY STORE WARN: {type(error).__name__}: {error} — رجوع للحقن الكامل")
+        return load_memory()
+
+
 async def ask_claude(
     user_message: str,
     author_name: str,
@@ -135,7 +150,7 @@ async def ask_claude(
         else ""
     )
 
-    mem = load_memory()
+    mem = get_memory_context(user_message)
     memory_block = (
         f"""
 ذاكرة هادي الدائمة (معلومات محفوظة سابقًا — اعتمد عليها وهي صحيحة لحد ما تتحدّث):
