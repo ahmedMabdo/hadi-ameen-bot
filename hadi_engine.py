@@ -66,6 +66,7 @@ try:
         HookMatcher,
         ResultMessage,
         TextBlock,
+        ToolUseBlock,
         query,
     )
 except Exception as _e:  # مكتبة مش متسطبة → fallback cli
@@ -218,6 +219,49 @@ async def _file_guard(input_data, tool_use_id, context):
     return {}
 
 
+# --- وصف نشاط الأدوات لرسالة الحالة (بند 3.4) -------------------------------
+_TOOL_SCRIPT_LABELS = (
+    ("ado_cli.py", "بكلم Azure DevOps"),
+    ("memory.py", "بحفظ في الذاكرة"),
+    ("schedule.py", "بظبط التذكير"),
+    ("po_channel_cr.py", "بشتغل على قناة الـ PO"),
+    ("cr_media.py", "بجهّز الميديا للتذكرة"),
+    ("usage_report.py", "بطلع تقرير الاستخدام"),
+    ("git ", "بحدّث الريبو"),
+)
+
+
+def _tool_label(name: str, tool_input) -> str:
+    """وصف مصري مختصر لنشاط الأداة — بيظهر في رسالة الحالة الحية (بند 3.4)."""
+    if name == "Bash":
+        cmd = str((tool_input or {}).get("command", "") or "")
+        for needle, label in _TOOL_SCRIPT_LABELS:
+            if needle in cmd:
+                return label
+        return "بشغّل أوامر على السيرفر"
+    if name in ("Read", "Glob", "Grep"):
+        return "بقرا ملفات المشروع"
+    if name in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
+        return "بكتب/بعدّل ملفات"
+    if name in ("WebSearch", "WebFetch"):
+        return "ببحث على النت"
+    if name == "TodoWrite":
+        return "بنظّم خطوات الشغل"
+    if name == "Task":
+        return "بشغّل مهمة فرعية"
+    return f"بستخدم أداة {name}"
+
+
+def _emit(on_progress, label: str) -> None:
+    """تبليغ رسالة الحالة بالنشاط الحالي — فشل التبليغ عمره ما يوقف التشغيل."""
+    if on_progress is None:
+        return
+    try:
+        on_progress(label)
+    except Exception as error:
+        print(f"HADI ENGINE: on_progress فشل ({type(error).__name__}: {error})")
+
+
 # --- مسار الـ SDK ----------------------------------------------------------
 def _sdk_options(resume_id):
     return ClaudeAgentOptions(
@@ -251,7 +295,7 @@ def _sdk_options(resume_id):
     )
 
 
-async def _run_sdk_once(prompt: str, conv_key: str, timeout: int) -> str:
+async def _run_sdk_once(prompt: str, conv_key: str, timeout: int, on_progress=None) -> str:
     resume_id = _get_resume(conv_key)
     parts: list = []
     final: dict = {"result": None, "session_id": None, "cost": None, "duration": None,
@@ -263,6 +307,9 @@ async def _run_sdk_once(prompt: str, conv_key: str, timeout: int) -> str:
                 for block in msg.content:
                     if isinstance(block, TextBlock):
                         parts.append(block.text)
+                        _emit(on_progress, "بكتب الرد")
+                    elif isinstance(block, ToolUseBlock):
+                        _emit(on_progress, _tool_label(block.name, block.input))
             elif isinstance(msg, ResultMessage):
                 final["session_id"] = msg.session_id
                 final["cost"] = msg.total_cost_usd
@@ -303,9 +350,9 @@ async def _run_sdk_once(prompt: str, conv_key: str, timeout: int) -> str:
 _RESUME_ERR_RX = re.compile(r"(no conversation|session).{0,40}(found|not found|expired)", re.IGNORECASE)
 
 
-async def _run_sdk(prompt: str, conv_key: str, timeout: int) -> str:
+async def _run_sdk(prompt: str, conv_key: str, timeout: int, on_progress=None) -> str:
     try:
-        return await _run_sdk_once(prompt, conv_key, timeout)
+        return await _run_sdk_once(prompt, conv_key, timeout, on_progress)
     except EngineTimeout:
         raise
     except EngineError as error:
@@ -314,11 +361,11 @@ async def _run_sdk(prompt: str, conv_key: str, timeout: int) -> str:
         if conv_key and _RESUME_ERR_RX.search(msg):
             print(f"HADI ENGINE: resume فشل — جلسة جديدة لـ {conv_key}")
             reset_session(conv_key)
-            return await _run_sdk_once(prompt, conv_key, timeout)
+            return await _run_sdk_once(prompt, conv_key, timeout, on_progress)
         if _is_transient(msg):
             print(f"HADI ENGINE: transient، محاولة تانية — {msg[-200:]}")
             await asyncio.sleep(5)
-            return await _run_sdk_once(prompt, conv_key, timeout)
+            return await _run_sdk_once(prompt, conv_key, timeout, on_progress)
         raise
 
 
@@ -364,17 +411,19 @@ def _run_cli_sync(prompt: str, timeout: int) -> str:
 
 
 # --- الواجهة العامة ---------------------------------------------------------
-async def run_agent(prompt: str, conv_key: str = "", timeout: int = 480) -> str:
+async def run_agent(prompt: str, conv_key: str = "", timeout: int = 480, on_progress=None) -> str:
     """ينفّذ برومبت هادي ويرجّع نص الرد.
 
     conv_key: مفتاح المحادثة ("ch:<channel_id>" أو "dm:<user_id>") — بيفعّل
     استمرارية الجلسة في مسار الـ SDK. سيبه فاضي للمهام الخلفية (جلسة نظيفة).
     بيرمي EngineTimeout عند تعدي المهلة وEngineError لأي فشل تاني.
     """
+    if _sem.locked():  # بند 3.4: قول للمستخدم إنه مستني دوره — مش «هنج»
+        _emit(on_progress, "في الطابور العام — مستني تشغيلة تانية تخلص")
     async with _sem:
         if sdk_active():
             try:
-                return await _run_sdk(prompt, conv_key, timeout)
+                return await _run_sdk(prompt, conv_key, timeout, on_progress)
             except (EngineTimeout, EngineError):
                 raise
             except CLINotFoundError as error:  # مفاجأة وقت تشغيل → جرّب مسار الـ CLI القديم

@@ -123,6 +123,7 @@ async def ask_claude(
     message_id: str = "",
     media_notes: str = "",
     conv_key: str = "",
+    on_progress=None,
 ) -> str:
     history_block = (
         f"""
@@ -222,7 +223,9 @@ async def ask_claude(
 {user_message}
 """.strip()
 
-    return await hadi_engine.run_agent(prompt, conv_key=conv_key, timeout=480)
+    return await hadi_engine.run_agent(
+        prompt, conv_key=conv_key, timeout=480, on_progress=on_progress
+    )
 
 
 def extract_forwarded_text(message: discord.Message) -> str:
@@ -790,21 +793,84 @@ async def on_ready():
         pending_tickets_loop.start()
 
 
-async def _progress_notice(message: discord.Message, delay: int = 20):
-    """لو الرد اتأخر عن delay ثانية، بيبعت رسالة حالة مؤقتة — وبتتمسح أول ما الرد يجهز.
+STATUS_EDIT_INTERVAL = max(2.0, float(os.getenv("HADI_STATUS_EDIT_INTERVAL", "5") or "5"))
+STATUS_TICK_SECONDS = 15.0
 
-    التاسك بتتلغى (cancel) لما المعالجة تخلص: لو لسه في فترة الانتظار الأولى
-    مفيش أي رسالة اتبعتت أصلًا، ولو اتبعتت بتتمسح في الـ finally."""
-    note = None
-    try:
-        await asyncio.sleep(delay)
-        note = await message.channel.send("⏳ شغال على طلبك — هوافيك بالرد أول ما يخلص.")
-        await asyncio.sleep(24 * 3600)
-    except asyncio.CancelledError:
-        pass
-    except Exception as error:
-        print(f"PROGRESS NOTICE ERROR: {type(error).__name__}: {error}")
-    finally:
+
+def _fmt_elapsed(seconds: float) -> str:
+    minutes, secs = divmod(int(max(0.0, seconds)), 60)
+    return f"{minutes}:{secs:02d}"
+
+
+class StatusReporter:
+    """بند 3.4 — رسالة الحالة الحية: «⏳ ماشي…» فورية بدل صمت الـ 8 دقايق.
+
+    - بتتبعت فور استلام الطلب (أو «في الطابور» لو في طلب قبله في نفس المحادثة).
+    - بتتحدث بالنشاط الحقيقي من المحرك عبر on_progress (بكلم Azure DevOps /
+      ببحث على النت / بكتب الرد...) + الزمن المنقضي — مش نص ثابت.
+    - احترام rate limits: أقصى تعديل كل HADI_STATUS_EDIT_INTERVAL ثانية (افتراضي 5 —
+      أقل بكتير من حد Discord ~5 تعديلات/5 ثواني للقناة)، وticker كل 15 ثانية
+      بيحدّث الزمن حتى من غير أحداث (مسار الـ CLI مثلًا).
+    - بتتمسح دايمًا مع نهاية المعالجة (رد أو NO_REPLY أو خطأ) — الرد بيوصل كريبلاي
+      عادي، فقرار الصمت بيفضل صامت ومفيش محتوى جزئي بيتسرب.
+    """
+
+    def __init__(self, message: discord.Message):
+        self._message = message
+        self._note = None
+        self._t0 = time.time()
+        self._activity = "بجهّز السياق وبفكر"
+        self._dirty = False
+        self._done = False
+        self._last_edit = 0.0
+        self._task = None
+
+    async def start(self, first_line: str) -> None:
+        try:
+            self._note = await self._message.channel.send(f"⏳ {first_line}")
+            self._last_edit = time.time()
+        except Exception as error:
+            print(f"STATUS START ERROR: {type(error).__name__}: {error}")
+            self._note = None
+        self._task = asyncio.create_task(self._ticker())
+
+    def on_engine_event(self, label: str) -> None:
+        """بيتنادى من hadi_engine مع كل نشاط — التسجيل هنا والتعديل في الـ ticker."""
+        label = (label or "").strip()
+        if label and label != self._activity:
+            self._activity = label
+            self._dirty = True
+
+    async def _ticker(self) -> None:
+        try:
+            while not self._done:
+                await asyncio.sleep(1.0)
+                if self._done or self._note is None:
+                    continue
+                now = time.time()
+                since = now - self._last_edit
+                due_event = self._dirty and since >= STATUS_EDIT_INTERVAL
+                due_tick = since >= STATUS_TICK_SECONDS
+                if not (due_event or due_tick):
+                    continue
+                self._dirty = False
+                self._last_edit = now
+                text = f"⏳ شغال ({_fmt_elapsed(now - self._t0)}) — {self._activity}…"
+                try:
+                    await self._note.edit(content=text)
+                except discord.NotFound:  # حد مسحها يدوي — كمّل من غير رسالة حالة
+                    self._note = None
+                except Exception as error:
+                    print(f"STATUS EDIT ERROR: {type(error).__name__}: {error}")
+        except asyncio.CancelledError:
+            pass
+
+    async def finish(self) -> None:
+        """بتتنادى في الـ finally دايمًا — توقف التحديثات وتمسح رسالة الحالة."""
+        self._done = True
+        if self._task is not None:
+            self._task.cancel()
+        note, self._note = self._note, None
         if note is not None:
             try:
                 await note.delete()
@@ -900,8 +966,15 @@ async def on_message(message: discord.Message):
         if message.guild is None
         else f"ch:{message.channel.id}"
     )
-    progress_task = asyncio.create_task(_progress_notice(message))
-    async with get_conv_lock(conv_key):
+    conv_lock = get_conv_lock(conv_key)
+    status = StatusReporter(message)
+    if conv_lock.locked():
+        status.on_engine_event("مستني دوري — في طلب تاني شغال في نفس المحادثة")
+        await status.start("في الطابور — قدّامي طلب تاني في نفس المحادثة، وهبدأ في طلبك أول ما يخلص.")
+    else:
+        await status.start("ماشي — مسكت طلبك وشغال عليه، وهوافيك بالرد أول ما يخلص.")
+    async with conv_lock:
+        status.on_engine_event("بجهّز السياق وبفكر")
         try:
             async with message.channel.typing():
                 _t0 = time.time()
@@ -915,6 +988,7 @@ async def on_message(message: discord.Message):
                     str(message.id),
                     media_notes,
                     conv_key=conv_key,
+                    on_progress=status.on_engine_event,
                 )
 
             print(f"HADI: claude run {time.time()-_t0:.0f}s - {author_name}: {content[:60]}")
@@ -949,7 +1023,7 @@ async def on_message(message: discord.Message):
 
 
         finally:
-            progress_task.cancel()
+            await status.finish()
             for _p in image_paths:
                 try:
                     Path(_p).unlink()
