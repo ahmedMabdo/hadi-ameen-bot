@@ -20,6 +20,8 @@ import sys
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import state_lock  # بند 3.3 — تسلسل الكتابات المشتركة مع باقي أدوات الحالة
+
 BASE = Path(__file__).resolve().parent
 MEM = BASE / "knowledge" / "memory.md"
 TZ = ZoneInfo("Africa/Cairo")
@@ -114,7 +116,14 @@ def main():
     q.set_defaults(func=cmd_search)
 
     args = p.parse_args()
-    args.func(args)
+    if args.cmd == "add":
+        # بند 3.3: الكتابة (memory.md + git commit/push) بتتسلسل في طابور كتابة
+        # واحد (flock) مشترك مع schedule.py وreminder_loop — منع سباقات الملف
+        # وتصادم git index.lock بين محادثتين متوازيتين.
+        with state_lock.write_lock():
+            args.func(args)
+    else:
+        args.func(args)
 
 
 if __name__ == "__main__":

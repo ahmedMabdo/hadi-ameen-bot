@@ -25,6 +25,7 @@ import json
 import os
 import re
 import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -93,6 +94,12 @@ _sem = asyncio.Semaphore(MAX_CONCURRENCY)
 
 
 # --- مخزن الجلسات (conv_key → session_id) ---------------------------------
+# بند 3.3: المحادثات المتوازية بتسجّل جلساتها في sessions.json — الـ mutex ده
+# بيسلسل القراءة-التعديل-الكتابة جوه عملية البوت (الكاتب الوحيد للملف)،
+# فمفيش تسجيلة جلسة بتضيع بين رسالتين متزامنتين.
+_sessions_mutex = threading.Lock()
+
+
 def _load_sessions() -> dict:
     try:
         return json.loads(SESSIONS_FILE.read_text(encoding="utf-8"))
@@ -121,16 +128,18 @@ def _get_resume(conv_key: str):
 def _remember_session(conv_key: str, session_id: str) -> None:
     if not conv_key or not session_id:
         return
-    data = _load_sessions()
-    data[conv_key] = {"session_id": session_id, "ts": time.time()}
-    _save_sessions(data)
+    with _sessions_mutex:
+        data = _load_sessions()
+        data[conv_key] = {"session_id": session_id, "ts": time.time()}
+        _save_sessions(data)
 
 
 def reset_session(conv_key: str) -> None:
-    data = _load_sessions()
-    if conv_key in data:
-        data.pop(conv_key, None)
-        _save_sessions(data)
+    with _sessions_mutex:
+        data = _load_sessions()
+        if conv_key in data:
+            data.pop(conv_key, None)
+            _save_sessions(data)
 
 
 # --- سجل الاستخدام (بند 3.1/F5) ----------------------------------------

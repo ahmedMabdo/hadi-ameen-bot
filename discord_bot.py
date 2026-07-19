@@ -21,6 +21,7 @@ load_dotenv(BASE_DIR / ".env")
 # محرك هادي (Claude Agent SDK + fallback CLI) — لازم يتستورد بعد load_dotenv
 # عشان يقرا إعدادات .env (HADI_ENGINE / CLAUDE_MODEL / HADI_MAX_CONCURRENCY ...).
 import hadi_engine
+import state_lock  # بند 3.3 — قفل الكتابة المشترك (flock) لملفات الحالة
 
 TOKEN = os.getenv("DISCORD_BOT_TOKEN", "").strip()
 
@@ -690,11 +691,18 @@ async def reminder_loop():
             updates[item["id"]] = upd
             print(f"REMINDER FAIL #{item.get('id')}: {type(error).__name__}: {error}")
     if updates:
-        current = _load_reminders()
-        for it in current:
-            if it.get("id") in updates:
-                it.update(updates[it["id"]])
-        _save_reminders(current)
+
+        def _apply_updates():
+            # بند 3.3: نفس قفل الكتابة بتاع schedule.py/memory.py — علشان
+            # «إضافة تذكير جديد» من محادثة متوازية متتكتبش فوق تعليم اللي اتنفذ.
+            with state_lock.write_lock():
+                current = _load_reminders()
+                for it in current:
+                    if it.get("id") in updates:
+                        it.update(updates[it["id"]])
+                _save_reminders(current)
+
+        await asyncio.to_thread(_apply_updates)
 
 
 @tasks.loop(hours=24)

@@ -30,6 +30,8 @@ import uuid
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import state_lock  # بند 3.3 — تسلسل الكتابات المشتركة مع باقي أدوات الحالة
+
 BASE = Path(__file__).resolve().parent
 STORE = BASE / "reminders.json"
 TZ = ZoneInfo("Africa/Cairo")
@@ -140,7 +142,13 @@ def main():
     c.set_defaults(func=cmd_cancel)
 
     args = p.parse_args()
-    args.func(args)
+    if args.cmd in ("add", "cancel"):
+        # بند 3.3: كتابات reminders.json بتتسلسل في طابور الكتابة المشترك (flock)
+        # مع reminder_loop جوه البوت وmemory.py — بدل أمل «مفيش تصادم».
+        with state_lock.write_lock():
+            args.func(args)
+    else:
+        args.func(args)
 
 
 if __name__ == "__main__":
