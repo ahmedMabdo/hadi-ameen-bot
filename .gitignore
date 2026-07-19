@@ -48,3 +48,7 @@ knowledge/knowledge_index.db-shm
 evals/runs/
 evals/baseline.json
 evals/review_*.md
+
+# حالة النبضة (بند 8.1) — آخر تنبيه لكل عنصر. حالة تشغيل محلية
+logs/heartbeat_state.json
+logs/heartbeat_state.json.tmp

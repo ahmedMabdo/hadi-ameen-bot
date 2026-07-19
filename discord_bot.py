@@ -23,6 +23,7 @@ load_dotenv(BASE_DIR / ".env")
 import hadi_engine
 import state_lock  # بند 3.3 — قفل الكتابة المشترك (flock) لملفات الحالة
 import eval_store  # بند 5.3 — تسجيل نتيجة كل تفاعل + تقييم الرياكشنز
+import heartbeat  # بند 8.1/8.3 — الفحوصات الاستباقية والأحداث
 
 TOKEN = os.getenv("DISCORD_BOT_TOKEN", "").strip()
 
@@ -818,6 +819,11 @@ async def on_ready():
         ado_health_loop.start()
     if not pending_tickets_loop.is_running():
         pending_tickets_loop.start()
+    if heartbeat.ENABLED and not heartbeat_loop.is_running():  # بند 8.1
+        heartbeat_loop.start()
+    print(f"HADI HEARTBEAT: {'on' if heartbeat.ENABLED else 'off'}"
+          f" (كل ساعة | هدوء {heartbeat.QUIET_START}:00-{heartbeat.QUIET_END}:00"
+          f" | cooldown {heartbeat.COOLDOWN_H:g}س | حد أقصى {heartbeat.MAX_ALERTS} تنبيهات)")
 
 
 STATUS_EDIT_INTERVAL = max(2.0, float(os.getenv("HADI_STATUS_EDIT_INTERVAL", "5") or "5"))
@@ -903,6 +909,34 @@ class StatusReporter:
                 await note.delete()
             except Exception:
                 pass
+
+
+@tasks.loop(hours=1)
+async def heartbeat_loop():
+    """بند 8.1/8.3 — نبضة الاستباقية: فحوصات مجدولة، والصمت لو مفيش حاجة.
+
+    نفس فلسفة NO_REPLY: تنبيه من غير داعي أسوأ من مفيش تنبيه، لأنه بيخلي الفريق
+    يتجاهل التنبيهات كلها. الضوابط (cooldown / ساعات الهدوء / حد أقصى للتنبيهات)
+    كلها جوه heartbeat.py وقابلة للضبط من .env."""
+    if not heartbeat.ENABLED:
+        return
+    if heartbeat.in_quiet_hours():
+        return
+    try:
+        alerts, _ = await asyncio.to_thread(heartbeat.run_checks, None, False)
+    except Exception as error:
+        print(f"HEARTBEAT FAIL: {type(error).__name__}: {error}")
+        return
+    if not alerts:
+        return  # الصمت قرار مصمم
+    message = heartbeat.format_message(alerts)
+    print(f"HEARTBEAT: {len(alerts)} تنبيه — {[a['key'] for a in alerts]}")
+    await dm_allowed_users(message)
+
+
+@heartbeat_loop.before_loop
+async def _before_heartbeat_loop():
+    await client.wait_until_ready()
 
 
 @client.event
