@@ -295,7 +295,7 @@ def _sdk_options(resume_id):
     )
 
 
-async def _run_sdk_once(prompt: str, conv_key: str, timeout: int, on_progress=None) -> str:
+async def _run_sdk_once(prompt: str, conv_key: str, timeout: int, on_progress=None, stats=None) -> str:
     resume_id = _get_resume(conv_key)
     parts: list = []
     final: dict = {"result": None, "session_id": None, "cost": None, "duration": None,
@@ -340,6 +340,11 @@ async def _run_sdk_once(prompt: str, conv_key: str, timeout: int, on_progress=No
               f"cache_read={cache_read} cache_write={cache_write} "
               f"input={raw_input} hit={hit_pct:.0f}%")
     _log_usage(conv_key, resume_id, final)
+    if stats is not None:  # بند 5.3: نفس الأرقام بتتسجل في مخزن التقييم
+        stats.update({
+            "cost": final.get("cost"), "usage": u, "num_turns": final.get("num_turns"),
+            "duration_ms": final.get("duration"), "resumed": bool(resume_id),
+        })
 
     text = (final["result"] or "".join(parts) or "").strip()
     if not text:
@@ -350,9 +355,9 @@ async def _run_sdk_once(prompt: str, conv_key: str, timeout: int, on_progress=No
 _RESUME_ERR_RX = re.compile(r"(no conversation|session).{0,40}(found|not found|expired)", re.IGNORECASE)
 
 
-async def _run_sdk(prompt: str, conv_key: str, timeout: int, on_progress=None) -> str:
+async def _run_sdk(prompt: str, conv_key: str, timeout: int, on_progress=None, stats=None) -> str:
     try:
-        return await _run_sdk_once(prompt, conv_key, timeout, on_progress)
+        return await _run_sdk_once(prompt, conv_key, timeout, on_progress, stats)
     except EngineTimeout:
         raise
     except EngineError as error:
@@ -361,11 +366,11 @@ async def _run_sdk(prompt: str, conv_key: str, timeout: int, on_progress=None) -
         if conv_key and _RESUME_ERR_RX.search(msg):
             print(f"HADI ENGINE: resume فشل — جلسة جديدة لـ {conv_key}")
             reset_session(conv_key)
-            return await _run_sdk_once(prompt, conv_key, timeout, on_progress)
+            return await _run_sdk_once(prompt, conv_key, timeout, on_progress, stats)
         if _is_transient(msg):
             print(f"HADI ENGINE: transient، محاولة تانية — {msg[-200:]}")
             await asyncio.sleep(5)
-            return await _run_sdk_once(prompt, conv_key, timeout, on_progress)
+            return await _run_sdk_once(prompt, conv_key, timeout, on_progress, stats)
         raise
 
 
@@ -411,7 +416,8 @@ def _run_cli_sync(prompt: str, timeout: int) -> str:
 
 
 # --- الواجهة العامة ---------------------------------------------------------
-async def run_agent(prompt: str, conv_key: str = "", timeout: int = 480, on_progress=None) -> str:
+async def run_agent(prompt: str, conv_key: str = "", timeout: int = 480, on_progress=None,
+                    stats: dict | None = None) -> str:
     """ينفّذ برومبت هادي ويرجّع نص الرد.
 
     conv_key: مفتاح المحادثة ("ch:<channel_id>" أو "dm:<user_id>") — بيفعّل
@@ -423,7 +429,7 @@ async def run_agent(prompt: str, conv_key: str = "", timeout: int = 480, on_prog
     async with _sem:
         if sdk_active():
             try:
-                return await _run_sdk(prompt, conv_key, timeout, on_progress)
+                return await _run_sdk(prompt, conv_key, timeout, on_progress, stats)
             except (EngineTimeout, EngineError):
                 raise
             except CLINotFoundError as error:  # مفاجأة وقت تشغيل → جرّب مسار الـ CLI القديم

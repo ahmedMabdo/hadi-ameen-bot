@@ -22,6 +22,7 @@ load_dotenv(BASE_DIR / ".env")
 # عشان يقرا إعدادات .env (HADI_ENGINE / CLAUDE_MODEL / HADI_MAX_CONCURRENCY ...).
 import hadi_engine
 import state_lock  # بند 3.3 — قفل الكتابة المشترك (flock) لملفات الحالة
+import eval_store  # بند 5.3 — تسجيل نتيجة كل تفاعل + تقييم الرياكشنز
 
 TOKEN = os.getenv("DISCORD_BOT_TOKEN", "").strip()
 
@@ -139,6 +140,7 @@ async def ask_claude(
     media_notes: str = "",
     conv_key: str = "",
     on_progress=None,
+    stats: dict | None = None,
 ) -> str:
     history_block = (
         f"""
@@ -239,7 +241,7 @@ async def ask_claude(
 """.strip()
 
     return await hadi_engine.run_agent(
-        prompt, conv_key=conv_key, timeout=480, on_progress=on_progress
+        prompt, conv_key=conv_key, timeout=480, on_progress=on_progress, stats=stats
     )
 
 
@@ -524,15 +526,19 @@ async def build_reply_context(message: discord.Message) -> str:
     return f"[{label}] {text}"
 
 
-async def send_long_message(channel, text: str, reply_to: discord.Message = None) -> None:
+async def send_long_message(channel, text: str, reply_to: discord.Message = None):
     text = text.strip() or "لم يتم إرجاع رد."
     chunks = [text[start:start + 1900] for start in range(0, len(text), 1900)]
 
+    first = None
     for i, chunk in enumerate(chunks):
         if i == 0 and reply_to is not None:
-            await reply_to.reply(chunk, mention_author=False)
+            sent = await reply_to.reply(chunk, mention_author=False)
         else:
-            await channel.send(chunk)
+            sent = await channel.send(chunk)
+        if first is None:
+            first = sent
+    return first  # بند 5.3: id الرد بيربط التقييم بالتفاعل
 
 
 async def dm_allowed_users(text: str) -> None:
@@ -900,6 +906,26 @@ class StatusReporter:
 
 
 @client.event
+async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+    """بند 5.3: رياكشن على رد هادي = تقييم بشري مجاني (أرخص إشارة جودة متاحة).
+
+    attach_feedback بيرجّع False لو الرسالة مش رد من ردود هادي المسجلة — فالرياكشنز
+    على رسايل الناس العادية بتتجاهل لوحدها."""
+    if client.user and payload.user_id == client.user.id:
+        return
+    if eval_store.attach_feedback(payload.message_id, str(payload.emoji), payload.user_id):
+        print(f"EVAL FEEDBACK: {payload.emoji} على رد #{payload.message_id}")
+
+
+@client.event
+async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
+    """شيل الرياكشن = سحب التقييم."""
+    if client.user and payload.user_id == client.user.id:
+        return
+    eval_store.remove_feedback(payload.message_id, str(payload.emoji), payload.user_id)
+
+
+@client.event
 async def on_message(message: discord.Message):
     if message.author.bot:
         return
@@ -989,6 +1015,8 @@ async def on_message(message: discord.Message):
     )
     conv_lock = get_conv_lock(conv_key)
     status = StatusReporter(message)
+    eval_stats: dict = {}  # بند 5.3: المحرك بيملاها بالتوكنز والتكلفة
+    _t0 = time.time()
     if conv_lock.locked():
         status.on_engine_event("مستني دوري — في طلب تاني شغال في نفس المحادثة")
         await status.start("في الطابور — قدّامي طلب تاني في نفس المحادثة، وهبدأ في طلبك أول ما يخلص.")
@@ -1010,6 +1038,7 @@ async def on_message(message: discord.Message):
                     media_notes,
                     conv_key=conv_key,
                     on_progress=status.on_engine_event,
+                    stats=eval_stats,
                 )
 
             print(f"HADI: claude run {time.time()-_t0:.0f}s - {author_name}: {content[:60]}")
@@ -1019,16 +1048,52 @@ async def on_message(message: discord.Message):
             if not resp_clean or (
                 resp_clean[:8].upper() == "NO_REPLY" and len(resp_clean) <= 40
             ):
+                eval_store.record_interaction(
+                conv_key=conv_key,
+                channel=channel_label,
+                author=author_name,
+                user_message_id=message.id,
+                prompt=content,
+                latency_ms=int((time.time() - _t0) * 1000),
+                stats=eval_stats,
+                engine=hadi_engine.describe().split()[0],
+                outcome="no_reply",
+                )
                 print(f"HADI: NO_REPLY skip — {author_name}: {content[:80]}")
                 return
 
-            await send_long_message(
+            sent = await send_long_message(
                 message.channel,
                 resp_clean,
                 reply_to=message if message.guild is not None else None,
             )
+            eval_store.record_interaction(
+                conv_key=conv_key,
+                channel=channel_label,
+                author=author_name,
+                user_message_id=message.id,
+                prompt=content,
+                latency_ms=int((time.time() - _t0) * 1000),
+                stats=eval_stats,
+                engine=hadi_engine.describe().split()[0],
+                reply_message_id=getattr(sent, "id", ""),
+                reply=resp_clean,
+                outcome="replied",
+            )
 
         except hadi_engine.EngineTimeout:
+            eval_store.record_interaction(
+                conv_key=conv_key,
+                channel=channel_label,
+                author=author_name,
+                user_message_id=message.id,
+                prompt=content,
+                latency_ms=int((time.time() - _t0) * 1000),
+                stats=eval_stats,
+                engine=hadi_engine.describe().split()[0],
+                outcome="timeout",
+                error_type="EngineTimeout",
+            )
             print(f"HADI: TIMEOUT (480s) - {author_name}: {content[:60]}")
             await message.reply(
                 "الطلب خد وقت أطول من الحد المسموح (8 دقايق) واتوقف. لو كان طلب تيكت، راجع البورد الأول قبل ما تكرر الطلب.",
@@ -1036,6 +1101,18 @@ async def on_message(message: discord.Message):
             )
 
         except Exception as error:
+            eval_store.record_interaction(
+                conv_key=conv_key,
+                channel=channel_label,
+                author=author_name,
+                user_message_id=message.id,
+                prompt=content,
+                latency_ms=int((time.time() - _t0) * 1000),
+                stats=eval_stats,
+                engine=hadi_engine.describe().split()[0],
+                outcome="error",
+                error_type=type(error).__name__,
+            )
             print(f"ERROR: {type(error).__name__}: {error}")
             await message.reply(
                 f"حصل خطأ أثناء تشغيل هادي: {type(error).__name__}",
@@ -1051,4 +1128,5 @@ async def on_message(message: discord.Message):
                 except OSError:
                     pass
 
-client.run(TOKEN)
+if __name__ == "__main__":  # بند 5.3: الاستيراد من eval_runner مايشغلش البوت
+    client.run(TOKEN)

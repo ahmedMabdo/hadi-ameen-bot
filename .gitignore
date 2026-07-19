@@ -43,3 +43,8 @@ knowledge/memory_index.db-shm
 knowledge/knowledge_index.db
 knowledge/knowledge_index.db-wal
 knowledge/knowledge_index.db-shm
+
+# نتايج تشغيل الـ suite والمراجعات (بند 5.3) — حالة تشغيل. الحالات نفسها (evals/cases.json) في git
+evals/runs/
+evals/baseline.json
+evals/review_*.md

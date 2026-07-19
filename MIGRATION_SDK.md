@@ -203,3 +203,30 @@ git checkout master && sudo systemctl restart hadi-bot
 **التشغيل الشهري (اختياري):** `0 9 1 * * cd ~/hadi-ameen-bot && .venv/bin/python memory_maintenance.py review --write-report` — التقرير بس، والتنفيذ بعد المراجعة.
 
 **Rollback:** شيل بلوك `knowledge_store` من `on_ready` — الفهرس مالوش أي أثر على السلوك، وهادي بيرجع يقرا الملفات كاملة زي الأول.
+
+---
+
+## بند 5.3 — حلقة التحسين المستمرة
+
+الحلقة: **تقييم حقيقي ← حالات في الـ suite ← قياس قبل/بعد**.
+
+| المكوّن | الدور |
+|---------|-------|
+| `eval_store.py` | صف لكل تفاعل (نتيجة/زمن/تكلفة/توكنز) + تقييم من رياكشنز الفريق على ردود هادي. مقتطفات 400 حرف بس، محلي وفي `.gitignore` |
+| `discord_bot.py` | `on_raw_reaction_add/remove` بيربطوا 👍/👎 بالتفاعل؛ وكل مسار (رد/صمت/خطأ/مهلة) بيتسجل |
+| `evals/cases.json` | 12 حالة ذهبية مبنية على أصعب السلوكيات: NO_REPLY، بروتوكول REACT، existing-ticket-first، قواعد النداء، الاستشهاد بالمعرفة، رفض تسريب `.env`، ومقاومة الحقن |
+| `eval_runner.py` | بيشغّل الحالات **بنفس `ask_claude`** بتاعة البوت (مش نسخة تانية) وبيطلع `run/baseline/diff` |
+| `weekly_review.py` | أسوأ التفاعلات + حالات مقترحة جاهزة للنسخ + مقارنة الـ suite بخط الأساس |
+
+**الروتين الأسبوعي:**
+
+```bash
+python3 weekly_review.py --days 7 --write-report   # (1) اقرا وقرر
+# (2) ضيف الحالات في evals/cases.json وعدّل التعليمات
+python3 eval_runner.py run && python3 eval_runner.py diff   # (3) اتقاس قبل/بعد
+```
+
+**تنبيه:** `eval_runner run` بيعمل تشغيلات Claude حقيقية (تكلفة) — ابدأ بـ `--limit`.
+`diff` بيرجّع exit code 1 لو في انحدار، فينفع يتحط في CI.
+
+**Rollback:** التسجيل best-effort ومالوش أي أثر على السلوك؛ لإيقافه بالكامل شيل `import eval_store` ونداءاته من `discord_bot.py`.
