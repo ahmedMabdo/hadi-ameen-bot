@@ -165,6 +165,7 @@ def build_common(shared, per_file, paths):
         raise RuntimeError(
             "أسماء عامة محتاجة ومش متاحة في المكتبة: " + ", ".join(sorted(missing)) +
             " — الترحيل اتوقف (مفيش أي ملف اتغير).")
+    del missing
 
     const_block = "\n".join(constants[k] for k in sorted(constants))
     note = "\n".join(
@@ -232,6 +233,29 @@ def main():
     shared = shared_functions(table)
     if not shared:
         sys.exit("مفيش دوال متطابقة في 3 ملفات أو أكتر — مفيش حاجة تتوحد.")
+
+    # تقليم: الدالة اللي بتعتمد على اسم مش هينتقل (زي log أو resolve_guild_id اللي
+    # نسخهم مختلفة بين الملفات) بتفضل مكانها. بننقل اللي إغلاقه كامل ومتطابق بس.
+    while True:
+        bodies = "\n\n\n".join(body for body, _ in shared.values())
+        sample = per_file["discord_podaily.py"][0]
+        imported = set()
+        for node in ast.parse(needed_imports(bodies, sample) or "pass").body:
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                imported |= {a.asname or a.name.split(".")[0] for a in node.names}
+        unmet = free_globals(bodies) - set(shared) - imported
+        unmet -= set(shared_constants(paths, per_file, unmet))
+        if not unmet:
+            break
+        offenders = {n for n, (body, _) in shared.items() if free_globals(body) & unmet}
+        if not offenders:
+            sys.exit(f"ABORT: أسماء ناقصة من غير مصدر واضح: {sorted(unmet)}")
+        for name in offenders:
+            shared.pop(name)
+        print(f"مستبعدة (بتعتمد على {', '.join(sorted(unmet))} اللي نسخته مختلفة بين الملفات): "
+              f"{', '.join(sorted(offenders))}")
+    if not shared:
+        sys.exit("كل الدوال المكررة بتعتمد على كود مختلف بين الملفات — التوحيد الآمن مش ممكن دلوقتي.")
 
     print(f"دوال هتتنقل للمكتبة ({len(shared)}):")
     for name, (_, files) in sorted(shared.items()):
