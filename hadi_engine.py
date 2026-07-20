@@ -40,6 +40,18 @@ except Exception:
 ENGINE_MODE = os.getenv("HADI_ENGINE", "sdk").strip().lower() or "sdk"
 MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-5").strip() or "claude-sonnet-5"
 CLAUDE_BIN = os.getenv("CLAUDE_BIN", "/home/ubuntu/.local/bin/claude").strip()
+import contextvars
+
+# هوية طالب الطلب. ContextVar مش os.environ: الأخير عام على العملية كلها،
+# ومع MAX_CONCURRENCY > 1 ده معناه تسريب هوية بين طلبين متوازيين.
+_actor = contextvars.ContextVar("hadi_actor", default="")
+
+
+def _actor_env() -> dict:
+    """بيئة العملية الفرعية + هوية الطالب لطبقة صلاحيات PostHog."""
+    return {**os.environ, "HADI_PH_ACTOR": _actor.get() or ""}
+
+
 MAX_CONCURRENCY = max(1, int(os.getenv("HADI_MAX_CONCURRENCY", "2") or "2"))
 SESSION_TTL_HOURS = float(os.getenv("HADI_SESSION_TTL_HOURS", "6") or "6")
 MAX_TURNS = int(os.getenv("HADI_MAX_TURNS", "50") or "50")
@@ -266,6 +278,7 @@ def _emit(on_progress, label: str) -> None:
 def _sdk_options(resume_id):
     return ClaudeAgentOptions(
         model=MODEL,
+        env=_actor_env(),
         cwd=str(BASE_DIR),
         cli_path=CLAUDE_BIN if Path(CLAUDE_BIN).exists() else None,
         # نفس سلوك `claude -p` بالظبط: برومبت النظام القياسي + إعدادات وذاكرة المشروع.
@@ -387,7 +400,7 @@ def _run_cli_once(prompt: str, timeout: int) -> str:
     result = subprocess.run(
         [CLAUDE_BIN, "-p", prompt, "--model", MODEL],
         cwd=BASE_DIR,
-        env=os.environ.copy(),
+        env=_actor_env(),
         capture_output=True,
         text=True,
         timeout=timeout,
@@ -417,13 +430,14 @@ def _run_cli_sync(prompt: str, timeout: int) -> str:
 
 # --- الواجهة العامة ---------------------------------------------------------
 async def run_agent(prompt: str, conv_key: str = "", timeout: int = 480, on_progress=None,
-                    stats: dict | None = None) -> str:
+                    stats: dict | None = None, actor_id: str = "") -> str:
     """ينفّذ برومبت هادي ويرجّع نص الرد.
 
     conv_key: مفتاح المحادثة ("ch:<channel_id>" أو "dm:<user_id>") — بيفعّل
     استمرارية الجلسة في مسار الـ SDK. سيبه فاضي للمهام الخلفية (جلسة نظيفة).
     بيرمي EngineTimeout عند تعدي المهلة وEngineError لأي فشل تاني.
     """
+    _actor.set(actor_id or "")
     if _sem.locked():  # بند 3.4: قول للمستخدم إنه مستني دوره — مش «هنج»
         _emit(on_progress, "في الطابور العام — مستني تشغيلة تانية تخلص")
     async with _sem:

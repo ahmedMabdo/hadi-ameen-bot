@@ -142,6 +142,7 @@ async def ask_claude(
     conv_key: str = "",
     on_progress=None,
     stats: dict | None = None,
+    author_id: str = "",
 ) -> str:
     history_block = (
         f"""
@@ -242,7 +243,8 @@ async def ask_claude(
 """.strip()
 
     return await hadi_engine.run_agent(
-        prompt, conv_key=conv_key, timeout=480, on_progress=on_progress, stats=stats
+        prompt, conv_key=conv_key, timeout=480, on_progress=on_progress, stats=stats,
+        actor_id=author_id
     )
 
 
@@ -1070,6 +1072,7 @@ async def on_message(message: discord.Message):
                     image_paths,
                     str(message.id),
                     media_notes,
+                    author_id=str(message.author.id),
                     conv_key=conv_key,
                     on_progress=status.on_engine_event,
                     stats=eval_stats,
