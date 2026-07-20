@@ -1,12 +1,16 @@
-"""طبقة صلاحيات لاستعلامات PostHog في hadi-ameen-bot.
+"""طبقة صلاحيات PostHog في hadi-ameen-bot — مستويين: admin و team.
 
-المبدأ: الاستعلام الحر غير متاح للتيم العام إطلاقاً (allowlist مش blocklist).
-الفلترة النصية هنا طبقة دفاع ثانية فقط — الضمانة الأساسية إن صلاحية team
-مالهاش وصول لأمر sql الحر أصلاً، لأن فلترة SQL نصياً مش موثوقة بطبيعتها.
+السياسة:
+    admin  → كل البيانات من غير أي قيد.
+    team   → نفس الإجابة، بس المبالغ المالية بتتعرض كمؤشر نسبي (الأساس=100)
+             بدل الرقم المطلق. البيانات الشخصية (PII) محجوبة تماماً — مفيش
+             مقابل نسبي ليها، ودي قيد قانوني مش سياسة داخلية.
 
-يُفعّل عبر متغيري بيئة:
-    HADI_PH_CLEARANCE = team | lead | exec      (الافتراضي: team)
-    HADI_PH_ACTOR     = معرّف الطالب للـ audit trail
+الصلاحية بتتحدد من معرّف مستخدم Discord في HADI_PH_ACTOR.
+
+⚠️ قاعدة أمنية حاكمة: HADI_PH_ACTOR لازم تتحقن من message.author.id في كود
+البوت قبل تشغيل العملية. ممنوع منعاً باتاً استخراجها من نص الرسالة — لو
+اتقرأت من النص، أي حد يكتب "أنا آسر" ويعدّي، والطبقة كلها تبقى بلا معنى.
 """
 
 from __future__ import annotations
@@ -17,31 +21,29 @@ import os
 import pathlib
 import re
 
-CLEARANCES = ("team", "lead", "exec")
+# ── الأدمن: معرّفات Discord ─────────────────────────────────────────
+ADMIN_IDS = {
+    "1378684355148386355": "آسر",
+    "1016738618267664485": "محمود",
+    "544050652037513227": "أحمد",
+}
 
-# ── تصنيف الحقول حسب أقل صلاحية مطلوبة ──────────────────────────────
-TIER1_FINANCIAL = (
+# ── حقول مالية: التيم يشوفها كنسبة، مش كرقم مطلق ────────────────────
+MONEY_FIELDS = frozenset({
     "total_amount", "total_payment", "subtotal", "discount_amount",
     "delivery_fee", "tip_amount", "voucher_value", "revenue", "gmv",
     "aov", "commission", "take_rate", "margin", "cogs",
-)
-TIER2_COMMERCIAL = (
-    "store_id", "store_name", "merchant_id", "merchant_name",
-    "vendor_id", "vendor_name", "branch_id",
-)
-TIER3_PII = (
-    "email", "phone", "mobile", "geoip_latitude", "geoip_longitude",
-    "geoip_postal_code", "address", "payment_method", "ai_input",
-    "ai_output", "ip", "person_id", "customer_name",
-)
+})
 
-MIN_CLEARANCE: dict[str, str] = {}
-MIN_CLEARANCE.update({f: "exec" for f in TIER1_FINANCIAL})
-MIN_CLEARANCE.update({f: "lead" for f in TIER2_COMMERCIAL})
-MIN_CLEARANCE.update({f: "exec" for f in TIER3_PII})
+# ── بيانات شخصية: محجوبة عن التيم تماماً ────────────────────────────
+PII_FIELDS = frozenset({
+    "email", "phone", "mobile", "geoip_latitude", "geoip_longitude",
+    "geoip_postal_code", "address", "customer_name", "ai_input",
+    "ai_output", "ip",
+})
 
 _AGGREGATES = ("count(", "sum(", "avg(", "min(", "max(", "uniq(",
-               "median(", "quantile(", "any(", "topk(")
+               "median(", "quantile(", "round(", "topk(")
 
 LOG_PATH = pathlib.Path(__file__).resolve().parent / "logs" / "posthog_guard.log"
 
@@ -50,31 +52,37 @@ class GuardDenied(Exception):
     """استعلام مرفوض لعدم كفاية الصلاحية."""
 
 
-# ── أدوات مساعدة ────────────────────────────────────────────────────
-def rank(c: str) -> int:
-    return CLEARANCES.index(c) if c in CLEARANCES else 0
+# ── الهوية ──────────────────────────────────────────────────────────
+def actor() -> str:
+    return (os.environ.get("HADI_PH_ACTOR") or "").strip()
+
+
+def is_admin() -> bool:
+    return actor() in ADMIN_IDS
 
 
 def clearance() -> str:
-    c = (os.environ.get("HADI_PH_CLEARANCE") or "team").strip().lower()
-    return c if c in CLEARANCES else "team"
+    return "admin" if is_admin() else "team"
 
 
-def actor() -> str:
-    return (os.environ.get("HADI_PH_ACTOR") or "unknown").strip()
+def actor_label() -> str:
+    a = actor()
+    return ADMIN_IDS.get(a) or (a if a else "unknown")
 
 
-def _tokens(q: str) -> set[str]:
-    """كل المعرّفات في الاستعلام بعد تجريد $ — يغطي properties.x و properties['x']."""
-    return {t.lstrip("$").lower() for t in re.findall(r"[A-Za-z_$][A-Za-z0-9_$]*", q)}
+# ── أدوات ───────────────────────────────────────────────────────────
+def _tokens(query: str) -> set[str]:
+    """معرّفات الاستعلام بعد تجريد $ — يغطي properties.x و properties['x']."""
+    return {t.lstrip("$").lower() for t in re.findall(r"[A-Za-z_$][A-Za-z0-9_$]*", query)}
 
 
-def audit(action: str, query: str, c: str, reason: str = "") -> None:
+def audit(action: str, query: str, reason: str = "") -> None:
     """سجل تدقيق لكل محاولة — مسموحة كانت أو مرفوضة."""
     rec = {
         "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
-        "actor": actor(),
-        "clearance": c,
+        "actor": actor() or "unknown",
+        "actor_name": actor_label(),
+        "clearance": clearance(),
         "action": action,
         "reason": reason,
         "query": " ".join(query.split())[:500],
@@ -87,14 +95,8 @@ def audit(action: str, query: str, c: str, reason: str = "") -> None:
         pass  # فشل التسجيل ما يوقفش التشغيل
 
 
-# ── الفحوصات ────────────────────────────────────────────────────────
-def field_violations(query: str, c: str) -> list[tuple[str, str]]:
-    """الحقول اللي الاستعلام بيلمسها والصلاحية مش كفاية ليها."""
-    toks = _tokens(query)
-    return sorted(
-        (f, need) for f, need in MIN_CLEARANCE.items()
-        if f in toks and rank(c) < rank(need)
-    )
+def touches(query: str, fields: frozenset) -> list[str]:
+    return sorted(_tokens(query) & fields)
 
 
 def is_aggregate_only(query: str) -> bool:
@@ -106,72 +108,73 @@ def is_aggregate_only(query: str) -> bool:
     return any(a in head for a in _AGGREGATES)
 
 
-def guard_query(query: str, c: str | None = None) -> str:
-    """البوابة المركزية — تُستدعى قبل أي تنفيذ. ترجّع الاستعلام أو ترمي GuardDenied."""
-    c = c or clearance()
+# ── البوابات ────────────────────────────────────────────────────────
+def guard_query(query: str) -> str:
+    """البوابة المركزية قبل أي تنفيذ. المالي بيعدّي (بيتقنّع وقت العرض)،
+    الشخصي بيتحجب."""
+    if is_admin():
+        audit("allow", query)
+        return query
 
-    if rank(c) < rank("exec") and not is_aggregate_only(query):
-        audit("deny", query, c, "raw_rows")
+    pii = touches(query, PII_FIELDS)
+    if pii:
+        audit("deny", query, f"pii:{pii}")
+        raise GuardDenied(f"مرفوض — بيانات شخصية: {'، '.join(pii)}")
+
+    if not is_aggregate_only(query):
+        audit("deny", query, "raw_rows")
         raise GuardDenied(
-            "مرفوض — صلاحيتك تسمح بنتائج مجمّعة فقط (count/sum/avg)، "
-            "مش صفوف خام. ده بيمنع تسريب بيانات شخصية."
-        )
+            "مرفوض — صلاحيتك تسمح بنتائج مجمّعة فقط (count/sum/avg)، مش صفوف خام.")
 
-    bad = field_violations(query, c)
-    if bad:
-        names = "، ".join(f"{f} (يحتاج {need})" for f, need in bad)
-        audit("deny", query, c, f"fields:{[f for f, _ in bad]}")
-        raise GuardDenied(f"مرفوض — حقول مقيّدة: {names}")
-
-    audit("allow", query, c)
+    audit("allow", query, "money_masked" if touches(query, MONEY_FIELDS) else "")
     return query
 
 
-def guard_free_sql(query: str, c: str | None = None) -> str:
-    """بوابة أمر sql الحر — من lead فأعلى فقط."""
-    c = c or clearance()
-    if rank(c) < rank("lead"):
-        audit("deny", query, c, "free_sql_forbidden")
+def guard_free_sql(query: str) -> str:
+    """بوابة أمر sql الحر.
+
+    الاستعلام الحر مش ممكن تقنيع ناتجه تلقائياً — الطبقة مش عارفة أي عمود
+    يمثّل فلوس. فلو التيم طلب حقل مالي في SQL حر بيتحوّل للأوامر الجاهزة
+    اللي بتعرف تحوّله لنسبة.
+    """
+    if is_admin():
+        return guard_query(query)
+
+    money = touches(query, MONEY_FIELDS)
+    if money:
+        audit("deny", query, f"money_in_free_sql:{money}")
         raise GuardDenied(
-            "مرفوض — الاستعلام الحر مقفول لصلاحية team. "
-            "استخدم: health / today / orders / errors / since"
-        )
-    return guard_query(query, c)
+            f"مرفوض — حقول مالية في استعلام حر: {'، '.join(money)}. "
+            "استخدم today أو orders وهتوصلك كنسبة مقارنة.")
+
+    return guard_query(query)
 
 
-# ── تحويل القيم المطلقة لنسب (سياسة التيم العام) ────────────────────
-def as_ratio(value: float, baseline: float | None) -> str:
-    """يحوّل رقم مطلق لنسبة تغيّر مقابل خط الأساس."""
-    if not baseline:
-        return "—"
-    return f"{(value / baseline - 1) * 100:+.1f}%"
-
-
+# ── العرض ───────────────────────────────────────────────────────────
 def as_index(value: float, baseline: float | None) -> str:
-    """رقم قياسي: الأساس = 100 نقطة."""
+    """مؤشر نسبي: الأساس = 100 نقطة."""
     if not baseline:
+        return "— (مفيش أساس مقارنة)"
+    pct = value / baseline * 100
+    return f"{pct:.0f} نقطة مقابل الأساس ({pct - 100:+.0f}%)"
+
+
+def as_share(part: float, whole: float) -> str:
+    """نسبة الجزء من الكل."""
+    if not whole:
         return "—"
-    return f"{value / baseline * 100:.0f} نقطة"
-
-
-def present(value: float, baseline: float | None = None, c: str | None = None) -> str:
-    """يعرض القيمة المطلقة لـ exec/lead، ونسبة فقط لـ team."""
-    c = c or clearance()
-    if rank(c) >= rank("lead"):
-        return f"{value:,.0f}"
-    return as_index(value, baseline)
+    return f"{100.0 * part / whole:.1f}%"
 
 
 # ── غلاف مولّد التقرير ──────────────────────────────────────────────
 class GuardedGen:
     """بروكسي حول 8orders_report_generator — يفحص كل استعلام قبل تنفيذه."""
 
-    def __init__(self, module, c: str | None = None):
+    def __init__(self, module):
         self._module = module
-        self._clearance = c or clearance()
 
     def hogql(self, q, *args, **kwargs):
-        guard_query(q, self._clearance)
+        guard_query(q)
         return self._module.hogql(q, *args, **kwargs)
 
     def __getattr__(self, name):

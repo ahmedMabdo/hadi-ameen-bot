@@ -191,6 +191,30 @@ def cmd_health(args):
         print("مش عطل في التطبيق. الأحداث اللي اتضربت في فترة الانقطاع **مش بترجع**.")
 
 
+def _revenue_baseline(module):
+    """وسيط الإيراد اليومي في آخر 30 يوم — أساس المقارنة للتيم."""
+    rows = gen().hogql(
+        "SELECT round(sum(toFloat(properties.total_amount)),0) AS v FROM events "
+        f"WHERE event='{module.EV['order']}' AND timestamp >= now() - INTERVAL 30 DAY "
+        "GROUP BY toDate(timestamp) ORDER BY v DESC LIMIT 7")
+    values = sorted(float(r[0]) for r in rows if r and r[0])
+    return values[len(values) // 2] if values else 0
+
+
+def _money(value, baseline_fn):
+    """مبلغ: رقم كامل للأدمن، مؤشر نسبي للتيم."""
+    if posthog_guard.is_admin():
+        return f"{float(value or 0):,.0f} ج.م"
+    return posthog_guard.as_index(float(value or 0), baseline_fn())
+
+
+def _amount_cell(amount, revenue_total):
+    """خانة المبلغ في جدول الأوردرات: مبلغ للأدمن، نصيب من الإيراد للتيم."""
+    if posthog_guard.is_admin():
+        return f"{float(amount or 0):>12,.0f} ج.م"
+    return f"{posthog_guard.as_share(float(amount or 0), revenue_total):>8} من الإيراد"
+
+
 def cmd_today(args):
     day = args.date or business_day()
     banner, state = guard_banner()
@@ -211,7 +235,7 @@ def cmd_today(args):
 
     conv = f"{100.0 * orders / carts:.1f}%" if carts else "—"
     print(f"  أوردرات      : {int(orders):,}")
-    print(f"  إيراد        : {float(revenue or 0):,.0f} ج.م")
+    print(f"  إيراد        : {_money(revenue, lambda: _revenue_baseline(module))}")
     print(f"  سلات         : {int(carts):,}  (سلة→أوردر: {conv})")
     print(f"  مشاهدات منتج : {int(views):,}")
     print(f"  مستخدمين     : {int(users):,}")
@@ -234,9 +258,10 @@ def cmd_orders(args):
         print("  مفيش أوردرات مسجّلة في النافذة دي.")
         return
     total = sum(int(r[1]) for r in rows)
+    revenue_total = sum(float(r[2] or 0) for r in rows)
     for method, count, amount in rows:
         share = 100.0 * int(count) / total if total else 0
-        print(f"  {str(method or 'غير محدد'):22} {int(count):>6,} ({share:4.1f}%)  {float(amount or 0):>12,.0f} ج.م")
+        print(f"  {str(method or 'غير محدد'):22} {int(count):>6,} ({share:4.1f}%)  {_amount_cell(amount, revenue_total)}")
     print(f"  {'الإجمالي':22} {total:>6,}")
 
 
