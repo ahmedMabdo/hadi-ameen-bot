@@ -45,6 +45,8 @@ import re
 import sys
 from pathlib import Path
 
+import posthog_guard  # طبقة صلاحيات PostHog
+
 BASE = Path(__file__).resolve().parent
 GENERATOR = BASE / "intel" / "8orders_report_generator.py"
 TZ_NAME = "Africa/Cairo"
@@ -79,7 +81,7 @@ def gen():
         spec = importlib.util.spec_from_file_location("hadi_ph_generator", GENERATOR)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        _gen = module
+        _gen = posthog_guard.GuardedGen(module)
     return _gen
 
 
@@ -281,6 +283,7 @@ _SQL_BAD = re.compile(r"\b(insert|update|delete|drop|alter|create|truncate|grant
 
 def cmd_sql(args):
     query = args.query.strip().rstrip(";")
+    posthog_guard.guard_free_sql(query)
     if not _SQL_OK.match(query) or _SQL_BAD.search(query):
         sys.exit("مسموح SELECT بس — الأداة قراءة فقط.")
     banner, _ = guard_banner()
@@ -340,7 +343,10 @@ def main():
     sub.add_parser("selftest").set_defaults(func=lambda a: selftest())
 
     args = parser.parse_args()
-    args.func(args)
+    try:
+        args.func(args)
+    except posthog_guard.GuardDenied as exc:
+        sys.exit(f"\u26d4 {exc}")
 
 
 if __name__ == "__main__":
