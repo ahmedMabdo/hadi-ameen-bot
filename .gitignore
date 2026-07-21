@@ -61,3 +61,4 @@ logs/heartbeat_state.json.tmp
 .venv/
 add_key.sh
 knowledge/memory_pending.jsonl
+mars_results.png
