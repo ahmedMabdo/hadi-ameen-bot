@@ -174,29 +174,40 @@ def now_label() -> str:
 
 
 def build_embed(pipelines: list, date_label: str, has_image: bool) -> dict:
-    any_fail = any(p.get("error") or p.get("failed", 0) > 0 for p in pipelines)
+    def is_bad(p):
+        return bool(p.get("error")) or p.get("failed", 0) > 0 or (not p.get("error") and p.get("total", 0) == 0)
+
+    any_fail = any(is_bad(p) for p in pipelines)
     fields = []
     for p in pipelines:
         if p.get("error"):
             fields.append({"name": p["name"], "value": f":warning: {p['error']}", "inline": False})
             continue
-        dot = "🟢" if (p["failed"] == 0 and p["result_label"] == "SUCCEEDED") else "🔴"
+        if p.get("total", 0) == 0:
+            fields.append({"name": p["name"], "value": (
+                f"\u26a0\ufe0f **{p['result_label']}** \u2014 \u0645\u0641\u064a\u0634 \u0646\u062a\u0627\u0626\u062c "
+                f"\u0627\u062e\u062a\u0628\u0627\u0631\u0627\u062a \u0644\u0644\u0631\u0646 \u062f\u0647 "
+                f"(\u0627\u0644\u0631\u0646 \u0641\u0634\u0644 \u0642\u0628\u0644 \u062a\u0646\u0641\u064a\u0630 \u0627\u0644\u0627\u062e\u062a\u0628\u0627\u0631\u0627\u062a \u063a\u0627\u0644\u0628\u064b\u0627)\n"
+                f"[Build {p['build_number']} \u2014 details]({p['url']})"), "inline": False})
+            continue
+        dot = "\U0001F7E2" if (p["failed"] == 0 and p["result_label"] == "SUCCEEDED") else "\U0001F534"
         value = (
             f"{emoji_bar(p)}\n"
-            f"{dot} **{p['result_label']}** · نسبة النجاح **{pass_rate(p):.1f}%**\n"
-            f"✅ نجح: **{p['passed']}**  ❌ فشل: **{p['failed']}**  "
-            f"⚪ مش متنفذ: **{p.get('not_executed', 0)}**  (الكلي {p['total']})\n"
-            f"[Build {p['build_number']} — test results]({p['url']})"
+            f"{dot} **{p['result_label']}** \u00b7 \u0646\u0633\u0628\u0629 \u0627\u0644\u0646\u062c\u0627\u062d **{pass_rate(p):.1f}%**\n"
+            f"\u2705 \u0646\u062c\u062d: **{p['passed']}**  \u274c \u0641\u0634\u0644: **{p['failed']}**  "
+            f"\u26aa \u0645\u0634 \u0645\u062a\u0646\u0641\u0630: **{p.get('not_executed', 0)}**  (\u0627\u0644\u0643\u0644\u064a {p['total']})\n"
+            f"[Build {p['build_number']} \u2014 test results]({p['url']})"
         )
         fields.append({"name": p["name"], "value": value, "inline": False})
 
     embed = {
-        "title": "🔴 Mars Automation — نتائج الأوتوميشن اليومية"
-                 if any_fail else "🟢 Mars Automation — نتائج الأوتوميشن اليومية",
+        "title": ("\U0001F534 Mars Automation \u2014 \u0646\u062a\u0627\u0626\u062c \u0627\u0644\u0623\u0648\u062a\u0648\u0645\u064a\u0634\u0646 \u0627\u0644\u064a\u0648\u0645\u064a\u0629"
+                  if any_fail else
+                  "\U0001F7E2 Mars Automation \u2014 \u0646\u062a\u0627\u0626\u062c \u0627\u0644\u0623\u0648\u062a\u0648\u0645\u064a\u0634\u0646 \u0627\u0644\u064a\u0648\u0645\u064a\u0629"),
         "description": date_label,
         "color": COLOR_RED if any_fail else COLOR_GREEN,
         "fields": fields,
-        "footer": {"text": "Source: Azure DevOps · TalabatkAPI.Test"},
+        "footer": {"text": "Source: Azure DevOps \u00b7 TalabatkAPI.Test"},
         "timestamp": datetime.now(CAIRO_TZ).isoformat(),
     }
     if has_image:
@@ -260,6 +271,13 @@ def render_card(pipelines: list, out_path: str, date_label: str):
         d.text((40, y), p["name"], font=f_name, fill=WHITE)
         if p.get("error"):
             d.text((40, y + 48), f"! {p['error']}", font=f_stat, fill=RED)
+            continue
+
+        if p["total"] == 0:
+            bbox0 = d.textbbox((0, 0), p["result_label"], font=f_badge)
+            d.text((W - 40 - (bbox0[2] - bbox0[0]), y + 2), p["result_label"], font=f_badge, fill=RED)
+            d.text((40, y + 55), "No test results for this build (run likely failed before tests ran)",
+                   font=f_stat, fill=RED)
             continue
 
         label = p["result_label"]
