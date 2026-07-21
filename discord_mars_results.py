@@ -59,7 +59,7 @@ MASTER_DEF_ID = int(os.environ.get("MARS_MASTER_DEF_ID", "603"))
 MARS_CHANNEL_ID = os.environ.get("MARS_CHANNEL_ID", "1136668686044909761")
 
 # Azure DevOps build result codes
-BUILD_RESULT = {2: "SUCCEEDED", 4: "PARTIAL", 8: "FAILED", 32: "CANCELED"}
+BUILD_RESULT = {"succeeded": "SUCCEEDED", "partiallysucceeded": "PARTIAL", "failed": "FAILED", "canceled": "CANCELED"}
 
 # Discord embed colors
 COLOR_GREEN = 0x57F287
@@ -103,32 +103,25 @@ def get_latest_build(def_id: int):
 
 
 def get_test_summary(build_id: int):
-    """Aggregated pass/fail counts for a build. None on failure."""
-    data = _ado_get("testresults/resultsummarybybuild", {
-        "buildId": build_id,
-        "api-version": "7.1-preview.1",
-    })
-    if data:
-        agg = data.get("aggregatedResultsAnalysis") or {}
-        by = agg.get("resultsByOutcome") or {}
-        if by:
-            passed = (by.get("Passed") or {}).get("count", 0)
-            failed = (by.get("Failed") or {}).get("count", 0)
-            not_exec = (by.get("NotExecuted") or {}).get("count", 0)
-            total = agg.get("totalTests", passed + failed + not_exec)
-            return {"passed": passed, "failed": failed,
-                    "not_executed": not_exec, "total": total}
+    """Aggregated pass/fail counts for a build via its test runs. None on failure.
 
-    # Fallback: aggregate test runs
-    runs = _ado_get("test/runs", {"buildIds": build_id, "api-version": ADO_API_VERSION})
-    if not runs:
+    Azure DevOps exposes per-build test runs at test/runs?buildUri=... ; each run
+    reports totalTests / passedTests / notApplicableTests / unanalyzedTests, and
+    totalTests == passed + notApplicable + unanalyzed (verified live). Failed maps
+    to unanalyzedTests, not-executed to notApplicableTests.
+    """
+    data = _ado_get("test/runs", {
+        "buildUri": f"vstfs:///Build/Build/{build_id}",
+        "api-version": ADO_API_VERSION,
+    })
+    if not data:
         return None
-    passed = total = not_exec = 0
-    for run in runs.get("value") or []:
+    passed = failed = not_exec = total = 0
+    for run in data.get("value") or []:
         total += run.get("totalTests", 0)
         passed += run.get("passedTests", 0)
         not_exec += run.get("notApplicableTests", 0)
-    failed = max(total - passed - not_exec, 0)
+        failed += run.get("unanalyzedTests", 0)
     return {"passed": passed, "failed": failed, "not_executed": not_exec, "total": total}
 
 
@@ -149,7 +142,7 @@ def collect_pipeline(name: str, def_id: int) -> dict:
             "name": name,
             "build_id": build["id"],
             "build_number": build.get("buildNumber", str(build["id"])),
-            "result_label": BUILD_RESULT.get(build.get("result"), "UNKNOWN"),
+            "result_label": BUILD_RESULT.get(str(build.get("result", "")).lower(), "UNKNOWN"),
             "url": build_web_url(build["id"]),
             **summary,
         }
