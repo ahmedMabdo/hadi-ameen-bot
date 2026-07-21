@@ -60,6 +60,13 @@ MASTER_DEF_ID = int(os.environ.get("MARS_MASTER_DEF_ID", "603"))
 
 MARS_CHANNEL_ID = os.environ.get("MARS_CHANNEL_ID", "1136668686044909761")
 
+# مسؤول كل بايبلاين — بيتعمله tag في التقرير اليومي طول ما فيه مشاكل (طلب غادة).
+# Essam -> develop, Salama -> master.
+PIPELINE_OWNERS = {
+    "develop": os.environ.get("MARS_DEVELOP_OWNER_ID", "1017107448194154526"),  # محمد عصام
+    "master": os.environ.get("MARS_MASTER_OWNER_ID", "1017367801033400380"),    # مصطفى سلامة
+}
+
 BUILD_RESULT = {"succeeded": "SUCCEEDED", "partiallysucceeded": "PARTIAL",
                 "failed": "FAILED", "canceled": "CANCELED"}
 
@@ -407,18 +414,21 @@ def render_card(pipelines: list, out_path: str, date_label: str):
 # Discord posting
 # --------------------------------------------------------------------------- #
 
-def post_report(embed: dict, files: list, dry_run: bool) -> bool:
+def post_report(embed: dict, files: list, dry_run: bool, content: str = None, mention_ids: list = None) -> bool:
     files = [f for f in (files or []) if f and os.path.isfile(f)]
+    payload = {"embeds": [embed], "allowed_mentions": {"parse": [], "users": mention_ids or []}}
+    if content:
+        payload["content"] = content
     if dry_run:
         print("MARSRESULTS: DRY RUN — لم يُنشر في القناة العامة")
-        print(json.dumps({"embeds": [embed]}, ensure_ascii=False, indent=2))
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
         for f in files:
             print("attach:", f)
         return True
 
     url = f"{DISCORD_API}/channels/{MARS_CHANNEL_ID}/messages"
     token = get_token()
-    data = {"payload_json": json.dumps({"embeds": [embed]})}
+    data = {"payload_json": json.dumps(payload)}
     opened, multipart = [], {}
     try:
         for i, path in enumerate(files):
@@ -433,7 +443,7 @@ def post_report(embed: dict, files: list, dry_run: bool) -> bool:
         else:
             resp = requests.post(url, headers={"Authorization": f"Bot {token}",
                                                "Content-Type": "application/json"},
-                                 json={"embeds": [embed]}, timeout=45)
+                                 json=payload, timeout=45)
     finally:
         for fh in opened:
             fh.close()
@@ -450,8 +460,42 @@ def post_report(embed: dict, files: list, dry_run: bool) -> bool:
 # --------------------------------------------------------------------------- #
 
 def gather(which: str = "all", with_failures: bool = True) -> list:
-    return [collect_pipeline(name, def_id, with_failures)
-            for name, def_id, key in PIPELINES if which in ("all", key)]
+    out = []
+    for name, def_id, key in PIPELINES:
+        if which not in ("all", key):
+            continue
+        p = collect_pipeline(name, def_id, with_failures)
+        p["key"] = key
+        out.append(p)
+    return out
+
+
+def _is_bad(p: dict) -> bool:
+    return bool(p.get("error")) or p.get("failed", 0) > 0 or (not p.get("error") and p.get("total", 0) == 0)
+
+
+def build_run_content(pipelines: list):
+    """Message content for the daily report. Pings the owner of each failing
+    pipeline (Essam=develop, Salama=master) so it acts as a daily reminder
+    until fixed. Returns (content, mention_ids)."""
+    bad = [p for p in pipelines if _is_bad(p)]
+    if not bad:
+        return "✅ الأوتوميشن كله عدّى النهاردة — مفيش مشاكل، تسلم إيديكم.", []
+    lines = ["⏰ **تذكير يومي — لسه فيه مشاكل في الأوتوميشن محتاجة تتحل:**"]
+    mention_ids = []
+    for p in bad:
+        owner = PIPELINE_OWNERS.get(p.get("key"))
+        tag = f"<@{owner}>" if owner else ""
+        if p.get("key") == "develop":
+            lines.append(f"🔴 Develop: {tag} — شوف مشاكل الـ develop")
+        elif p.get("key") == "master":
+            lines.append(f"🔴 Master: {tag} — حل مشاكل الـ master")
+        else:
+            lines.append(f"🔴 {p.get('name','')}: {tag}")
+        if owner:
+            mention_ids.append(owner)
+    lines.append("(التذكير هيتكرر كل يوم لحد ما المشاكل تتحل ✅)")
+    return "\n".join(lines), mention_ids
 
 
 def main() -> None:
@@ -483,7 +527,8 @@ def main() -> None:
         txt = build_failed_txt(pipelines, date_label)
         embed = build_embed(pipelines, date_label, has_image=bool(png))
         files = [f for f in (png, txt) if f]
-        ok = post_report(embed, files, dry_run=dry_run)
+        content, mention_ids = build_run_content(pipelines)
+        ok = post_report(embed, files, dry_run=dry_run, content=content, mention_ids=mention_ids)
         sys.exit(0 if ok else 1)
 
     if command == "failed":
