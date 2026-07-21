@@ -62,3 +62,4 @@ logs/heartbeat_state.json.tmp
 add_key.sh
 knowledge/memory_pending.jsonl
 mars_results.png
+mars_failed_tests.txt
