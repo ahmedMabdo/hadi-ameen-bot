@@ -25,8 +25,10 @@ confirm phrase -> run(..., mode="create"). Extraction uses hadi_engine.run_onesh
 """
 import os
 import re
+import sys
 import json
 import html
+import asyncio
 import datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -221,22 +223,44 @@ def load_proposal(channel_id):
 
 
 # ----------------------------- 4) create -----------------------------
-async def create_tickets(issues, ado_create, ado_attach=None):
-    """ado_create(title, description, priority) -> (url, id) ; ado_attach(id, url) optional."""
+TICKET_TYPE = os.environ.get("TRIAGE_WIT_TYPE", "Issue")
+
+
+def _prio_field(priority):
+    # ADO priority 1..4 (1 highest). high -> 2, normal -> 3
+    return "Microsoft.VSTS.Common.Priority=" + ("2" if priority == "عالية" else "3")
+
+
+async def _create_one(issue, dry_run=False):
+    cmd = [sys.executable, os.path.join(HERE, "ado_cli.py"), "create-work-item",
+           "--type", TICKET_TYPE,
+           "--title", issue["title"] or "issue",
+           "--area-path", SUPPORT_AREA,
+           "--description", issue["description"] or issue["title"] or "-",
+           "--field", _prio_field(issue["priority"])]
+    for u in issue.get("media", []):
+        cmd += ["--attach-url", u]
+    if dry_run:
+        cmd.append("--dry-run")
+    try:
+        p = await asyncio.create_subprocess_exec(
+            *cmd, cwd=HERE,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        o, e = await asyncio.wait_for(p.communicate(), timeout=120)
+        out = (o or b"").decode("utf-8", "replace") + (e or b"").decode("utf-8", "replace")
+    except Exception as ex:  # noqa
+        return None, None, str(ex)
+    m = re.search(r"https?://\S+/_workitems/edit/(\d+)", out) or re.search(r"/_workitems/edit/(\d+)", out)
+    return (m.group(0) if m else None), (m.group(1) if m else None), out
+
+
+async def create_tickets(issues, dry_run=False):
     links = []
     for it in issues:
-        try:
-            url, wid = await ado_create(it["title"], it["description"], it["priority"])
-        except Exception as e:  # noqa
-            links.append({"title": it["title"], "url": None, "error": str(e)})
-            continue
-        if ado_attach and wid:
-            for murl in it["media"]:
-                try:
-                    await ado_attach(wid, murl)
-                except Exception:
-                    pass
-        links.append({"title": it["title"], "url": url, "id": wid, "media": len(it["media"])})
+        url, wid, raw = await _create_one(it, dry_run)
+        links.append({"title": it["title"], "url": url, "id": wid,
+                      "media": len(it.get("media", [])),
+                      "error": "" if url else (raw or "")[-160:]})
     return links
 
 
