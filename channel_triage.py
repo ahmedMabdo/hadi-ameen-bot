@@ -119,7 +119,7 @@ def _parse_json(text):
 async def extract(rows, hadi_engine):
     if not rows:
         return []
-    raw = await hadi_engine.run_oneshot(_extract_prompt(rows), timeout=300)
+    raw = await hadi_engine.ask_haiku(_extract_prompt(rows), timeout=200, model="sonnet", cwd="/tmp")
     data = _parse_json(raw) or {}
     issues = []
     for it in data.get("issues", []):
@@ -168,7 +168,7 @@ async def reflect(rows, issues, hadi_engine):
     if not issues:
         return issues
     try:
-        raw = await hadi_engine.run_oneshot(_reflect_prompt(rows, issues), timeout=300)
+        raw = await hadi_engine.ask_haiku(_reflect_prompt(rows, issues), timeout=200, model="sonnet", cwd="/tmp")
     except Exception:
         return issues
     data = _parse_json(raw)

@@ -459,10 +459,10 @@ async def run_oneshot(prompt: str, timeout: int = 300) -> str:
     return await run_agent(prompt, conv_key="", timeout=timeout)
 
 
-async def ask_haiku(prompt: str, timeout: int = 30) -> str:
+async def ask_haiku(prompt: str, timeout: int = 30, model: str = None, cwd: str = None) -> str:
     import asyncio
     try:
-        proc = await asyncio.create_subprocess_exec(CLAUDE_BIN, "-p", prompt, "--model", os.getenv("HAIKU_MODEL","haiku"), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        proc = await asyncio.create_subprocess_exec(CLAUDE_BIN, "-p", prompt, "--model", (model or os.getenv("HAIKU_MODEL","haiku")), cwd=cwd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         return (out or b"").decode("utf-8","replace").strip()
     except Exception:
