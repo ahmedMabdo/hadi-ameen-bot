@@ -1036,7 +1036,7 @@ async def on_message(message: discord.Message):
 
     # السياق (آخر الرسايل + الريبلاي) بيتبني للـ DM والقنوات على حد سواء —
     # قبل كده كان بيتبني للقنوات بس، فهادي كان بيرد في الـ DM من غير أي سياق.
-    if not (mentioned or named or replying_to_hadi):
+    if message.guild is not None and not (mentioned or named or replying_to_hadi):
         try:
             _v = await hadi_engine.ask_haiku("Reply REPLY if a helpful team assistant named Hadi should respond to this Discord message (real question / problem / bug / request / blocker / clear value); otherwise SILENT. One word only. Message: " + (content or "")[:1500])
             if _v and "SILENT" in _v.upper():
