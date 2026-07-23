@@ -21,6 +21,7 @@ load_dotenv(BASE_DIR / ".env")
 # محرك هادي (Claude Agent SDK + fallback CLI) — لازم يتستورد بعد load_dotenv
 # عشان يقرا إعدادات .env (HADI_ENGINE / CLAUDE_MODEL / HADI_MAX_CONCURRENCY ...).
 import hadi_engine
+import file_extract
 import state_lock  # بند 3.3 — قفل الكتابة المشترك (flock) لملفات الحالة
 import eval_store  # بند 5.3 — تسجيل نتيجة كل تفاعل + تقييم الرياكشنز
 import heartbeat  # بند 8.1/8.3 — الفحوصات الاستباقية والأحداث
@@ -1038,11 +1039,17 @@ async def on_message(message: discord.Message):
     if not (mentioned or named or replying_to_hadi):
         try:
             _v = await hadi_engine.ask_haiku("Reply REPLY if a helpful team assistant named Hadi should respond to this Discord message (real question / problem / bug / request / blocker / clear value); otherwise SILENT. One word only. Message: " + (content or "")[:1500])
-            if _v and "REPLY" not in _v.upper():
+            if _v and "SILENT" in _v.upper():
                 print("HADI: haiku-gate skip -", author_name); return
         except Exception as _hg:
             print("haiku-gate error:", _hg)
     history_text = await build_channel_history(message.channel, message)
+    try:
+        _docn = await file_extract.extract_attachment_texts(message)
+        if _docn:
+            media_notes = (media_notes + chr(10) + chr(10).join(_docn)) if media_notes else chr(10).join(_docn)
+    except Exception as _fe:
+        print("file-extract error:", _fe)
     reply_context = await build_reply_context(message)
     channel_label = (
         f"#{getattr(message.channel, 'name', '?')} (channel_id: {message.channel.id})"
