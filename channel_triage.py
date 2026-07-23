@@ -46,7 +46,8 @@ _MEDIA_EXT = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".mp4", ".mov", ".webm")
 
 
 def is_trigger(text):
-    return bool(text and TRIGGER_RE.search(text))
+    if not text: return False
+    return bool(re.search("||||||| | | | | | |||", text) and re.search("|||issue||||support||customer", text))
 
 
 def is_confirm(text):
