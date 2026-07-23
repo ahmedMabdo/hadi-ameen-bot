@@ -47,7 +47,7 @@ AUTHORIZED_CHANNEL_IDS = {
 }
 
 # عدد رسايل السياق اللي بتتقرا من القناة قبل الرد (قابل للتعديل من .env)
-HISTORY_LIMIT = int(os.getenv("HISTORY_LIMIT", "30") or "30")
+HISTORY_LIMIT = int(os.getenv("HISTORY_LIMIT", "150") or "150")
 
 # ذاكرة هادي الدائمة + مخزن التذكيرات
 MEMORY_FILE = BASE_DIR / "knowledge" / "memory.md"
@@ -861,6 +861,7 @@ class StatusReporter:
         self._task = None
 
     async def start(self, first_line: str) -> None:
+        return  # status disabled; native typing used
         try:
             self._note = await self._message.channel.send(f"⏳ {first_line}")
             self._last_edit = time.time()
@@ -1034,6 +1035,13 @@ async def on_message(message: discord.Message):
 
     # السياق (آخر الرسايل + الريبلاي) بيتبني للـ DM والقنوات على حد سواء —
     # قبل كده كان بيتبني للقنوات بس، فهادي كان بيرد في الـ DM من غير أي سياق.
+    if not (mentioned or named or replying_to_hadi):
+        try:
+            _v = await hadi_engine.ask_haiku("Reply REPLY if a helpful team assistant named Hadi should respond to this Discord message (real question / problem / bug / request / blocker / clear value); otherwise SILENT. One word only. Message: " + (content or "")[:1500])
+            if _v and "REPLY" not in _v.upper():
+                print("HADI: haiku-gate skip -", author_name); return
+        except Exception as _hg:
+            print("haiku-gate error:", _hg)
     history_text = await build_channel_history(message.channel, message)
     reply_context = await build_reply_context(message)
     channel_label = (
