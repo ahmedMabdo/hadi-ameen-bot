@@ -117,13 +117,16 @@ def fetch_fields(ids):
 
 
 def fetch_capacity(iteration_id):
-    url = f"{_team_base()}/iterations/{iteration_id}/capacities?api-version={API}"
-    try:
-        return _req("GET", url).get("value", [])
-    except urllib.error.HTTPError:
-        # older API shape
-        url2 = f"{_team_base()}/iterations/{iteration_id}/capacities?api-version=6.0"
-        return _req("GET", url2).get("value", [])
+    b=_team_base()
+    for ver in ('7.1','7.0','6.0'):
+        for ep in ('capacities','capacity'):
+            try:
+                d=_req('GET', f'{b}/iterations/{iteration_id}/{ep}?api-version={ver}')
+            except Exception:
+                continue
+            v=d.get('value') or d.get('teamMembers') or []
+            if v: return v
+    return []
 
 
 # ----------------------------- storage -----------------------------
