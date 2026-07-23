@@ -429,7 +429,7 @@ def _run_cli_sync(prompt: str, timeout: int) -> str:
 
 
 # --- الواجهة العامة ---------------------------------------------------------
-async def run_agent(prompt: str, conv_key: str = "", timeout: int = 480, on_progress=None,
+async def run_agent(prompt: str, conv_key: str = "", timeout: int = 900, on_progress=None,
                     stats: dict | None = None, actor_id: str = "") -> str:
     """ينفّذ برومبت هادي ويرجّع نص الرد.
 

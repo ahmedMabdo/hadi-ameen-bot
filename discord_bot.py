@@ -27,6 +27,7 @@ import eval_store  # بند 5.3 — تسجيل نتيجة كل تفاعل + تق
 import heartbeat  # بند 8.1/8.3 — الفحوصات الاستباقية والأحداث
 
 TOKEN = os.getenv("DISCORD_BOT_TOKEN", "").strip()
+HEAVY_ACK = "           ."
 
 ALLOWED_USER_IDS = {
     int(user_id.strip())
@@ -244,7 +245,7 @@ async def ask_claude(
 """.strip()
 
     return await hadi_engine.run_agent(
-        prompt, conv_key=conv_key, timeout=480, on_progress=on_progress, stats=stats,
+        prompt, conv_key=conv_key, timeout=900, on_progress=on_progress, stats=stats,
         actor_id=author_id
     )
 
@@ -862,7 +863,8 @@ class StatusReporter:
         self._task = None
 
     async def start(self, first_line: str) -> None:
-        return  # status disabled; native typing used
+        self._task = asyncio.create_task(self._delayed_ack())
+        return
         try:
             self._note = await self._message.channel.send(f"⏳ {first_line}")
             self._last_edit = time.time()
@@ -878,6 +880,14 @@ class StatusReporter:
             self._activity = label
             self._dirty = True
 
+    async def _delayed_ack(self) -> None:
+        try:
+            await asyncio.sleep(25)
+            if not self._done:
+                await self._message.channel.send(HEAVY_ACK)
+        except Exception:
+            pass
+    
     async def _ticker(self) -> None:
         try:
             while not self._done:
