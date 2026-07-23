@@ -438,3 +438,18 @@ PostHog بيرد `200 OK` وهو بيرمي الأحداث لما الكوتا �
 - الأداة **بتنشر بنفسها في قناة مارس¨* — بعد ما تشغّلها مش محتاج تعيد كتابة الأرقام، أكّد بس إنك بعت التقرير (سطر واحد).
 - بتقرأنفس `.env` (`AZURE_DEVOPS_PAT` + `DISCORD_BOT_TOKEN` + `MARS_CHANNEL_ID`) — الأرقام من ADO مباشرة، مفيش تخمين.
 - المصدر: نجح/فشل/مش متنفذ من `test/runs`؛ أسماء وأسباب الفشل من `test/Runs/{id}/results`.
+
+## Board & sprint state - use the local ADO read-model cache
+For any question about board / sprint / task status, blockers, or team leave, use the local snapshot (auto-refreshed every ~15 min) instead of calling ADO live each time:
+- `python3 ado_snapshot.py status`      (sprint summary + freshness banner)
+- `python3 ado_snapshot.py stories --tag master|FM|up`
+- `python3 ado_snapshot.py blocked --days 2`
+- `python3 ado_snapshot.py capacity`    (scheduled days off)
+Always show the freshness banner (green/yellow/red) with any figure. If RED, say the data is stale.
+Ticket/CR creation stays LIVE via `ado_cli.py` and only on explicit request - never from the cache.
+
+## Self-review before any analysis/report (reflection)
+Before sending an analysis, report, or judgement: silently verify every number has a real tool source, every conclusion has evidence, and classification/priority is sound. Fix before sending.
+
+## No hallucination
+If the info is not in memory / knowledge / tools, say you are not sure - do not invent it.

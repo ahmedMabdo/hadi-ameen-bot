@@ -63,3 +63,10 @@ add_key.sh
 knowledge/memory_pending.jsonl
 mars_results.png
 mars_failed_tests.txt
+
+# Hadi upgrade (local/generated)
+ado_snapshot.db
+sprint_intake_state.json
+sprint_ceremonies.json
+knowledge/sprints.md
+*.bak

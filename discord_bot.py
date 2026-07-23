@@ -1063,6 +1063,15 @@ async def on_message(message: discord.Message):
         try:
             async with message.channel.typing():
                 _t0 = time.time()
+                _named = ('\u0647\u0627\u062f\u064a' in content) or ('hadi' in content.lower())
+                if not mentioned and not _named:
+                    try:
+                        from speak_gate import decide as _sg
+                        if not _sg(content, {'mentioned': mentioned, 'named': _named, 'reply_to_hadi': False}).get('reply', True):
+                            print('HADI: speak-gate skip -', author_name)
+                            return
+                    except Exception as _e:
+                        print('speak-gate error:', _e)
                 response = await ask_claude(
                     content,
                     author_name,
