@@ -48,7 +48,7 @@ AUTHORIZED_CHANNEL_IDS = {
 }
 
 # عدد رسايل السياق اللي بتتقرا من القناة قبل الرد (قابل للتعديل من .env)
-HISTORY_LIMIT = int(os.getenv("HISTORY_LIMIT", "150") or "150")
+HISTORY_LIMIT = int(os.getenv("HISTORY_LIMIT", "80") or "80")
 
 # ذاكرة هادي الدائمة + مخزن التذكيرات
 MEMORY_FILE = BASE_DIR / "knowledge" / "memory.md"
@@ -1145,7 +1145,7 @@ async def on_message(message: discord.Message):
                 error_type="EngineTimeout",
             )
             print(f"HADI: TIMEOUT (480s) - {author_name}: {content[:60]}")
-            if False: await message.reply(
+            if (message.guild is None or mentioned or named or replying_to_hadi): await message.reply(
                 "الطلب خد وقت أطول من الحد المسموح (8 دقايق) واتوقف. لو كان طلب تيكت، راجع البورد الأول قبل ما تكرر الطلب.",
                 mention_author=False,
             )
@@ -1164,7 +1164,7 @@ async def on_message(message: discord.Message):
                 error_type=type(error).__name__,
             )
             print(f"ERROR: {type(error).__name__}: {error}")
-            if False: await message.reply(
+            if (message.guild is None or mentioned or named or replying_to_hadi): await message.reply(
                 f"حصل خطأ أثناء تشغيل هادي: {type(error).__name__}",
                 mention_author=False,
             )
