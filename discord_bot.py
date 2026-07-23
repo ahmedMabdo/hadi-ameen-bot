@@ -988,8 +988,6 @@ async def on_message(message: discord.Message):
             and getattr(message.reference.resolved, "author", None)
             and message.reference.resolved.author.id == client.user.id
         )
-        if not (mentioned or named or replying_to_hadi):
-            return
 
         # ريبلاي على رسالة هادي محتواه مجرد منشن/تاج لحد تاني ("@Amr Atef")
         # أو إيموجي بس → مش موجه لهادي، تجاهل تمامًا من غير أي رد.
@@ -1063,15 +1061,6 @@ async def on_message(message: discord.Message):
         try:
             async with message.channel.typing():
                 _t0 = time.time()
-                _named = ('\u0647\u0627\u062f\u064a' in content) or ('hadi' in content.lower())
-                if not mentioned and not _named:
-                    try:
-                        from speak_gate import decide as _sg
-                        if not _sg(content, {'mentioned': mentioned, 'named': _named, 'reply_to_hadi': False}).get('reply', True):
-                            print('HADI: speak-gate skip -', author_name)
-                            return
-                    except Exception as _e:
-                        print('speak-gate error:', _e)
                 response = await ask_claude(
                     content,
                     author_name,
