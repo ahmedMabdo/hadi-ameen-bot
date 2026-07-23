@@ -1009,7 +1009,7 @@ async def on_message(message: discord.Message):
     # من غير السطور دي هادي كان بيرد على أي فورورد بـ "ابعت رسالة نصية."
     ack_emoji = pick_reaction(content)
     try:
-        if ack_emoji:
+        if ack_emoji and (message.guild is None or mentioned or named or replying_to_hadi):
             await message.add_reaction(ack_emoji)
     except Exception:
         pass
@@ -1038,11 +1038,11 @@ async def on_message(message: discord.Message):
     # قبل كده كان بيتبني للقنوات بس، فهادي كان بيرد في الـ DM من غير أي سياق.
     if message.guild is not None and not (mentioned or named or replying_to_hadi):
         try:
-            _v = await hadi_engine.ask_haiku("Reply REPLY if a helpful team assistant named Hadi should respond to this Discord message (real question / problem / bug / request / blocker / clear value); otherwise SILENT. One word only. Message: " + (content or "")[:1500])
-            if _v and "SILENT" in _v.upper():
+            _v = await hadi_engine.ask_haiku("You are the gate for Hadi, a senior product/ops assistant in a team Discord. Answer ONE word. REPLY only if Hadi can add clear specific professional value right now (a direct question Hadi can answer, a bug/issue/blocker to log or analyze, or an explicit request to Hadi). SILENT for casual chat, people talking to each other, status updates, opinions, or anything a bot reply would not clearly improve. Default SILENT when unsure. Message: " + (content or "")[:1500])
+            if "REPLY" not in (_v or "").upper():
                 print("HADI: haiku-gate skip -", author_name); return
         except Exception as _hg:
-            print("haiku-gate error:", _hg)
+            print("haiku-gate error:", _hg); return
     history_text = await build_channel_history(message.channel, message)
     try:
         _docn = await file_extract.extract_attachment_texts(message)
@@ -1145,7 +1145,7 @@ async def on_message(message: discord.Message):
                 error_type="EngineTimeout",
             )
             print(f"HADI: TIMEOUT (480s) - {author_name}: {content[:60]}")
-            await message.reply(
+            if False: await message.reply(
                 "الطلب خد وقت أطول من الحد المسموح (8 دقايق) واتوقف. لو كان طلب تيكت، راجع البورد الأول قبل ما تكرر الطلب.",
                 mention_author=False,
             )
@@ -1164,7 +1164,7 @@ async def on_message(message: discord.Message):
                 error_type=type(error).__name__,
             )
             print(f"ERROR: {type(error).__name__}: {error}")
-            await message.reply(
+            if False: await message.reply(
                 f"حصل خطأ أثناء تشغيل هادي: {type(error).__name__}",
                 mention_author=False,
             )
