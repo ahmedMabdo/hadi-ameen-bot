@@ -1029,6 +1029,23 @@ async def on_message(message: discord.Message):
         forward_block = f"[رسالة محوّلة (Forward) — محتواها]:\n{forwarded_text}"
         content = f"{content}\n\n{forward_block}" if content else forward_block
 
+    try:
+        import channel_triage as _ct
+        if _ct.is_confirm(content):
+            _p = _ct.load_proposal(message.channel.id)
+            if _p and _p.get("issues"):
+                _links = await _ct.create_tickets(_p["issues"])
+                await send_long_message(message.channel, _ct.format_links(_links), reply_to=message)
+                return
+        elif _ct.is_trigger(content):
+            _rows = await _ct.collect_since(message.channel, client)
+            _iss = await _ct.extract(_rows, hadi_engine)
+            _iss = await _ct.reflect(_rows, _iss, hadi_engine)
+            _ct.save_proposal(message.channel.id, _iss)
+            await send_long_message(message.channel, _ct.format_proposal(_iss), reply_to=message)
+            return
+    except Exception as _cte:
+            print("channel_triage error:", _cte)
     image_paths = await save_image_attachments(message)
     frame_paths, video_notes = await save_video_frames(message)
     image_paths = image_paths + frame_paths
