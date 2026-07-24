@@ -29,6 +29,15 @@ API = f"{UI_HOST}/api/projects/{PROJECT}"
 HEADERS = {"Authorization": f"Bearer {os.environ.get('POSTHOG_API_KEY','')}"}
 CAIRO_OFFSET = 3                                   # June: UTC+3
 
+# ── نافذة يوم العمل (القاهرة) ──
+# 8Orders زودوا ساعات العمل (2026-07-24): اليوم بيقفل 04:00 بدل 02:00.
+# غيّر الرقمين دول بس لو الساعات اتغيرت تاني — كل الاستعلامات بتقرا منهم.
+# لازم يفضلوا متطابقين مع posthog_cli.business_day() عشان الرقم اللايف
+# والرقم اللي في التقرير ما يختلفوش.
+BIZ_START = "08:00:00"
+BIZ_END = "04:00:00"   # على اليوم اللي بعده
+BIZ_END_HOUR = 4
+
 # ── App-specific event/property mapping (verified against PostHog) ──
 EV = dict(
     app_open="Application Opened", product="product_viewed", cart="add_to_cart",
@@ -76,11 +85,11 @@ def hogql(q, retries=3):
 
 def D(day):
     """Business-day predicate (NOT calendar day).
-    A business day labelled `day` runs Cairo 08:00 of `day` -> Cairo 02:00 next day.
+    A business day labelled `day` runs Cairo 08:00 of `day` -> Cairo 04:00 next day.
     The PostHog project timezone is Africa/Cairo, so HogQL interprets BOTH the
     `timestamp` column and the toDateTime() literals below in Cairo local time.
     We therefore express the window directly as the true Cairo business-day edges
-    [day 08:00, next-day 02:00).
+    [day 08:00, next-day 04:00).
     (Historical note: until 2026-06-23 the project was on UTC, so this window was
     written as [day 05:00, day 23:00) in UTC. The project tz was then switched to
     Africa/Cairo, which shifted the literal interpretation by +3h — hence the
@@ -88,10 +97,12 @@ def D(day):
     The routine runs ~07:00 Cairo (delayed from 03:00 so PostHog finishes
     de-duplicating the just-ended day's events) and reports the business day
     that just ended. The default-day logic is correct for any run time between
-    Cairo 02:00 and midnight."""
+    Cairo 04:00 and midnight.
+    (2026-07-24: window end moved 02:00 -> 04:00 — 8Orders extended trading
+    hours. Edges live in BIZ_START/BIZ_END; do not re-hardcode them here.)"""
     nxt = (dt.date.fromisoformat(day) + dt.timedelta(days=1)).isoformat()
-    return (f"timestamp >= toDateTime('{day} 08:00:00') "
-            f"AND timestamp < toDateTime('{nxt} 02:00:00')")
+    return (f"timestamp >= toDateTime('{day} {BIZ_START}') "
+            f"AND timestamp < toDateTime('{nxt} {BIZ_END}')")
 
 # ───────────────────────── formatting helpers ─────────────────────────
 def fmt(n):
@@ -861,7 +872,7 @@ def build_html(d):
     <div class="cover-meta" style="direction:ltr; text-align:left;">
       Daily Product Intelligence Report<br>
       <strong style="color:#fff">{dd.strftime("%a, %d %B %Y")}</strong><br>
-      Business day 08:00→02:00 · Africa/Cairo<br>
+      Business day 08:00→04:00 · Africa/Cairo<br>
       PostHog #{PROJECT} · Generated {gen_date.strftime("%d %b %Y")} {gen_clock} Cairo
     </div>
     <div class="cover-clear"></div>
@@ -1202,7 +1213,7 @@ def build_html_tech(d):
     <div class="cover-meta" style="direction:ltr; text-align:left;">
       Daily Technical Quality Report<br>
       <strong style="color:#fff">{dd.strftime("%a, %d %B %Y")}</strong><br>
-      Business day 08:00→02:00 · Africa/Cairo<br>
+      Business day 08:00→04:00 · Africa/Cairo<br>
       PostHog #{PROJECT} · Generated {gen_date.strftime("%d %b %Y")} {gen_clock} Cairo
     </div>
     <div class="cover-clear"></div>
@@ -1322,7 +1333,7 @@ def acquisition(day):
     - new_browse_no : users who NEVER ordered (lifetime) who browsed but didn't order that day.
     - new_cart_no   : subset of the above that reached add_to_cart (highest-intent lost new users).
     - acc_*         : same-day activation of accounts created that day."""
-    end = f"{(dt.date.fromisoformat(day) + dt.timedelta(days=1)).isoformat()} 02:00:00"
+    end = f"{(dt.date.fromisoformat(day) + dt.timedelta(days=1)).isoformat()} {BIZ_END}"
     ever = _ever_ordered_subq(end)
     base = hogql(f"""SELECT
         uniqIf(person_id, event IN ('product_viewed','store_opened','add_to_cart')),
@@ -1360,8 +1371,8 @@ def coverage(day, days=7):
     start = (dt.date.fromisoformat(day) - dt.timedelta(days=days - 1)).isoformat()
     nxt = (dt.date.fromisoformat(day) + dt.timedelta(days=1)).isoformat()
     # Project tz is Africa/Cairo: express the trailing window in Cairo wall-clock
-    # (start 08:00 of the first day -> 02:00 after the last business day).
-    w = f"timestamp >= '{start} 08:00:00' AND timestamp < '{nxt} 02:00:00'"
+    # (start 08:00 of the first day -> 04:00 after the last business day).
+    w = f"timestamp >= '{start} {BIZ_START}' AND timestamp < '{nxt} {BIZ_END}'"
     inst = hogql(f"""WITH inst AS (SELECT DISTINCT person_id FROM events WHERE {w} AND event='{EV['install']}')
         SELECT (SELECT count() FROM inst),
           uniqIf(person_id, event='account_created'),
@@ -1509,7 +1520,7 @@ def main():
         day = args.date
     else:
         # Routine runs ~07:00 Cairo; the business day that just ended started "yesterday".
-        # (Works for any run time from Cairo 02:00 to midnight — picks the same day.)
+        # (Works for any run time from Cairo 04:00 to midnight — picks the same day.)
         now_cairo = dt.datetime.utcnow() + dt.timedelta(hours=CAIRO_OFFSET)
         day = (now_cairo.date() - dt.timedelta(days=1)).isoformat()
 
@@ -1518,7 +1529,7 @@ def main():
     tech_out = os.path.join(os.path.dirname(biz_out) or ".",
                             f"PostHog Report {dd.strftime('%d%b%Y')} - Tech.pdf")
 
-    print(f"Generating 8Orders report for BUSINESS DAY {day} (Cairo 08:00 → next-day 02:00) ...")
+    print(f"Generating 8Orders report for BUSINESS DAY {day} (Cairo {BIZ_START[:5]} → next-day {BIZ_END[:5]}) ...")
     d = collect(day)
     sanity_print(d)
     from weasyprint import HTML

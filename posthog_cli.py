@@ -19,7 +19,7 @@ PostHog بيرمي الأحداث **بصمت** لما الكوتا تتعدى: �
 
 الأرقام بتتحسب بنفس دوال التقرير اليومي (`intel/8orders_report_generator.py`):
 نفس `hogql` ونفس خريطة الأحداث `EV` ونفس نافذة يوم العمل `D()` (القاهرة 08:00 →
-02:00 اليوم اللي بعده — **مش يوم تقويمي**). يعني الرقم اللايف والرقم اللي في
+04:00 اليوم اللي بعده — **مش يوم تقويمي**). يعني الرقم اللايف والرقم اللي في
 تقرير الصبح **بيتحسبوا بنفس الطريقة** — مفيش تعريفين متعارضين.
 
 ## المفتاح
@@ -93,10 +93,16 @@ def now_cairo():
         return dt.datetime.now()
 
 
+# لازم يفضل متطابق مع BIZ_END_HOUR في intel/8orders_report_generator.py.
+# 8Orders زودوا ساعات العمل (2026-07-24): اليوم بيقفل 04:00 بدل 02:00.
+BIZ_END_HOUR = 4
+
+
 def business_day(at=None) -> str:
-    """يوم العمل الحالي: قبل 02:00 القاهرة إحنا لسه في يوم إمبارح."""
+    """يوم العمل الحالي: قبل 04:00 القاهرة إحنا لسه في يوم إمبارح."""
     at = at or now_cairo()
-    return (at.date() - dt.timedelta(days=1)).isoformat() if at.hour < 2 else at.date().isoformat()
+    return ((at.date() - dt.timedelta(days=1)).isoformat()
+            if at.hour < BIZ_END_HOUR else at.date().isoformat())
 
 
 # ───────────────────────── الحارس ─────────────────────────
@@ -221,7 +227,7 @@ def cmd_today(args):
     print(banner)
     module = gen()
     D, EV = module.D, module.EV
-    print(f"\n📊 يوم العمل {day} (القاهرة 08:00 → 02:00 اليوم اللي بعده)")
+    print(f"\n📊 يوم العمل {day} (القاهرة 08:00 → 04:00 اليوم اللي بعده)")
 
     orders = q_scalar(f"SELECT count() FROM events WHERE event='{EV['order']}' AND {D(day)}")
     revenue = q_scalar(
@@ -336,7 +342,14 @@ def selftest():
 
     from zoneinfo import ZoneInfo
     at = dt.datetime(2026, 7, 19, 1, 30, tzinfo=ZoneInfo(TZ_NAME))
-    assert business_day(at) == "2026-07-18", "قبل 2 الفجر = يوم العمل السابق"
+    assert business_day(at) == "2026-07-18", "قبل 4 الفجر = يوم العمل السابق"
+    # الحدود الجديدة بعد ما 8Orders زودوا ساعات العمل (02:00 -> 04:00):
+    at = dt.datetime(2026, 7, 19, 3, 0, tzinfo=ZoneInfo(TZ_NAME))
+    assert business_day(at) == "2026-07-18", "3 الفجر لسه يوم إمبارح (كانت بتطلع غلط قبل التوسعة)"
+    at = dt.datetime(2026, 7, 19, 3, 59, tzinfo=ZoneInfo(TZ_NAME))
+    assert business_day(at) == "2026-07-18", "3:59 آخر لحظة في يوم إمبارح"
+    at = dt.datetime(2026, 7, 19, 4, 0, tzinfo=ZoneInfo(TZ_NAME))
+    assert business_day(at) == "2026-07-19", "4:00 بالظبط = يوم جديد"
     at = dt.datetime(2026, 7, 19, 14, 0, tzinfo=ZoneInfo(TZ_NAME))
     assert business_day(at) == "2026-07-19", "بعد الفجر = اليوم"
 
