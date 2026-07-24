@@ -12,7 +12,7 @@
 الاستخدام:
     eval_runner.py list                       # الحالات من غير أي تشغيل (مجاني)
     eval_runner.py run [--case id] [--category X] [--limit N] [--concurrency 2]
-    eval_runner.py baseline                   # يعلّم آخر تشغيل كخط أساس
+    eval_runner.py baseline                   # يعلّم آخر تشغيل كخط أساس\n    eval_runner.py rescore                    # يعيد التقييم على ردود محفوظة (ببلاش، بدون نداء)
     eval_runner.py diff                       # آخر تشغيل مقابل خط الأساس (قبل/بعد)
 
 تنبيه تكلفة: كل حالة = تشغيلة Claude حقيقية. ابدأ بـ --limit صغير.
@@ -31,6 +31,7 @@ BASE = Path(__file__).resolve().parent
 CASES_FILE = BASE / "evals" / "cases.json"
 RUNS_DIR = BASE / "evals" / "runs"
 BASELINE_LINK = BASE / "evals" / "baseline.json"
+REPLY_STORE_MAX = 8000  # سقف تخزين الرد الكامل في ملف التشغيلة
 
 REACT_RX = re.compile(r"^REACT:\s*\S+", re.MULTILINE)
 NO_REPLY_RX = re.compile(r"^\s*NO_REPLY\s*$", re.IGNORECASE)
@@ -195,6 +196,9 @@ async def run_case(case: dict, sem: asyncio.Semaphore) -> dict:
         "error": error,
         "latency_s": round(time.time() - started, 1),
         "reply_excerpt": (reply or "")[:300].replace("\n", " "),
+        # الرد كامل — عشان `rescore` يقدر يعيد التقييم ببلاش بعد تعديل الحالات.
+        # (الـ excerpt مقصوص فبيدي false negatives لو الكلمة بعد 300 حرف.)
+        "reply": (reply or "")[:REPLY_STORE_MAX],
         "checks": checks,
     }
 
@@ -249,6 +253,71 @@ def print_run(run: dict):
             print(f"   رد: {r['reply_excerpt'][:160]}")
 
 
+def rescore(run: dict) -> int:
+    """أعد تقييم ردود محفوظة على الحالات الحالية — من غير أي نداء موديل.
+
+    ليه: نداء الـ suite كامل بيكلف دولارات. أغلب تعديلاتنا بتكون في **شروط**
+    الحالات مش في سلوك هادي — والحالة دي إعادة الحساب على الردود المحفوظة
+    بتدي نفس الإجابة ببلاش. النداء الحقيقي يفضل مطلوب بس لما نغيّر حاجة
+    بتأثر على الرد نفسه (برومبت/تعليمات/أدوات).
+
+    مابيكتبش أي حاجة: مش تشغيلة جديدة ومابيلمسش خط الأساس.
+    """
+    cases = {c["id"]: normalize_case(c) for c in load_cases()}
+    old_results = {r["id"]: r for r in run.get("results", [])}
+
+    rows, truncated, missing_case, no_reply = [], [], [], []
+    for cid, old in old_results.items():
+        case = cases.get(cid)
+        if case is None:
+            missing_case.append(cid)
+            continue
+        if old.get("error"):
+            no_reply.append(cid)
+            continue
+        reply = old.get("reply")
+        if reply is None:
+            reply = old.get("reply_excerpt", "")
+            truncated.append(cid)
+        checks = [dict(zip(("type", "ok", "label"),
+                           (e["type"], *check(e, reply)))) for e in case.get("expect", [])]
+        new_pass = bool(checks) and all(c["ok"] for c in checks)
+        rows.append((cid, bool(old.get("passed")), new_pass, checks))
+
+    scored = len(rows)
+    now_pass = sum(1 for _, _, n, _ in rows if n)
+    was_pass = sum(1 for _, o, _, _ in rows if o)
+
+    print(f"إعادة تقييم ردود تشغيلة {run.get('ts','?')} على الحالات الحالية "
+          f"— بدون أي نداء موديل.\n")
+    changed = [r for r in rows if r[1] != r[2]]
+    for cid, old_p, new_p, checks in sorted(changed, key=lambda r: r[2]):
+        arrow = "❌ → ✅" if new_p else "✅ → ❌"
+        print(f"{arrow}  {cid}")
+        for c in checks:
+            if not c["ok"]:
+                print(f"      ✗ {c['label']}")
+    if not changed:
+        print("مفيش حالة اتغيّر حكمها.")
+
+    print(f"\nقبل: {was_pass}/{scored}  →  بعد: {now_pass}/{scored}"
+          f"  ({100.0*now_pass/scored:.1f}%)" if scored else "\nمفيش حالات اتقيّمت.")
+    if truncated:
+        print(f"\n⚠ {len(truncated)} حالة اتقيّمت على **مقتطف مقصوص** (تشغيلة قديمة "
+              f"قبل تخزين الرد كامل): {', '.join(truncated)}")
+        print("  ممكن تدي false negative لو الكلمة المطلوبة بعد أول 300 حرف.")
+    if no_reply:
+        print(f"\nاتخطّت (كانت فشلت بخطأ فمفيش رد): {', '.join(no_reply)}")
+    if missing_case:
+        print(f"\nاتخطّت (الحالة مابقتش موجودة): {', '.join(missing_case)}")
+    new_cases = [c for c in cases if c not in old_results]
+    if new_cases:
+        print(f"\nحالات جديدة مش في التشغيلة دي (محتاجة نداء حقيقي): "
+              f"{', '.join(new_cases)}")
+    print("\nده تقدير على ردود قديمة — مابيغيّرش خط الأساس ولا بيتحفظ كتشغيلة.")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description="مشغّل حالات هادي الذهبية (بند 5.1/5.3)")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -261,6 +330,8 @@ def main():
     b.add_argument("--force", action="store_true",
                    help="احفظ خط الأساس حتى لو كل الحالات فشلت بخطأ بيئة")
     sub.add_parser("diff")
+    rs = sub.add_parser("rescore")
+    rs.add_argument("--run", help="اسم/مسار ملف تشغيلة معيّن (افتراضي: الأحدث)")
     sub.add_parser("validate")  # F2: فحص سكيما الحالات من غير أي تشغيل (مجاني)
     args = parser.parse_args()
 
@@ -298,6 +369,20 @@ def main():
         print_run(run)
         print(f"\nاتحفظت: {path.name}")
         return
+
+    if args.cmd == "rescore":
+        if getattr(args, "run", None):
+            rp = Path(args.run)
+            if not rp.exists():
+                rp = RUNS_DIR / args.run
+            if not rp.exists():
+                sys.exit(f"مفيش ملف تشغيلة بالاسم ده: {args.run}")
+            run = json.loads(rp.read_text(encoding="utf-8"))
+        else:
+            run = latest_run()
+            if not run:
+                sys.exit("مفيش تشغيلات لسه — شغّل run الأول.")
+        sys.exit(rescore(run))
 
     if args.cmd == "baseline":
         run = latest_run()
