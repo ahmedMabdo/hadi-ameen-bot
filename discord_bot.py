@@ -30,7 +30,6 @@ import ado_snapshot  # نقطة 2 — الدرج المحلي (سبرنت + بو
 import sprint_intake  # نقطة 2 — سؤال آسر في DM عن إيفنتات السبرنت
 
 TOKEN = os.getenv("DISCORD_BOT_TOKEN", "").strip()
-HEAVY_ACK = "           ."
 
 ALLOWED_USER_IDS = {
     int(user_id.strip())
@@ -868,7 +867,9 @@ def _fmt_elapsed(seconds: float) -> str:
 
 
 class StatusReporter:
-    """بند 3.4 — رسالة الحالة الحية: «⏳ ماشي…» فورية بدل صمت الـ 8 دقايق.
+    """بند 3.4 + نقطة 3 — رسالة الحالة الحية: «⏳ ماشي…» فورية بدل الصمت الطويل.
+
+    (كانت معطلة بـ return مبكر — F1 في الأوديت — رجعت تشتغل بقرار آسر.)
 
     - بتتبعت فور استلام الطلب (أو «في الطابور» لو في طلب قبله في نفس المحادثة).
     - بتتحدث بالنشاط الحقيقي من المحرك عبر on_progress (بكلم Azure DevOps /
@@ -878,10 +879,13 @@ class StatusReporter:
       بيحدّث الزمن حتى من غير أحداث (مسار الـ CLI مثلًا).
     - بتتمسح دايمًا مع نهاية المعالجة (رد أو NO_REPLY أو خطأ) — الرد بيوصل كريبلاي
       عادي، فقرار الصمت بيفضل صامت ومفيش محتوى جزئي بيتسرب.
+    - visible=False (الرسايل الـ ambient): مفيش رسالة حالة خالص — محدش نادى هادي
+      فمفيش داعي يعلن إنه شغال؛ لو قرر يرد، الرد بيوصل لوحده.
     """
 
-    def __init__(self, message: discord.Message):
+    def __init__(self, message: discord.Message, visible: bool = True):
         self._message = message
+        self._visible = visible
         self._note = None
         self._t0 = time.time()
         self._activity = "بجهّز السياق وبفكر"
@@ -891,8 +895,8 @@ class StatusReporter:
         self._task = None
 
     async def start(self, first_line: str) -> None:
-        self._task = asyncio.create_task(self._delayed_ack())
-        return
+        if not self._visible:
+            return
         try:
             self._note = await self._message.channel.send(f"⏳ {first_line}")
             self._last_edit = time.time()
@@ -908,15 +912,6 @@ class StatusReporter:
             self._activity = label
             self._dirty = True
 
-    async def _delayed_ack(self) -> None:
-        try:
-            await asyncio.sleep(25)
-            # اتشالت رسالة "." (HEAVY_ACK) اللي كانت بتفضل في القناة —
-            # الاعتماد على مؤشر الكتابة (typing) بدل إزعاج القناة بنقطة.
-            return
-        except Exception:
-            pass
-    
     async def _ticker(self) -> None:
         try:
             while not self._done:
@@ -1198,7 +1193,9 @@ async def on_message(message: discord.Message):
         else f"ch:{message.channel.id}"
     )
     conv_lock = get_conv_lock(conv_key)
-    status = StatusReporter(message)
+    # نقطة 3: رسالة الحالة الحية بتظهر بس لما حد فعلًا نادى هادي (منشن/اسم/ريبلاي/DM)
+    # — الرسايل الـ ambient بتتعالج في صمت والرد بيوصل لوحده لو هادي قرر يتكلم.
+    status = StatusReporter(message, visible=not ambient)
     eval_stats: dict = {}  # بند 5.3: المحرك بيملاها بالتوكنز والتكلفة
     _t0 = time.time()
     if conv_lock.locked():
