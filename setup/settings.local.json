@@ -1,18 +1,41 @@
 {
+  "_README": [
+    "قالب صلاحيات هادي — مقسوم بالنية مش بالصدفة (مرحلة 1 من MULTI_AGENT_PROPOSAL.md).",
+    "الملف الحقيقي .claude/settings.local.json في .gitignore — القالب ده هو المرجع.",
+    "أي صلاحية جديدة: تتضاف هنا الأول، وبعدين تتنقل للسيرفر. الحدود في AGENT_ROLES.md.",
+    "ترتيب allow مقصود: أول مجموعة قراءة، وبعدها كتابة/نشر (اللي هتتنقل لـ Ops Agent",
+    "في المرحلة 2)، والفاصل بينهم WebFetch."
+  ],
+  "_READ_GROUP": "knowledge_store, posthog_cli, ado_snapshot, sprints_sync, sprint_intake, memory, schedule, WebSearch, WebFetch",
+  "_WRITE_GROUP": "ado_cli, po_channel_cr, ado_alerts, discord_followup, discord_orderpo, discord_mars_results",
+  "_DENY_WHY": "التقارير المجدولة شغل التايمرات — لو هادي نداها بنفسه يتبعت تقرير مكرر للقناة.",
+
   "permissions": {
     "allow": [
       "mcp__plugin_discord_discord__reply",
-      "Bash(python3 po_channel_cr.py:*)",
-      "Bash(python3 ado_cli.py:*)",
-      "Bash(python3 discord_followup.py:*)",
-      "Bash(python3 discord_orderpo.py:*)",
+
+      "Bash(python3 knowledge_store.py:*)",
+      "Bash(python3 posthog_cli.py:*)",
+      "Bash(python3 ado_snapshot.py:*)",
+      "Bash(python3 sprints_sync.py:*)",
+      "Bash(python3 sprint_intake.py:*)",
       "Bash(python3 memory.py:*)",
       "Bash(python3 schedule.py:*)",
-      "Bash(python3 discord_mars_results.py:*)",
-      "Bash(.venv/bin/python discord_mars_results.py:*)",
       "WebSearch",
-      "WebFetch"
+      "WebFetch",
+
+      "Bash(python3 ado_cli.py:*)",
+      "Bash(python3 po_channel_cr.py:*)",
+      "Bash(python3 ado_alerts.py:*)",
+      "Bash(python3 discord_followup.py:*)",
+      "Bash(python3 discord_orderpo.py:*)",
+      "Bash(python3 discord_mars_results.py:*)",
+      "Bash(.venv/bin/python discord_mars_results.py:*)"
     ],
-    "deny": []
+    "deny": [
+      "Bash(python3 daily_digests.py:*)",
+      "Bash(python3 eval_report.py:*)",
+      "Bash(python3 eval_judge.py:*)"
+    ]
   }
 }
