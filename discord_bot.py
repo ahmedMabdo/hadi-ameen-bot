@@ -28,6 +28,7 @@ import heartbeat  # بند 8.1/8.3 — الفحوصات الاستباقية و�
 import ambient_gate  # نقطة 1 — بوابة الحضور الذكي الثلاثية (صامت/رياكشن/رد)
 import ado_snapshot  # نقطة 2 — الدرج المحلي (سبرنت + بوردات + مشروع 8Orders)
 import sprint_intake  # نقطة 2 — سؤال آسر في DM عن إيفنتات السبرنت
+import identity  # نقطة 9 — هوية هادي الإنسانية (العمر الحقيقي + عيد الميلاد)
 
 TOKEN = os.getenv("DISCORD_BOT_TOKEN", "").strip()
 
@@ -226,6 +227,7 @@ async def ask_claude(
 
     prompt = f"""
 أنت هادي أمين، عضو فريق Hadaf على Discord.
+{identity.identity_line()}
 أول حاجة: اقرأ ملف HADI_PERSONA.md (شخصيتك، فهم السياق، قواعد السلوك) والتزم بيه،
 ومعاه تعليمات CLAUDE.md (سياق المشروع والأدوات).
 رد بالعربية المصرية الواضحة إلا لو المستخدم طلب لغة أخرى.
@@ -845,6 +847,8 @@ async def on_ready():
         heartbeat_loop.start()
     if not sprint_watch_loop.is_running():  # نقطة 2 — وعي السبرنت
         sprint_watch_loop.start()
+    if not birthday_loop.is_running():  # نقطة 9 — عيد ميلاد هادي
+        birthday_loop.start()
     try:  # F8: على سيرفر جديد knowledge/sprints.md مش موجود لحد ما التايمر يشتغل
         if not (BASE_DIR / "knowledge" / "sprints.md").exists():
             import sprints_sync
@@ -1011,6 +1015,27 @@ async def sprint_watch_loop():
 
 @sprint_watch_loop.before_loop
 async def _before_sprint_watch_loop():
+    await client.wait_until_ready()
+
+
+@tasks.loop(minutes=30)
+async def birthday_loop():
+    """نقطة 9 — عيد ميلاد هادي (1 أغسطس): رسالة صباحية واحدة في قناة
+    8orders-issues (اختيار آسر)، مرة واحدة في السنة (marker في logs/)."""
+    try:
+        if not identity.should_post_now():
+            return
+        ch = (client.get_channel(identity.BIRTHDAY_CHANNEL_ID)
+              or await client.fetch_channel(identity.BIRTHDAY_CHANNEL_ID))
+        await ch.send(identity.birthday_message())
+        identity.mark_posted()
+        print(f"BIRTHDAY: هادي بقى {identity.age()} سنة — الرسالة اتبعتت 🎂")
+    except Exception as error:
+        print(f"BIRTHDAY LOOP FAIL: {type(error).__name__}: {error}")
+
+
+@birthday_loop.before_loop
+async def _before_birthday_loop():
     await client.wait_until_ready()
 
 
