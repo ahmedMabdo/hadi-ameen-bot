@@ -132,6 +132,29 @@ def validate_cases(cases) -> list:
     return errors
 
 
+def preflight() -> None:
+    """افحص إن البيئة سليمة قبل ما نحرق 16 نداء موديل على نفس الغلطة.
+
+    eval_runner بينده discord_bot.ask_claude عشان يختبر **نفس** دالة بناء
+    البرومبت اللي البوت بيستخدمها — يعني محتاج حزمة discord. الحزمة دي في
+    الـ venv مش في python3 بتاع النظام، فـ `python3 eval_runner.py run`
+    بيفشل في كل الحالات بنفس الـ ModuleNotFoundError (حصل فعليًا 2026-07-24
+    وطلّع خط أساس 0% اتحفظ وهو غلط).
+    """
+    try:
+        import discord_bot  # noqa: F401
+    except ModuleNotFoundError as err:
+        venv = BASE / ".venv" / "bin" / "python"
+        hint = f"{venv} {Path(__file__).name}" if venv.exists() else "python الـ venv"
+        sys.exit(
+            f"البيئة ناقصة: {err.name} مش متثبتة على المفسّر ده ({sys.executable}).\n"
+            f"eval_runner بينده discord_bot عشان يختبر نفس دالة البوت، فمحتاج نفس البيئة.\n"
+            f"شغّلها كده بدل python3:\n  {hint} run"
+        )
+    except Exception as err:  # noqa: BLE001
+        sys.exit(f"فشل تحميل discord_bot: {type(err).__name__}: {err}")
+
+
 async def run_case(case: dict, sem: asyncio.Semaphore) -> dict:
     import discord_bot  # آمن: client.run متغلّف بـ __main__ (بند 5.3)
 
@@ -234,7 +257,9 @@ def main():
     r.add_argument("--case"); r.add_argument("--category")
     r.add_argument("--limit", type=int, default=0)
     r.add_argument("--concurrency", type=int, default=2)
-    sub.add_parser("baseline")
+    b = sub.add_parser("baseline")
+    b.add_argument("--force", action="store_true",
+                   help="احفظ خط الأساس حتى لو كل الحالات فشلت بخطأ بيئة")
     sub.add_parser("diff")
     sub.add_parser("validate")  # F2: فحص سكيما الحالات من غير أي تشغيل (مجاني)
     args = parser.parse_args()
@@ -266,6 +291,7 @@ def main():
             cases = cases[: args.limit]
         if not cases:
             sys.exit("مفيش حالات مطابقة.")
+        preflight()
         print(f"بشغّل {len(cases)} حالة (تشغيلات Claude حقيقية) — concurrency={args.concurrency}…")
         run = asyncio.run(run_all(cases, args.concurrency))
         path = save_run(run)
@@ -277,6 +303,18 @@ def main():
         run = latest_run()
         if not run:
             sys.exit("مفيش تشغيلات لسه — شغّل run الأول.")
+        results = run.get("results", [])
+        errored = [r for r in results if r.get("error")]
+        if results and len(errored) == len(results) and not args.force:
+            sample = errored[0].get("error", "")[:120]
+            sys.exit(
+                f"مارفضتش أحفظ خط الأساس: كل الـ {len(results)} حالة فشلت بخطأ، "
+                "مش بنتيجة تقييم.\n"
+                f"مثال: {sample}\n"
+                "ده شكل مشكلة بيئة مش قياس سلوك — خط أساس زي ده بيخلي أي مقارنة "
+                "جاية بلا معنى.\n"
+                "صلّح البيئة وأعد التشغيل، أو --force لو متأكد إن ده فعلًا المقصود."
+            )
         BASELINE_LINK.write_text(json.dumps(run, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"خط الأساس اتظبط على تشغيلة {run['ts']} ({run['pass_rate']}%)")
         return
