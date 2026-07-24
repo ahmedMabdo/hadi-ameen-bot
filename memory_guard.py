@@ -95,6 +95,9 @@ def build_meta(mtype: str, expires: str, source: str, trust: str) -> str:
 # ----------------------------------------------------- بوابة البني آدم (2)
 
 def is_human() -> bool:
+    # F4: المتغير ده للمسؤولين على السيرفر (CI/سكربتات صيانة) — والموديل ممنوع
+    # يوصله: حارس الـ Bash في hadi_engine بيرفض أي أمر فيه HADI_MEMORY_ADMIN،
+    # فمفيش طريق يمرره inline على نفس سطر الأمر زي ما الأوديت أثبت.
     if os.environ.get("HADI_MEMORY_ADMIN", "").strip() == "1":
         return True
     try:

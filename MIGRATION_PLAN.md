@@ -99,7 +99,7 @@ cd ~/hadi-ameen-bot && git pull
 # صلاحيات Claude Code (WebSearch/WebFetch):
 cp setup/settings.local.json .claude/settings.local.json
 # متغيرات جديدة (اختيارية — الافتراضيات شغالة):
-#   NAME_TRIGGER=on   HISTORY_LIMIT=30   ISSUES_CHANNEL_ID=1179369466279235584
+#   NAME_TRIGGER=on   HISTORY_LIMIT=80   ISSUES_CHANNEL_ID=1179369466279235584
 nano .env
 # أعد تشغيل البوت (systemd أو screen حسب تشغيلكم):
 sudo systemctl restart hadi-bot   # أو الطريقة المستخدمة عندكم

@@ -339,6 +339,11 @@ def cmd_add_child(args):
     wi = r.json()
     html_url = wi.get("_links", {}).get("html", {}).get("href", "")
     print(f"CREATED CHILD #{wi['id']} of #{args.parent} -> {html_url}")
+    # F7: إرفاق ميديا الرسالة (--source-msg/--attach-url) زي cmd_create_work_item
+    # بالظبط — قبل كده الفلاجز كانت بتتقبل وتتبلع في صمت على مسار السابورت الإلزامي،
+    # فسكرين شوت العميل كان بيضيع من التذكرة من غير أي خطأ.
+    _ch = cr_media.resolve_channel_id(getattr(args, "channel", None))
+    cr_media.maybe_attach_media(args, wi, _ch, _headers())
 
 
 # --------------------------------------------------------------------------

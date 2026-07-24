@@ -124,7 +124,14 @@ def check_stale_p1(state):
     ok, out = _ado("wiql", "--query", wiql)
     if not ok:
         return []
-    ids = re.findall(r"\b(\d{4,7})\b", out)[:MAX_ALERTS]
+    # F14: parse JSON بدل regex — الـ regex كان بيلقط السنين (2026) من التواريخ
+    # كأنها أرقام تذاكر وهمية.
+    try:
+        payload = json.loads(out)
+        ids = [str(w.get("id")) for w in payload.get("workItems", []) if w.get("id")]
+    except (json.JSONDecodeError, AttributeError):
+        return []
+    ids = ids[:MAX_ALERTS]
     alerts = []
     for wid in ids:
         key = f"stale_p1:{wid}"
@@ -182,7 +189,21 @@ def check_support_48h(state, now=None):
     for item in items:
         if not isinstance(item, dict) or item.get("resolved") or item.get("answered"):
             continue
-        first_seen = _parse_iso(item.get("first_seen") or item.get("date") or item.get("ts") or "")
+        # F6: الملف الحقيقي (discord_followup.cmd_pending_add) بيكتب timestamp
+        # وflagged_at — مش first_seen/date/ts. الفحص كان عمره ما بيشتغل على داتا حقيقية.
+        raw_ts = (item.get("timestamp") or item.get("flagged_at")
+                  or item.get("first_seen") or item.get("date") or item.get("ts") or "")
+        first_seen = _parse_iso(raw_ts)
+        if not first_seen and raw_ts:
+            # صيغة flagged_at: "YYYY-MM-DD HH:MM القاهرة"
+            cleaned = str(raw_ts).replace("القاهرة", "").strip()
+            first_seen = _parse_iso(cleaned)
+            if first_seen and first_seen.tzinfo is None:
+                try:
+                    from zoneinfo import ZoneInfo
+                    first_seen = first_seen.replace(tzinfo=ZoneInfo("Africa/Cairo"))
+                except Exception:
+                    pass
         if not first_seen:
             continue
         if first_seen.tzinfo is None:

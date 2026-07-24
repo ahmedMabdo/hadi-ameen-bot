@@ -107,9 +107,15 @@ _conv_locks: dict = {}
 
 
 def get_conv_lock(key: str) -> asyncio.Lock:
-    """قفل خاص بالمحادثة دي — بيحافظ على ترتيب الرسايل جوه نفس القناة/الـ DM."""
+    """قفل خاص بالمحادثة دي — بيحافظ على ترتيب الرسايل جوه نفس القناة/الـ DM.
+
+    F18: القاموس محدود — لما يعدي 256 مفتاح بنشيل الأقفال غير المستخدمة
+    (كان بيكبر للأبد مع كل DM جديد)."""
     lock = _conv_locks.get(key)
     if lock is None:
+        if len(_conv_locks) > 256:
+            for old_key in [k for k, v in _conv_locks.items() if not v.locked()][:64]:
+                _conv_locks.pop(old_key, None)
         lock = _conv_locks.setdefault(key, asyncio.Lock())
     return lock
 
@@ -419,12 +425,13 @@ REACTION_RULES = [
 
 
 def pick_reaction(text: str) -> str:
-    """رياكشن استلام متناسب مع مضمون الرسالة — 👀 للمحايد (بقرا/سؤال)."""
+    """رياكشن استلام متناسب مع مضمون الرسالة — والمحايد من غير رياكشن مبدئي
+    (الموديل بيختار الرياكشن النهائي مع الرد)."""
     t = (text or "").strip()
     for rx, emoji in REACTION_RULES:
         if rx.search(t):
             return emoji
-    return ""  # مفيش رياكشن مبدئي للمحايد — الموديل بيختار مع الرد
+    return ""
 
 
 ALLOWED_REACTIONS = {
@@ -553,9 +560,27 @@ async def build_reply_context(message: discord.Message) -> str:
     return f"[{label}] {text}"
 
 
+def _split_message(text: str, limit: int = 1900) -> list:
+    """F18: تقسيم على حدود الأسطر بدل القطع في نص لينك/كلمة — زي po_channel_cr."""
+    chunks, current = [], ""
+    for line in text.split("\n"):
+        while len(line) > limit:  # سطر واحد أطول من الحد — قطع اضطراري
+            chunks.append(line[:limit])
+            line = line[limit:]
+        candidate = f"{current}\n{line}" if current else line
+        if len(candidate) > limit:
+            chunks.append(current)
+            current = line
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+    return chunks or [text[:limit]]
+
+
 async def send_long_message(channel, text: str, reply_to: discord.Message = None):
     text = text.strip() or "لم يتم إرجاع رد."
-    chunks = [text[start:start + 1900] for start in range(0, len(text), 1900)]
+    chunks = _split_message(text)
 
     first = None
     for i, chunk in enumerate(chunks):
@@ -671,7 +696,11 @@ def _save_reminders(items):
 
 
 async def _resolve_member_id(guild, name: str):
-    """يدوّر على user id لعضو بالاسم (display name أو username). None لو مش لاقي أو ملتبس."""
+    """يدوّر على user id لعضو بالاسم (display name أو username). None لو مش لاقي أو ملتبس.
+
+    F15: الـ Members privileged intent مش مفعّل، فـ guild.members غالبًا فاضية
+    وquery_members بيفشل — والمنشن كان بيتحول bold text في صمت. الحل: fallback
+    على REST search (routines_common.resolve_user_id) اللي شغال من غير الـ intent."""
     name_l = (name or "").strip().lstrip("@").lower()
     if not name_l or guild is None:
         return None
@@ -690,6 +719,13 @@ async def _resolve_member_id(guild, name: str):
             return found[0].id
     except Exception:
         pass
+    try:  # F15: REST search — مثبت الفاعلية في الروتينات، ومش محتاج privileged intent
+        import routines_common
+        uid = await asyncio.to_thread(routines_common.resolve_user_id, name_l)
+        if uid:
+            return int(uid)
+    except Exception as error:
+        print(f"MENTION REST FALLBACK FAIL: {type(error).__name__}: {error}")
     return None
 
 
@@ -1282,6 +1318,15 @@ async def on_message(message: discord.Message):
                 outcome="no_reply",
                 )
                 print(f"HADI: NO_REPLY skip — {author_name}: {content[:80]}")
+                # F18: «الصمت قرار» يعني صمت كامل — رياكشن الاستلام المبدئي بيتشال
+                # عشان مايفضلش أثر لتفاعل اتقرر إلغاؤه.
+                if ack_emoji:
+                    try:
+                        me = message.guild.me if message.guild else client.user
+                        if me:
+                            await message.remove_reaction(ack_emoji, me)
+                    except Exception:
+                        pass
                 return
 
             sent = await send_long_message(

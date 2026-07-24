@@ -202,7 +202,11 @@ def _log_usage(conv_key: str, resumed, final: dict) -> None:
         print(f"HADI ENGINE: usage log فشل ({error}) — مش بيوقف الرد")
 
 
-# --- حراس الأدوات (منع حتمي، مش تعليمات نصية) ------------------------------
+# --- حراس الأدوات ----------------------------------------------------------
+# F4 (تصحيح تسمية): الحارس ده denylist نصي = **طبقة دفاع إضافية** مش «منع حتمي».
+# الجدار الحقيقي هو allow-list الأوامر في .claude/settings.local.json — هو اللي
+# بيحدد إيه اللي ينفع يتنفذ أصلًا. الـ denylist بيمسك المحاولات الواضحة بدري
+# ويوفر سبب رفض مفهوم في اللوج، بس عمره ما يكون خط الدفاع الوحيد.
 # .env هو ملف الأسرار — ممنوع قراءته أو نقله بأي أمر. (.env.example عادي.)
 _ENV_FILE_RX = re.compile(r"\.env(?!\.example)\b")
 _SECRET_NAMES = r"(AZURE_DEVOPS_PAT|DISCORD_BOT_TOKEN|POSTHOG_API_KEY|ANTHROPIC_API_KEY)"
@@ -218,6 +222,19 @@ _DANGEROUS_BASH = [
     (re.compile(r"\b(cat|less|more|head|tail|grep|awk|sed|cut|sort|xxd|od|base64|strings|cp|mv|scp|rsync|curl|wget|tar|zip)\b[^\n|;&]*" + _ENV_FILE_RX.pattern),
      "قراءة/نقل ملف .env"),
     (re.compile(r"\bsource\s+[^\n;|&]*" + _ENV_FILE_RX.pattern), "تحميل .env في شل ظاهر"),
+    # --- F4: قراءات الأسرار عبر المفسّرات (الثغرات اللي الأوديت أثبتها) ---
+    # ملحوظة معمارية: الحارس ده denylist = طبقة دفاع إضافية بس — الجدار الحقيقي هو
+    # allow-list الأوامر في settings.local.json + صلاحيات الأدوات. متعتمدش عليه لوحده.
+    (re.compile(r"\bopen\s*\(\s*['\"][^'\"]*\.env(?!\.example)"),
+     "قراءة .env عبر open() في مفسّر"),
+    (re.compile(r"\b(python3?|perl|ruby|node|php)\b[^\n]*(?:-c|-e|<<)[^\n]*" + _ENV_FILE_RX.pattern),
+     "قراءة .env عبر كود inline/heredoc"),
+    (re.compile(r"/proc/(?:self|\d+)/environ"), "قراءة بيئة العملية من /proc"),
+    (re.compile(r"\bdotenv\b[^\n]*\.env(?!\.example)|load_dotenv"),
+     "تحميل .env برمجيًا في أمر"),
+    # F4: منع تمرير متغير تخطي بوابة المراجعة البشرية على نفس سطر الأمر —
+    # ده كان بيقلب memory_guard.is_human() لصالح الموديل.
+    (re.compile(r"HADI_MEMORY_ADMIN"), "محاولة تخطي بوابة المراجعة البشرية للذاكرة"),
 ]
 
 
