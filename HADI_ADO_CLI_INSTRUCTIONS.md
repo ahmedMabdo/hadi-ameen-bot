@@ -119,11 +119,14 @@ python3 ado_cli.py list-team-iterations --team "Mars Team"
 
 كل خطأ بيتطبع بصيغة `ERROR: ...` أو `FAILED ...` على stdout/stderr مع سبب واضح (401 توكن غلط، 403 صلاحية ناقصة، 404 مش موجود، أو نص رسالة ADO). لو حصل خطأ، قول للعضو بصراحة إن في مشكلة تقنية — ما تختلقش رد بديل.
 
-##   +    create-work-item ()
--  /    work item:  `--source-msg <id> --channel support|po|mars`.   : `--attach-url <url>` ().   25MB    .
--            `--field Ref=Value`:
-  - Customer Issue ( ): `Custom.IssueSeverity`=  Critical | Major | Minor | Low `Custom.freshdeskid`=<id> `--description`=  `Microsoft.VSTS.TCM.Steps`=  . area-path = `0_Projects_Team\Support Team`.
-  - Change Request:    PO (WorkType/CRorStoryCategory/StoryApplication).
+## الميديا + الحقول الإضافية مع create-work-item / add-child
+
+> (القسم ده كان متدمر بالـ mojibake — اتكتب تاني من مصدر UTF-8 سليم — F11.)
+
+- لإرفاق صور/فيديوهات رسالة على الـ work item وقت الإنشاء: مرّر `--source-msg <id> --channel support|po|mars`. ولينك خارجي: `--attach-url <url>` (اختياري). أي ملف أكبر من 25MB بيتحط **لينكه** في الـ discussion بدل الإرفاق المباشر.
+- تقدر تبعت أي حقل إضافي وقت الإنشاء بـ `--field Ref=Value`:
+  - **Customer Issue (تذكرة سابورت):** `Custom.IssueSeverity` = واحدة من Critical | Major | Minor | Low، و`Custom.freshdeskid`=<id> لو التذكرة جاية من Freshdesk، و`--description` بالوصف العربي، و`Microsoft.VSTS.TCM.Steps` بخطوات إعادة المشكلة. الـ area-path = `0_Projects_Team\Support Team`.
+  - **Change Request:** حقول المنصة والتصنيف زي قناة الـ PO بالظبط (WorkType / CRorStoryCategory / StoryApplication) — القيم الرسمية الكاملة في `HADI_PO_CHANNEL_INSTRUCTIONS.md`، ولو سبتها فاضية `ado_fields.py` بيستنتجها من عنوان ووصف الفكرة أوتوماتيك.
 
 
 

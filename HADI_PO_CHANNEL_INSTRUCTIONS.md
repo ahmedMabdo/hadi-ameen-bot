@@ -98,11 +98,15 @@ python3 po_channel_cr.py post --channel mars --text "..."   # جروب مارس 
   بيستخدمه روتين `discord_orderpo.py` على نفس البورد (متأكدين منه من آسر).
   متغيّرهوش إلا لو الـ process نفسه اتغير.
 
-##  / +  ( )
--  `file-cr`   `--source-msg <id>`:     /    (   )   Attachments  CR.    25MB    .
--       :   `--attach-url <url>` ().
--            `--field Ref=Value`:
-  - `Custom.WorkType` =  : API | Automation | Desktop | Desktop + Mobile | Desktop + Web | Desktop + Web + Mobile | Mobile | Web | Web + Mobile
-  - `Custom.CRorStoryCategory` =  : Admin Enhancement | Cust App Enhancement | Delivery Enhancement | Design Revamp | Integration / New Feature | Merchant App Enhancement | New Feature | New Report | Operation Automation | Stores Web Enhancement
-  - `Custom.StoryApplication` =  : Admin Web | CST App | Customer Web | Delivery App | Delivery Web | Merchant App | Stores Web - Operator Web
-  - : `Custom.Impact`=  `Custom.EstimatedHours`=.
+## الميديا / اللينكات + الحقول الإضافية (مع file-cr)
+
+> (القسم ده كان متدمر بالـ mojibake — اتكتب تاني من مصدر UTF-8 سليم — F11. القوايم الإنجليزي هي القيم الرسمية زي ما كانت محفوظة.)
+
+- مع `file-cr` مرّر دايمًا `--source-msg <id>`: بيرفق كل صور/فيديوهات الرسالة (والريبلاي بتاعها لو موجود) على تاب Attachments في الـ CR. أي ملف أكبر من 25MB بيتحط **لينكه** في الـ discussion بدل الإرفاق.
+- لو الفكرة ليها مرجع خارجي (شيت/دوك/صفحة): ضيف `--attach-url <url>` (اختياري).
+- تقدر تبعت أي حقل إضافي وقت الإنشاء بـ `--field Ref=Value` — والقيم الرسمية:
+  - `Custom.WorkType` = واحدة من: API | Automation | Desktop | Desktop + Mobile | Desktop + Web | Desktop + Web + Mobile | Mobile | Web | Web + Mobile
+  - `Custom.CRorStoryCategory` = واحدة من: Admin Enhancement | Cust App Enhancement | Delivery Enhancement | Design Revamp | Integration / New Feature | Merchant App Enhancement | New Feature | New Report | Operation Automation | Stores Web Enhancement
+  - `Custom.StoryApplication` = واحدة من: Admin Web | CST App | Customer Web | Delivery App | Delivery Web | Merchant App | Stores Web - Operator Web
+  - اختياري: `Custom.Impact`=الأثر على البيزنس و`Custom.EstimatedHours`=الساعات المقدرة.
+- لو مبعتّش حقول المنصة/التصنيف، `ado_fields.py` بيستنتجها أوتوماتيك من عنوان ووصف الفكرة (ولو ملقاش إشارة بيرجع للـ fallback الموثق هناك).

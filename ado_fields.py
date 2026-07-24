@@ -53,15 +53,18 @@ PATHS = {
 # Custom.Application ("App - Customer") صالح لنوع Issue بس (F13)
 APPLICATION_VALID_TYPES = {TYPE_POSTHOG_ISSUE}
 
-# القيم المرصودة في الإنتاج (عينة 40 CR — 2026-07-24). دي مش قايمة مغلقة رسمية،
-# لكنها اللي التيم بيستخدمه فعلًا — الاستنتاج تحت بيختار منها بس.
-WORK_TYPES = ["Web", "Mobile", "Web + Mobile", "API", "API+Desktop",
-              "Desktop + Mobile", "Ang"]
-STORY_APPLICATIONS = ["CST App", "Customer Web", "Admin Web", "Merchant App",
-                      "Delivery App", "Delivery Web", "Stores Web - Operator Web"]
-CR_CATEGORIES = ["New Feature", "Cust App Enhancement", "Admin Enhancement",
-                 "Merchant App Enhancement", "Delivery Enhancement",
-                 "Stores Web Enhancement", "Design Revamp"]
+# القيم الرسمية (من HADI_PO_CHANNEL_INSTRUCTIONS.md بعد ترميم F11) + الزيادات
+# المرصودة في الإنتاج فعليًا (عينة 40 CR — 2026-07-24: "API+Desktop" و"Ang").
+# الاستنتاج تحت بيختار من دول بس — مفيش اختراع قيم.
+WORK_TYPES = ["API", "Automation", "Desktop", "Desktop + Mobile", "Desktop + Web",
+              "Desktop + Web + Mobile", "Mobile", "Web", "Web + Mobile",
+              "API+Desktop", "Ang"]
+STORY_APPLICATIONS = ["Admin Web", "CST App", "Customer Web", "Delivery App",
+                      "Delivery Web", "Merchant App", "Stores Web - Operator Web"]
+CR_CATEGORIES = ["Admin Enhancement", "Cust App Enhancement", "Delivery Enhancement",
+                 "Design Revamp", "Integration / New Feature",
+                 "Merchant App Enhancement", "New Feature", "New Report",
+                 "Operation Automation", "Stores Web Enhancement"]
 
 # fallback الأخير لو الاستنتاج ملقاش أي إشارة (نفس سلوك ما قبل الإصلاح — موثق بقى)
 CR_FALLBACK = {

@@ -133,7 +133,17 @@ DIGESTS = {
     },
 }
 
-PROMPT_TEMPLATE = """انت هادي أمين، منسق فريق 8Orders. مطلوب الملخص اليومي لـ{label}.
+def _persona_core() -> str:
+    """نواة الشخصية المشتركة (نقطة 8) — نفس صوت هادي في الملخصات زي القنوات."""
+    try:
+        return (BASE_DIR / "PERSONA_CORE.md").read_text(encoding="utf-8").strip()
+    except OSError:
+        return "انت هادي أمين، عضو تيم مارس في فريق هدف — مصري، مختصر، evidence-based."
+
+
+PROMPT_TEMPLATE = """{persona}
+
+مطلوب منك: الملخص اليومي لـ{label}.
 
 قواعد صارمة (إلزامية):
 1. لخّص من الرسايل المرفقة تحت **فقط**. ممنوع منعًا باتًا ذكر أي رقم أو اسم أو حدث مش موجود فيها نصًا.
@@ -179,6 +189,7 @@ def run_digest(name, dry_run=False):
             print(f"{name}: {len(humans)} رسايل بشر بس (<{MIN_HUMAN_MSGS}) — مفيش ملخص النهارده")
             return 0
         prompt = PROMPT_TEMPLATE.format(
+            persona=_persona_core(),
             label=cfg["label"], focus=cfg["focus"], max_chars=MAX_CHARS,
             messages=json.dumps(humans, ensure_ascii=False))
         summary = call_model(prompt)
