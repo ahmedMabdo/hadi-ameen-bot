@@ -25,6 +25,7 @@ import file_extract
 import state_lock  # بند 3.3 — قفل الكتابة المشترك (flock) لملفات الحالة
 import eval_store  # بند 5.3 — تسجيل نتيجة كل تفاعل + تقييم الرياكشنز
 import heartbeat  # بند 8.1/8.3 — الفحوصات الاستباقية والأحداث
+import ambient_gate  # نقطة 1 — بوابة الحضور الذكي الثلاثية (صامت/رياكشن/رد)
 
 TOKEN = os.getenv("DISCORD_BOT_TOKEN", "").strip()
 HEAVY_ACK = "           ."
@@ -1085,14 +1086,36 @@ async def on_message(message: discord.Message):
 
     # السياق (آخر الرسايل + الريبلاي) بيتبني للـ DM والقنوات على حد سواء —
     # قبل كده كان بيتبني للقنوات بس، فهادي كان بيرد في الـ DM من غير أي سياق.
-    if (message.guild is not None and not (mentioned or named or replying_to_hadi)
-            and not image_paths and not media_notes):
+    # نقطة 1 — الحضور الذكي 24/7: بوابة ثلاثية (صامت/رياكشن/رد) للرسايل غير الموجهة
+    # لهادي. Pre-filter محلي → قرار Haiku واحد بسياق → REPLY بس بيوصل للموديل الكامل.
+    # الضوابط (سقف الردود/كولداون الرياكشن) والتسجيل جوه ambient_gate.py.
+    ambient = (message.guild is not None
+               and not (mentioned or named or replying_to_hadi))
+    if ambient and not image_paths and not media_notes:
+        if not ambient_gate.enabled():
+            return
         try:
-            _v = await hadi_engine.ask_haiku("You are the gate for Hadi, a senior product/ops assistant in a team Discord. Answer ONE word. REPLY only if Hadi can add clear specific professional value right now (a direct question Hadi can answer, a bug/issue/blocker to log or analyze, or an explicit request to Hadi). SILENT for casual chat, people talking to each other, status updates, opinions, or anything a bot reply would not clearly improve. Default SILENT when unsure. Message: " + (content or "")[:1500], cwd="/tmp")
-            if "REPLY" not in (_v or "").upper():
-                print("HADI: haiku-gate skip -", author_name); return
+            gate_history = await build_channel_history(
+                message.channel, message, limit=ambient_gate.HISTORY_N
+            )
+            g_action, g_emoji = await ambient_gate.decide(
+                hadi_engine, content, author_name, str(message.author.id),
+                message.channel.id, getattr(message.channel, "name", "?"),
+                gate_history,
+            )
         except Exception as _hg:
-            print("haiku-gate error:", _hg); return
+            print("ambient-gate error:", _hg)
+            return
+        if g_action == "react" and g_emoji:
+            try:
+                await message.add_reaction(g_emoji)
+                print(f"HADI: ambient react {g_emoji} - {author_name}: {content[:60]}")
+            except Exception as _re:
+                print(f"AMBIENT REACT ERROR: {type(_re).__name__}: {_re}")
+            return
+        if g_action != "reply":
+            print("HADI: ambient-gate silent -", author_name)
+            return
     history_text = await build_channel_history(message.channel, message)
     try:
         _docn = await file_extract.extract_attachment_texts(message)
@@ -1167,6 +1190,8 @@ async def on_message(message: discord.Message):
                 resp_clean,
                 reply_to=message if message.guild is not None else None,
             )
+            if ambient:  # الرد اتبعت فعلًا → بيتحسب على عداد الـ ambient بتاع القناة
+                ambient_gate.note_reply(message.channel.id)
             eval_store.record_interaction(
                 conv_key=conv_key,
                 channel=channel_label,
