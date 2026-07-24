@@ -159,6 +159,16 @@
 
 - باقي تيمات المشروع (Galaxy Team، UIUX Team، Automation Squad) — قراءة فقط.
 - لينك أي تذكرة بالـ ID: `https://hadafsolutions.visualstudio.com/0_Projects_Team/_workitems/edit/{ID}` — استخدمه دايمًا لما ترجّع تذكرة.
+- **خريطة المسارات التلاتة (قرار آسر — مصدرها `ado_fields.py`، والتنوع مقصود):**
+
+| مصدر التذكرة | النوع | البورد |
+|---|---|---|
+| مشكلة/شكوى اتقالت في محادثة (أي قناة) | `Customer Issue` | Support Team |
+| روتين PostHog اليومي الأوتوماتيكي | `Issue` (+ تاج posthog) | Support Team |
+| فكرة/مطلب جديد | `Change Request` | Change Requests — أو Support Team لو فريق الدعم هيشتغل عليها |
+
+  انت كوكيل تفاعلي بتكتب النوعين الأول والتالت بس — نوع `Issue` محجوز للروتين الأوتوماتيكي، ومتستخدموش أبدًا.
+
 - **تحديد نوع الـ work item والبورد (المحتوى بيحسم، مش القناة):**
   - أي «issue / مشكلة / بق / bug / عطل / مش شغال / شكوى» = **Customer Issue** حتمًا → بورد الـ Support (`Support Team`).
   - أي «فكرة جديدة / مطلب / feature / تحسين» = **Change Request** → بورد الـ CR (`Change Requests`).

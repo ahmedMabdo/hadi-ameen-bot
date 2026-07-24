@@ -258,8 +258,10 @@ def _build_create_ops(args):
         {"op": "add", "path": "/fields/myagile.Customer", "value": ADO_CUSTOMER},
         {"op": "add", "path": "/fields/System.State", "value": args.state},
     ]
-    # Custom.Application مش حقل صالح على نوع Customer Issue — يتضاف بس للأنواع التانية
-    if args.type != "Customer Issue":
+    # نقطة 4 (F13): Custom.Application صالح لنوع Issue بس — متحقق من تعريف الأنواع
+    # في ADO الحي (مش موجود على Change Request وممنوع على Customer Issue).
+    import ado_fields
+    if args.type in ado_fields.APPLICATION_VALID_TYPES:
         ops.insert(3, {"op": "add", "path": "/fields/Custom.Application", "value": ADO_APPLICATION})
     if args.description:
         ops.append({"op": "add", "path": "/fields/System.Description", "value": args.description})
@@ -271,7 +273,9 @@ def _build_create_ops(args):
         path, value = extra.split("=", 1)
         ops.append({"op": "add", "path": f"/fields/{path}", "value": value})
     _provided = {op["path"].split("/fields/", 1)[-1] for op in ops if "/fields/" in op.get("path", "")}
-    ops += cr_media.required_field_ops(args.type, _provided)
+    # F12: استنتاج منصة/تصنيف الـ CR من العنوان+الوصف بدل defaults عمياء
+    _context = f"{args.title or ''} {args.description or ''}"
+    ops += cr_media.required_field_ops(args.type, _provided, context_text=_context)
     return ops
 
 

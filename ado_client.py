@@ -82,7 +82,13 @@ ADO_APPLICATION = os.environ.get("ADO_APPLICATION", "App - Customer")
 ADO_ORG_BASE = _org_base_url(ADO_ORG)
 ADO_BASE = f"{ADO_ORG_BASE}/{ADO_PROJECT}/_apis"
 ADO_API_VERSION = "7.1"
-WORK_ITEM_TYPE = "Issue"
+# نقطة 4 (F3): النوع من مصدر الحقيقة الواحد — "Issue" هو نوع مسار PostHog اليومي
+# على بورد السابورت (عن قصد، مختلف عن "Customer Issue" بتاع مسار المحادثات).
+try:
+    import ado_fields
+    WORK_ITEM_TYPE = ado_fields.TYPE_POSTHOG_ISSUE
+except Exception:  # لو الروتين اتشغل من مكان مفيهوش الموديول — نفس القيمة يدوي
+    WORK_ITEM_TYPE = "Issue"
 
 
 def _auth_headers():

@@ -219,7 +219,8 @@ def cmd_file_cr(args):
         {"op": "add", "path": "/fields/System.Tags", "value": tags},
         {"op": "add", "path": "/fields/System.AreaPath", "value": ADO_CR_AREA_PATH},
         {"op": "add", "path": "/fields/myagile.Customer", "value": ADO_CUSTOMER},
-        {"op": "add", "path": "/fields/Custom.Application", "value": ADO_APPLICATION},
+        # نقطة 4 (F13): Custom.Application اتشال — مش من حقول نوع Change Request
+        # (متحقق من تعريف النوع في ADO الحي 2026-07-24).
         {"op": "add", "path": "/fields/System.State", "value": "New"},
     ]
     for _extra in (args.field or []):
@@ -227,7 +228,10 @@ def cmd_file_cr(args):
             _p, _v = _extra.split("=", 1)
             payload.append({"op": "add", "path": f"/fields/{_p.strip()}", "value": _v})
     _provided = {op["path"].split("/fields/", 1)[-1] for op in payload if "/fields/" in op.get("path", "")}
-    payload += cr_media.required_field_ops(ADO_CR_TYPE, _provided)
+    # F12: منصة/تصنيف الـ CR بيتستنتجوا من عنوان الفكرة ووصفها بدل defaults ثابتة
+    payload += cr_media.required_field_ops(
+        ADO_CR_TYPE, _provided, context_text=f"{args.title or ''} {args.brief or ''}"
+    )
 
     if args.dry_run:
         print(f"DRY-RUN would create {ADO_CR_TYPE} in '{ADO_CR_AREA_PATH}': {args.title}")

@@ -46,7 +46,8 @@
 
 **كل محتوى التذكرة بالعربي** (العنوان والوصف والخطوات وكل الحقول). أسماء الشاشات والتطبيقات ممكن تفضل إنجليزي جوة الجملة (زي Order History).
 
-**النوع دايمًا `Customer Issue`** — مش `Issue` ولا `Bug`. الوجهة: `AreaPath = 0_Projects_Team\Support Team` + `IterationPath = 0_Projects_Team\Mars_Cycle`.
+**النوع دايمًا `Customer Issue` للتذاكر اللي مصدرها المحادثات** — مش `Issue` ولا `Bug`. الوجهة: `AreaPath = 0_Projects_Team\Support Team` + `IterationPath = 0_Projects_Team\Mars_Cycle`.
+(ملحوظة نطاق — خريطة المسارات في `ado_fields.py`: نوع `Issue` على نفس البورد محجوز **حصريًا** لروتين PostHog اليومي الأوتوماتيكي، ومش بتستخدمه انت في التذاكر التفاعلية أبدًا.)
 
 **خريطة الحقول — مرجع معتمد مسحوب من تعريف النوع على ADO (متغيّرش الأسماء دي):**
 

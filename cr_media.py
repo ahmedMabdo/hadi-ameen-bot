@@ -235,9 +235,24 @@ _DATE_FIELDS = {
 }
 
 
-def required_field_ops(wit_type, provided_paths):
-    """json-patch 'add' ops for required fields of wit_type not already provided."""
-    defaults = REQUIRED_DEFAULTS.get(wit_type, {})
+def required_field_ops(wit_type, provided_paths, context_text=None):
+    """json-patch 'add' ops for required fields of wit_type not already provided.
+
+    نقطة 4 (F12): لو النوع Change Request ومعانا نص الفكرة (context_text)،
+    المنصة والتصنيف بيتستنتجوا من النص بـ ado_fields.infer_cr_fields بدل الـ
+    defaults العمياء (Web/Customer Web/New Feature) — والـ fallback القديم بيفضل
+    آخر حل لو مفيش أي إشارة في النص."""
+    defaults = dict(REQUIRED_DEFAULTS.get(wit_type, {}))
+    if wit_type == "Change Request" and context_text:
+        try:
+            import ado_fields
+            inferred = ado_fields.infer_cr_fields(context_text)
+            was = inferred.pop("_inferred", False)
+            defaults.update(inferred)
+            if was:
+                print(f"CR FIELDS: استنتاج من النص — {inferred}")
+        except Exception as error:  # الاستنتاج اختياري — فشله ميوقفش الإنشاء
+            print(f"CR FIELDS WARN: {type(error).__name__}: {error}")
     provided = set(provided_paths or [])
     ops = []
     for path, val in defaults.items():
