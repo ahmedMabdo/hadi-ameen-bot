@@ -6,6 +6,13 @@
 > - إيفالز المكوّنات (B3) → **`eval_judge.py`** (حكم أسبوعي بعينة + rubric) و**`eval_report.py`** (تقرير DM أسبوعي) — مش `component_evals.py`.
 > - المراجعة الذاتية (B1) → **محقونة فعليًا** في `hadi_engine.py` (append على الـ system prompt) — مش مجرد ملف بيتقري.
 > أي تعارض بين الكلام تحت والواقع ده — الواقع بيكسب. الأقسام القديمة سايبنها للتاريخ.
+> - تايمر السحب (1.2) → **اتنقل للريبو** في `setup/systemd/hadi-snapshot-refresh.timer`.
+>   الـ unit القديم `hadi-ado-snapshot.timer` (اللي كان بيتكتب يدوي من القسم ده) **ملغي** —
+>   الاتنين بينفّذوا نفس `ado_snapshot.py refresh` كل ١٥ دقيقة، وتشغيلهم مع بعض
+>   بيضاعف نداءات ADO وبيخلي كاتبين على نفس ملف SQLite. لو لسه شغّال عندك:
+>   `sudo systemctl disable --now hadi-ado-snapshot.timer`.
+>   (`ExecStartPost` بتاع `sprints_sync.py write` مابقاش لازم — `refresh()` بينادي
+>   `sprints_sync.write_default()` جواه.)
 
 
 الملف ده بيوصّل الموديولز الجديدة بهادي وينشرها. الترتيب آمن: الجزء اللي مايكسرش
