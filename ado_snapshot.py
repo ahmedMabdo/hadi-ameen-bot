@@ -624,7 +624,7 @@ def cmd_brief(con):
           f" | master: {tags['master']} | FM: {tags['FM']} | unplanned: {tags['up']}")
     nxt = _next_ceremony(m)
     if nxt:
-        src = "مؤكد من آسر" if nxt.get("confirmed") else "متوقع — لسه متأكدش من آسر"
+        src = "مؤكد من آسر" if nxt.get("confirmed") else "متوقع — لسه متأكدناش من آسر"
         print(f"  أقرب إيفنت: {nxt['label']} — {nxt['date']} ({src})")
     for b in sorted(BOARDS):
         s = _board_summary(con, b)
