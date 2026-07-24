@@ -121,18 +121,31 @@ def _download_image(url: str, dest: Path) -> bool:
         return False
 
 
-async def collect_since(channel, client, hours=LOOKBACK_HOURS, limit=MAX_MSGS):
-    """يجمع رسائل القناة من آخر `hours` ساعة (زمنيًا)، وينزّل صور محدودة للتحليل،
-    ويستخرج نص المستندات (PDF/Word/Excel) لو موجودة. بيتخطّى البوت وأوامر الترياج."""
-    since = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=hours)
+async def collect_since(channel, client, hours=LOOKBACK_HOURS, limit=MAX_MSGS, since_dt=None):
+    """يجمع رسائل القناة للتحليل.
+
+    لو `since_dt` متبعتة (توقيت الرسالة اللي المستخدم عمل عليها ريبلاي) بيجمع
+    «من الرسالة دي (شاملة) لحد دلوقتي» — بالظبط زي ما المستخدم بيقصد. وإلا بيرجع
+    لآخر `hours` ساعة. بينزّل صور محدودة للتحليل بالـ vision، ويستخرج نص المستندات
+    (PDF/Word/Excel). بيتخطّى رسائل البوت وأوامر الترياج نفسها."""
     try:
         import file_extract
     except Exception:
         file_extract = None
+    anchored = since_dt is not None
+    since = since_dt if anchored else (
+        datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=hours))
+    if anchored:
+        # من الرسالة المرجعية (شاملة) لحد دلوقتي، ترتيب زمني مباشر
+        hist = channel.history(limit=max(limit, 500),
+                               after=since - datetime.timedelta(seconds=1),
+                               oldest_first=True)
+    else:
+        hist = channel.history(limit=limit, oldest_first=False)
     rows = []
     try:
-        async for m in channel.history(limit=limit, oldest_first=False):
-            if m.created_at < since:
+        async for m in hist:
+            if not anchored and m.created_at < since:
                 break
             if m.author.bot or (client.user and m.author.id == client.user.id):
                 continue
@@ -159,7 +172,8 @@ async def collect_since(channel, client, hours=LOOKBACK_HOURS, limit=MAX_MSGS):
             })
     except Exception as e:  # noqa
         print(f"TRIAGE collect error: {e}")
-    rows.reverse()  # ترتيب زمني
+    if not anchored:
+        rows.reverse()  # كان أحدث→أقدم، نرجّعه زمني
 
     IMAGES_DIR.mkdir(exist_ok=True)
     budget = MAX_IMAGES
@@ -498,11 +512,13 @@ def format_result(links, review, dups, dry_run=False):
 
 
 # ----------------------------- entrypoint -----------------------------
-async def run_triage(channel, client, hadi_engine, dry_run=None):
-    """الورك-فلو الكامل: جمع → استخراج → مراجعة/تقييم → رفع → لينكات. بدون تأكيد بشري."""
+async def run_triage(channel, client, hadi_engine, since_dt=None, dry_run=None):
+    """الورك-فلو الكامل: جمع → استخراج → مراجعة/تقييم → رفع → لينكات. بدون تأكيد بشري.
+
+    `since_dt`: لو المستخدم عمل ريبلاي على رسالة، بنبدأ الجمع منها (شاملة) لحد دلوقتي."""
     if dry_run is None:
         dry_run = DRY_RUN
-    rows = await collect_since(channel, client)
+    rows = await collect_since(channel, client, since_dt=since_dt)
     try:
         if not rows:
             return "راجعت القناة ومفيش رسائل جديدة في آخر الفترة أقدر أحللها."

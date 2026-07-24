@@ -1041,8 +1041,20 @@ async def on_message(message: discord.Message):
         try:
             import channel_triage as _ct
             if _ct.is_trigger(content):
+                # «من اول الرسالة ده» — لو ريبلاي، ابدأ من توقيت الرسالة المرجعية
+                _anchor = None
+                _ref = message.reference
+                if _ref is not None:
+                    _rep = _ref.resolved
+                    if _rep is None or isinstance(_rep, discord.DeletedReferencedMessage):
+                        try:
+                            _rep = await message.channel.fetch_message(_ref.message_id)
+                        except Exception:
+                            _rep = None
+                    if _rep is not None and not isinstance(_rep, discord.DeletedReferencedMessage):
+                        _anchor = _rep.created_at
                 async with message.channel.typing():
-                    _msg = await _ct.run_triage(message.channel, client, hadi_engine)
+                    _msg = await _ct.run_triage(message.channel, client, hadi_engine, since_dt=_anchor)
                 await send_long_message(message.channel, _msg, reply_to=message)
                 return
         except Exception as _cte:
