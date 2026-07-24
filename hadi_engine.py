@@ -102,6 +102,25 @@ def describe() -> str:
     return f"cli (model={MODEL}) — السبب: {_sdk_disabled_reason}"
 
 
+# --- حقن الـ Reflection المضمون (نقطة 6 — F9) ------------------------------
+# قبل كده HADI_REFLECTION_INSTRUCTIONS.md كان ملف على الرف — بيتطبق بس لو الموديل
+# «قرر» يفتحه. دلوقتي محتواه بيتحقن في الـ system prompt نفسه (append على البريسيت)
+# فتطبيقه مضمون في كل رد. النص ثابت ← الـ prefix بيفضل byte-identical والكاش بيصمد.
+def _load_reflection() -> str:
+    try:
+        txt = (BASE_DIR / "HADI_REFLECTION_INSTRUCTIONS.md").read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+    if not txt:
+        return ""
+    return "\n\n# مراجعة ذاتية إلزامية قبل أي إرسال (Reflection — بتتطبق دايمًا)\n\n" + txt
+
+
+_REFLECTION_APPEND = _load_reflection()
+if not _REFLECTION_APPEND:
+    print("HADI ENGINE WARN: HADI_REFLECTION_INSTRUCTIONS.md مش موجود — الـ reflection مش هيتحقن")
+
+
 # --- حد التوازي الإجمالي ---------------------------------------------------
 _sem = asyncio.Semaphore(MAX_CONCURRENCY)
 
@@ -292,6 +311,8 @@ def _sdk_options(resume_id):
             "type": "preset",
             "preset": "claude_code",
             "exclude_dynamic_sections": True,
+            # نقطة 6 (F9): الـ reflection جزء من الـ system prompt — مضمون، مش اختياري
+            **({"append": _REFLECTION_APPEND} if _REFLECTION_APPEND else {}),
         },
         setting_sources=["project", "local"],
         permission_mode="default",
@@ -397,8 +418,11 @@ def _is_transient(message: str) -> bool:
 
 
 def _run_cli_once(prompt: str, timeout: int) -> str:
+    cmd = [CLAUDE_BIN, "-p", prompt, "--model", MODEL]
+    if _REFLECTION_APPEND:  # نقطة 6: نفس ضمان الـ reflection على مسار الـ CLI
+        cmd += ["--append-system-prompt", _REFLECTION_APPEND]
     result = subprocess.run(
-        [CLAUDE_BIN, "-p", prompt, "--model", MODEL],
+        cmd,
         cwd=BASE_DIR,
         env=_actor_env(),
         capture_output=True,
