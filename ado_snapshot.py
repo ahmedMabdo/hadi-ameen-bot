@@ -55,6 +55,15 @@ DB_PATH = os.environ.get(
 GREEN_MIN = int(os.environ.get("ADO_FRESH_GREEN_MIN", "20"))
 YELLOW_MIN = int(os.environ.get("ADO_FRESH_YELLOW_MIN", "60"))
 
+# --- point 2: multi-board read-model (Support + CR + 8Orders project tree) ---
+AREA_SUPPORT = os.environ.get("ADO_AREA_SUPPORT", "0_Projects_Team\\Support Team")
+AREA_CR = os.environ.get("ADO_AREA_CR", "0_Projects_Team\\Change Requests")
+BOARDS = {"support": AREA_SUPPORT, "cr": AREA_CR}
+PROJECT_ITEM_ID = int(os.environ.get("ADO_PROJECT_ITEM", "53585") or "53585")
+BOARD_TOP = int(os.environ.get("ADO_BOARD_TOP", "500"))
+CLOSED_WINDOW_DAYS = int(os.environ.get("ADO_CLOSED_WINDOW_DAYS", "14"))
+DONE_STATES = ("Closed", "Rejected", "Removed")
+
 WORK_DAYS = {6, 0, 1, 2, 3}  # Sun..Thu (Python weekday: Mon=0..Sun=6) -> Egypt week
 
 FIELDS = [
@@ -62,6 +71,7 @@ FIELDS = [
     "System.Tags", "System.BoardColumn", "System.BoardLane", "System.AssignedTo",
     "System.IterationPath", "System.Parent", "System.CreatedDate",
     "System.ChangedDate", "Microsoft.VSTS.Scheduling.RemainingWork",
+    "Microsoft.VSTS.Common.Priority",
 ]
 
 
@@ -116,6 +126,27 @@ def fetch_fields(ids):
     return out
 
 
+def wiql_ids(query, top=None):
+    """IDs من WIQL flat query (workItems[].id)."""
+    url = (f"{ORG_URL}/{urllib.parse.quote(PROJECT)}/_apis/wit/wiql"
+           f"?api-version={API}&$top={top or BOARD_TOP}")
+    res = _req("POST", url, {"query": query})
+    return [w["id"] for w in res.get("workItems", [])]
+
+
+def wiql_link_ids(query, top=None):
+    """IDs من WIQL link query (workItemRelations[].target.id) — لشجرة الـ hierarchy."""
+    url = (f"{ORG_URL}/{urllib.parse.quote(PROJECT)}/_apis/wit/wiql"
+           f"?api-version={API}&$top={top or BOARD_TOP}")
+    res = _req("POST", url, {"query": query})
+    ids = set()
+    for rel in res.get("workItemRelations", []):
+        tgt = rel.get("target") or {}
+        if tgt.get("id"):
+            ids.add(tgt["id"])
+    return sorted(ids)
+
+
 def fetch_capacity(iteration_id):
     b=_team_base()
     for ver in ('7.1','7.0','6.0'):
@@ -153,6 +184,16 @@ def _init(con):
         CREATE TABLE IF NOT EXISTS blocked_state (
             id INTEGER PRIMARY KEY, blocked_since TEXT
         );
+        CREATE TABLE IF NOT EXISTS board_items (
+            board TEXT, id INTEGER, type TEXT, title TEXT, state TEXT,
+            tags TEXT, assigned_to TEXT, priority INTEGER, parent INTEGER,
+            created_date TEXT, changed_date TEXT,
+            PRIMARY KEY (board, id)
+        );
+        CREATE TABLE IF NOT EXISTS project_items (
+            id INTEGER PRIMARY KEY, type TEXT, title TEXT, state TEXT,
+            parent INTEGER, changed_date TEXT
+        );
         """
     )
     con.commit()
@@ -168,83 +209,161 @@ def _assigned(v):
     return v or ""
 
 
+def _refresh_sprint(con, now):
+    it = fetch_current_iteration()
+    if not it:
+        raise RuntimeError("no current iteration found for team " + TEAM)
+    attrs = it.get("attributes", {}) or {}
+    ids, top = fetch_iteration_workitem_ids(it["id"])
+    items = fetch_fields(ids) if ids else []
+    caps = fetch_capacity(it["id"])
+
+    con.execute("DELETE FROM work_items")
+    con.execute("DELETE FROM capacity")
+    blocked_now = set()
+    for w in items:
+        f = w.get("fields", {})
+        tags = f.get("System.Tags", "")
+        wid = f.get("System.Id")
+        con.execute(
+            """INSERT OR REPLACE INTO work_items
+               (id,type,title,state,tags,board_column,board_lane,assigned_to,
+                iteration_path,parent,remaining_work,created_date,changed_date,is_top)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (wid, f.get("System.WorkItemType"), f.get("System.Title"),
+             f.get("System.State"), tags, f.get("System.BoardColumn"),
+             f.get("System.BoardLane"), _assigned(f.get("System.AssignedTo")),
+             f.get("System.IterationPath"), f.get("System.Parent"),
+             f.get("Microsoft.VSTS.Scheduling.RemainingWork"),
+             f.get("System.CreatedDate"), f.get("System.ChangedDate"),
+             1 if wid in top else 0),
+        )
+        if any(t.lower() == "blocked" for t in _tags_list(tags)):
+            blocked_now.add(wid)
+
+    # stateful blocked-since tracking (for "stuck >= N days")
+    existing = {r["id"] for r in con.execute("SELECT id FROM blocked_state")}
+    for wid in blocked_now - existing:
+        con.execute("INSERT OR REPLACE INTO blocked_state (id,blocked_since) VALUES (?,?)",
+                    (wid, now.isoformat()))
+    for wid in existing - blocked_now:
+        con.execute("DELETE FROM blocked_state WHERE id=?", (wid,))
+
+    for c in caps:
+        tm = c.get("teamMember", {}) or {}
+        acts = c.get("activities") or [{}]
+        con.execute(
+            "INSERT INTO capacity (member,email,activity,capacity_per_day,days_off) VALUES (?,?,?,?,?)",
+            (tm.get("displayName"), tm.get("uniqueName"),
+             acts[0].get("name"), acts[0].get("capacityPerDay"),
+             json.dumps(c.get("daysOff") or [])),
+        )
+
+    _set_meta(con, {
+        "last_refresh": now.isoformat(),
+        "last_error": "",
+        "sprint_id": it["id"],
+        "sprint_name": it.get("name"),
+        "sprint_path": it.get("path"),
+        "sprint_start": attrs.get("startDate"),
+        "sprint_finish": attrs.get("finishDate"),
+        "item_count": str(len(items)),
+    })
+    return len(items)
+
+
+def _refresh_board(con, board, now):
+    """بورد Support أو CR: كل المفتوح + المقفول خلال آخر CLOSED_WINDOW_DAYS يوم."""
+    area = BOARDS[board]
+    states = " AND ".join(f"[System.State] <> '{s}'" for s in DONE_STATES)
+    q = (
+        "SELECT [System.Id] FROM WorkItems "
+        f"WHERE [System.TeamProject] = '{PROJECT}' "
+        f"AND [System.AreaPath] UNDER '{area}' "
+        f"AND (({states}) OR [System.ChangedDate] >= @Today - {CLOSED_WINDOW_DAYS}) "
+        "ORDER BY [System.ChangedDate] DESC"
+    )
+    ids = wiql_ids(q)
+    items = fetch_fields(ids) if ids else []
+    con.execute("DELETE FROM board_items WHERE board=?", (board,))
+    for w in items:
+        f = w.get("fields", {})
+        con.execute(
+            """INSERT OR REPLACE INTO board_items
+               (board,id,type,title,state,tags,assigned_to,priority,parent,
+                created_date,changed_date) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (board, f.get("System.Id"), f.get("System.WorkItemType"),
+             f.get("System.Title"), f.get("System.State"), f.get("System.Tags", ""),
+             _assigned(f.get("System.AssignedTo")),
+             f.get("Microsoft.VSTS.Common.Priority"), f.get("System.Parent"),
+             f.get("System.CreatedDate"), f.get("System.ChangedDate")),
+        )
+    _set_meta(con, {f"{board}_last_refresh": now.isoformat(), f"{board}_error": "",
+                    f"{board}_count": str(len(items))})
+    return len(items)
+
+
+def _refresh_project(con, now):
+    """شجرة مشروع 8Orders (الـ work item رقم PROJECT_ITEM_ID + كل أولاده recursive)."""
+    q = (
+        "SELECT [System.Id] FROM WorkItemLinks "
+        f"WHERE [Source].[System.Id] = {PROJECT_ITEM_ID} "
+        "AND [System.Links.LinkType] = 'System.LinkTypes.Hierarchy-Forward' "
+        "MODE (Recursive)"
+    )
+    ids = set(wiql_link_ids(q))
+    ids.add(PROJECT_ITEM_ID)
+    items = fetch_fields(sorted(ids))
+    con.execute("DELETE FROM project_items")
+    for w in items:
+        f = w.get("fields", {})
+        con.execute(
+            "INSERT OR REPLACE INTO project_items (id,type,title,state,parent,changed_date)"
+            " VALUES (?,?,?,?,?,?)",
+            (f.get("System.Id"), f.get("System.WorkItemType"), f.get("System.Title"),
+             f.get("System.State"), f.get("System.Parent"), f.get("System.ChangedDate")),
+        )
+    _set_meta(con, {"project_last_refresh": now.isoformat(), "project_error": "",
+                    "project_count": str(len(items))})
+    return len(items)
+
+
 def refresh():
+    """يحدّث كل المصادر — كل مصدر معزول: فشل بورد ميوقعش الباقي (نضارة لكل مصدر)."""
     now = datetime.datetime.now(datetime.timezone.utc)
     con = _db()
     _init(con)
+    results, failures = [], []
+    parts = [
+        ("sprint", lambda: _refresh_sprint(con, now)),
+        ("support", lambda: _refresh_board(con, "support", now)),
+        ("cr", lambda: _refresh_board(con, "cr", now)),
+        ("project", lambda: _refresh_project(con, now)),
+    ]
     try:
-        it = fetch_current_iteration()
-        if not it:
-            _set_meta(con, {"last_error": "no current iteration", "last_error_at": now.isoformat()})
-            con.commit()
-            print("ERROR: no current iteration found for team", TEAM)
-            return 1
-        attrs = it.get("attributes", {}) or {}
-        ids, top = fetch_iteration_workitem_ids(it["id"])
-        items = fetch_fields(ids) if ids else []
-        caps = fetch_capacity(it["id"])
-
-        con.execute("DELETE FROM work_items")
-        con.execute("DELETE FROM capacity")
-        blocked_now = set()
-        for w in items:
-            f = w.get("fields", {})
-            tags = f.get("System.Tags", "")
-            wid = f.get("System.Id")
-            con.execute(
-                """INSERT OR REPLACE INTO work_items
-                   (id,type,title,state,tags,board_column,board_lane,assigned_to,
-                    iteration_path,parent,remaining_work,created_date,changed_date,is_top)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (wid, f.get("System.WorkItemType"), f.get("System.Title"),
-                 f.get("System.State"), tags, f.get("System.BoardColumn"),
-                 f.get("System.BoardLane"), _assigned(f.get("System.AssignedTo")),
-                 f.get("System.IterationPath"), f.get("System.Parent"),
-                 f.get("Microsoft.VSTS.Scheduling.RemainingWork"),
-                 f.get("System.CreatedDate"), f.get("System.ChangedDate"),
-                 1 if wid in top else 0),
-            )
-            if any(t.lower() == "blocked" for t in _tags_list(tags)):
-                blocked_now.add(wid)
-
-        # stateful blocked-since tracking (for "stuck >= N days")
-        existing = {r["id"] for r in con.execute("SELECT id FROM blocked_state")}
-        for wid in blocked_now - existing:
-            con.execute("INSERT OR REPLACE INTO blocked_state (id,blocked_since) VALUES (?,?)",
-                        (wid, now.isoformat()))
-        for wid in existing - blocked_now:
-            con.execute("DELETE FROM blocked_state WHERE id=?", (wid,))
-
-        for c in caps:
-            tm = c.get("teamMember", {}) or {}
-            acts = c.get("activities") or [{}]
-            con.execute(
-                "INSERT INTO capacity (member,email,activity,capacity_per_day,days_off) VALUES (?,?,?,?,?)",
-                (tm.get("displayName"), tm.get("uniqueName"),
-                 acts[0].get("name"), acts[0].get("capacityPerDay"),
-                 json.dumps(c.get("daysOff") or [])),
-            )
-
-        _set_meta(con, {
-            "last_refresh": now.isoformat(),
-            "last_error": "",
-            "sprint_id": it["id"],
-            "sprint_name": it.get("name"),
-            "sprint_path": it.get("path"),
-            "sprint_start": attrs.get("startDate"),
-            "sprint_finish": attrs.get("finishDate"),
-            "item_count": str(len(items)),
-        })
-        con.commit()
-        print(f"OK: refreshed {len(items)} items for {it.get('name')} at {now.isoformat()}")
-        return 0
-    except Exception as e:  # noqa
-        _set_meta(con, {"last_error": str(e), "last_error_at": now.isoformat()})
-        con.commit()
-        print("ERROR during refresh:", e)
-        return 1
+        for name, fn in parts:
+            try:
+                n = fn()
+                con.commit()
+                results.append(f"{name}={n}")
+            except Exception as e:  # noqa — عزل الفشل لكل مصدر
+                err_key = "last_error" if name == "sprint" else f"{name}_error"
+                at_key = "last_error_at" if name == "sprint" else f"{name}_error_at"
+                _set_meta(con, {err_key: str(e), at_key: now.isoformat()})
+                con.commit()
+                failures.append(f"{name}: {e}")
+        # توليد knowledge/sprints.md من الـ snapshot (F8: الملف generated دايمًا)
+        try:
+            import sprints_sync
+            sprints_sync.write_default()
+        except Exception as e:  # noqa — best-effort
+            print("WARN: sprints_sync failed:", e)
     finally:
         con.close()
+    print(("OK" if not failures else "PARTIAL") + ": refreshed "
+          + ", ".join(results) + (f" | failures: {'; '.join(failures)}" if failures else "")
+          + f" at {now.isoformat()}")
+    return 0 if not failures else 1
 
 
 def _set_meta(con, d):
@@ -257,15 +376,19 @@ def _meta(con):
     return {r["key"]: r["value"] for r in con.execute("SELECT key,value FROM meta")}
 
 
-def freshness(con):
+def freshness(con, source=None):
+    """نضارة مصدر معين: sprint (الافتراضي) أو support/cr/project."""
     m = _meta(con)
-    last = m.get("last_refresh")
+    if source in (None, "sprint"):
+        last, err = m.get("last_refresh"), m.get("last_error")
+    else:
+        last, err = m.get(f"{source}_last_refresh"), m.get(f"{source}_error")
     if not last:
         return {"emoji": "🔴", "label": "DOWN", "age_min": None, "note": "no snapshot yet"}
     age = (datetime.datetime.now(datetime.timezone.utc)
            - datetime.datetime.fromisoformat(last)).total_seconds() / 60.0
-    if m.get("last_error"):
-        return {"emoji": "🔴", "label": "DOWN", "age_min": round(age), "note": m["last_error"]}
+    if err:
+        return {"emoji": "🔴", "label": "DOWN", "age_min": round(age), "note": err}
     if age < GREEN_MIN:
         emoji, label = "🟢", "LIVE"
     elif age < YELLOW_MIN:
@@ -275,8 +398,8 @@ def freshness(con):
     return {"emoji": emoji, "label": label, "age_min": round(age), "note": ""}
 
 
-def banner(con):
-    fr = freshness(con)
+def banner(con, source=None):
+    fr = freshness(con, source)
     age = "?" if fr["age_min"] is None else f"{fr['age_min']}m"
     extra = f" - {fr['note']}" if fr["note"] else ""
     return f"{fr['emoji']} {fr['label']} (snapshot age {age}){extra}"
@@ -358,6 +481,186 @@ def cmd_capacity(con):
     print(json.dumps(out, ensure_ascii=False, indent=2))
 
 
+# ------------------- multi-board reads (point 2) -------------------
+def _board_rows(con, board=None, state=None):
+    q, args = "SELECT * FROM board_items", []
+    conds = []
+    if board:
+        conds.append("board=?"); args.append(board)
+    if state:
+        conds.append("state=?"); args.append(state)
+    if conds:
+        q += " WHERE " + " AND ".join(conds)
+    q += " ORDER BY changed_date DESC"
+    return [dict(r) for r in con.execute(q, args)]
+
+
+def _iso_age_hours(iso):
+    try:
+        dt = datetime.datetime.fromisoformat((iso or "").replace("Z", "+00:00"))
+        return (datetime.datetime.now(datetime.timezone.utc) - dt).total_seconds() / 3600.0
+    except Exception:
+        return 1e9
+
+
+def cmd_boards(con, board, state):
+    rows = _board_rows(con, board, state)
+    out = [{"board": r["board"], "id": r["id"], "type": r["type"], "title": r["title"],
+            "state": r["state"], "assigned_to": r["assigned_to"],
+            "priority": r["priority"], "tags": _tags_list(r["tags"]),
+            "changed": (r["changed_date"] or "")[:16]} for r in rows]
+    for b in ([board] if board else sorted(BOARDS)):
+        print(f"[{b}] {banner(con, b)}")
+    print(json.dumps(out, ensure_ascii=False, indent=2))
+
+
+def _board_summary(con, board):
+    rows = _board_rows(con, board)
+    open_rows = [r for r in rows if r["state"] not in DONE_STATES]
+    by_state, by_type = {}, {}
+    for r in open_rows:
+        by_state[r["state"]] = by_state.get(r["state"], 0) + 1
+        by_type[r["type"]] = by_type.get(r["type"], 0) + 1
+    new_24h = sum(1 for r in rows if _iso_age_hours(r["created_date"]) <= 24)
+    closed_14d = sum(1 for r in rows if r["state"] in DONE_STATES)
+    return {"open": len(open_rows), "by_state": by_state, "by_type": by_type,
+            "new_24h": new_24h, f"closed_{CLOSED_WINDOW_DAYS}d": closed_14d}
+
+
+def cmd_board_summary(con):
+    out = {}
+    for b in sorted(BOARDS):
+        out[b] = {"freshness": freshness(con, b), **_board_summary(con, b)}
+    print(json.dumps(out, ensure_ascii=False, indent=2))
+
+
+def cmd_project(con):
+    rows = {r["id"]: dict(r) for r in con.execute("SELECT * FROM project_items")}
+    print(f"[project 8Orders #{PROJECT_ITEM_ID}] {banner(con, 'project')}")
+    kids = {}
+    for r in rows.values():
+        kids.setdefault(r["parent"], []).append(r)
+
+    def _walk(pid, depth):
+        for r in sorted(kids.get(pid, []), key=lambda x: x["id"]):
+            print("  " * depth + f"- #{r['id']} [{r['type']}] {r['title']} ({r['state']})")
+            _walk(r["id"], depth + 1)
+
+    root = rows.get(PROJECT_ITEM_ID)
+    if root:
+        print(f"#{root['id']} [{root['type']}] {root['title']} ({root['state']})")
+        _walk(PROJECT_ITEM_ID, 1)
+    else:
+        print("(no project snapshot yet — run refresh)")
+
+
+def cmd_whatsnew(con, hours):
+    """الجديد/المتغير خلال آخر N ساعة عبر البوردات والسبرنت — غذاء «إيه الجديد؟»."""
+    out = {"window_hours": hours, "boards": {}, "sprint_changed": []}
+    for b in sorted(BOARDS):
+        rows = _board_rows(con, b)
+        created = [r for r in rows if _iso_age_hours(r["created_date"]) <= hours]
+        changed = [r for r in rows if _iso_age_hours(r["changed_date"]) <= hours
+                   and r not in created]
+        out["boards"][b] = {
+            "freshness": freshness(con, b),
+            "created": [{"id": r["id"], "type": r["type"], "title": r["title"],
+                         "state": r["state"]} for r in created],
+            "changed": [{"id": r["id"], "type": r["type"], "title": r["title"],
+                         "state": r["state"]} for r in changed[:20]],
+        }
+    for r in _rows(con):
+        if _iso_age_hours(r["changed_date"]) <= hours:
+            out["sprint_changed"].append({"id": r["id"], "title": r["title"],
+                                          "state": r["state"]})
+    out["sprint_changed"] = out["sprint_changed"][:20]
+    print(json.dumps(out, ensure_ascii=False, indent=2))
+
+
+def _next_ceremony(m):
+    """أقرب إيفنت جاي من sprint_ceremonies.json (المؤكد من آسر) أو الديفولت المحسوب."""
+    try:
+        import sprint_intake
+        return sprint_intake.next_event(m.get("sprint_name"),
+                                        (m.get("sprint_start") or "")[:10],
+                                        (m.get("sprint_finish") or "")[:10])
+    except Exception:
+        return None
+
+
+def _days_left(finish_iso):
+    try:
+        finish = datetime.datetime.fromisoformat(
+            (finish_iso or "").replace("Z", "+00:00")).date()
+    except Exception:
+        return None
+    d, days = datetime.date.today(), 0
+    while d < finish:
+        if d.weekday() in WORK_DAYS:
+            days += 1
+        d += datetime.timedelta(days=1)
+    return days
+
+
+def cmd_brief(con):
+    """الخلاصة الشاملة بأمر واحد — دي «فتحة الدرج» الرسمية: سبرنت + بوردات + مشروع."""
+    m = _meta(con)
+    states = {}
+    for r in _rows(con, "is_top=1"):
+        states[r["state"]] = states.get(r["state"], 0) + 1
+    blocked = sum(1 for _ in con.execute("SELECT id FROM blocked_state"))
+    tags = {t: 0 for t in ("master", "FM", "up")}
+    for r in _rows(con, "is_top=1"):
+        for t in _tags_list(r["tags"]):
+            if t in tags:
+                tags[t] += 1
+    dl = _days_left(m.get("sprint_finish"))
+    print(f"📋 SNAPSHOT BRIEF — {datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='minutes')}")
+    print(f"[sprint] {banner(con)}")
+    print(f"  {m.get('sprint_name','?')}: {(m.get('sprint_start') or '')[:10]} → "
+          f"{(m.get('sprint_finish') or '')[:10]}"
+          + (f" — فاضل {dl} يوم شغل" if dl is not None else ""))
+    print(f"  states: {json.dumps(states, ensure_ascii=False)} | blocked: {blocked}"
+          f" | master: {tags['master']} | FM: {tags['FM']} | unplanned: {tags['up']}")
+    nxt = _next_ceremony(m)
+    if nxt:
+        src = "مؤكد من آسر" if nxt.get("confirmed") else "متوقع — لسه متأكدش من آسر"
+        print(f"  أقرب إيفنت: {nxt['label']} — {nxt['date']} ({src})")
+    for b in sorted(BOARDS):
+        s = _board_summary(con, b)
+        print(f"[{b}] {banner(con, b)}")
+        print(f"  open: {s['open']} (new 24h: {s['new_24h']}) | by_type: "
+              f"{json.dumps(s['by_type'], ensure_ascii=False)} | by_state: "
+              f"{json.dumps(s['by_state'], ensure_ascii=False)}")
+    print(f"[project] {banner(con, 'project')} — items: {m.get('project_count', '0')}")
+
+
+def pointer_line():
+    """سطر واحد مكثف للحقن في برومبت البوت — تذكير إن الدرج موجود وطازة (مش الخلاصة كاملة).
+
+    بيتنادى من discord_bot مع كل رسالة: قراءة SQLite محلية بالميلي ثانية، ولو أي
+    مشكلة بيرجع '' — عمره ما يوقف رد."""
+    try:
+        con = _db()
+        _init(con)
+        try:
+            m = _meta(con)
+            fr = freshness(con)
+            sup = _board_summary(con, "support")
+            cr = _board_summary(con, "cr")
+        finally:
+            con.close()
+        name = m.get("sprint_name")
+        if not name:
+            return ""
+        dl = _days_left(m.get("sprint_finish"))
+        return (f"{fr['emoji']} snapshot محلي (اتحدث من {fr['age_min']}د): {name}"
+                + (f" فاضل {dl} يوم شغل" if dl is not None else "")
+                + f" | سابورت {sup['open']} مفتوح | CR {cr['open']} مفتوح")
+    except Exception:
+        return ""
+
+
 # ----------------------------- cli -----------------------------
 def main():
     p = argparse.ArgumentParser(description="Hadi ADO read-model (read-only snapshot).")
@@ -368,6 +671,13 @@ def main():
     sp = sub.add_parser("stories"); sp.add_argument("--tag", default=None)
     bp = sub.add_parser("blocked"); bp.add_argument("--days", type=int, default=0)
     sub.add_parser("capacity")
+    bo = sub.add_parser("boards")
+    bo.add_argument("--board", choices=sorted(BOARDS), default=None)
+    bo.add_argument("--state", default=None)
+    sub.add_parser("board-summary")
+    sub.add_parser("project")
+    wn = sub.add_parser("whatsnew"); wn.add_argument("--hours", type=int, default=24)
+    sub.add_parser("brief")
     a = p.parse_args()
 
     if a.cmd == "refresh":
@@ -385,6 +695,16 @@ def main():
             cmd_blocked(con, a.days)
         elif a.cmd == "capacity":
             cmd_capacity(con)
+        elif a.cmd == "boards":
+            cmd_boards(con, a.board, a.state)
+        elif a.cmd == "board-summary":
+            cmd_board_summary(con)
+        elif a.cmd == "project":
+            cmd_project(con)
+        elif a.cmd == "whatsnew":
+            cmd_whatsnew(con, a.hours)
+        elif a.cmd == "brief":
+            cmd_brief(con)
     finally:
         con.close()
 

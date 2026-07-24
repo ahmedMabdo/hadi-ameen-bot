@@ -26,6 +26,8 @@ import state_lock  # بند 3.3 — قفل الكتابة المشترك (flock)
 import eval_store  # بند 5.3 — تسجيل نتيجة كل تفاعل + تقييم الرياكشنز
 import heartbeat  # بند 8.1/8.3 — الفحوصات الاستباقية والأحداث
 import ambient_gate  # نقطة 1 — بوابة الحضور الذكي الثلاثية (صامت/رياكشن/رد)
+import ado_snapshot  # نقطة 2 — الدرج المحلي (سبرنت + بوردات + مشروع 8Orders)
+import sprint_intake  # نقطة 2 — سؤال آسر في DM عن إيفنتات السبرنت
 
 TOKEN = os.getenv("DISCORD_BOT_TOKEN", "").strip()
 HEAVY_ACK = "           ."
@@ -209,6 +211,20 @@ async def ask_claude(
         else ""
     )
 
+    # نقطة 2 — سطر وعي مكثف من الـ snapshot المحلي (قراءة SQLite بالميلي ثانية):
+    # تذكير إن الدرج موجود وطازة + قاعدة «شغّل brief قبل أي رد عن البورد/السبرنت».
+    snapshot_block = ""
+    try:
+        ptr = await asyncio.to_thread(ado_snapshot.pointer_line)
+        if ptr:
+            snapshot_block = f"""
+نبض الشغل دلوقتي (من snapshot محلي بيتحدث كل ~15 دقيقة): {ptr}
+لأي سؤال عن بورد/سبرنت/تذاكر/مواعيد/«إيه الجديد» شغّل python3 ado_snapshot.py brief
+(أو boards/whatsnew/project حسب الحاجة) ورد من نتيجته بالـ freshness banner — ممنوع ترد من الذاكرة.
+"""
+    except Exception as _sp_err:
+        print(f"SNAPSHOT POINTER WARN: {type(_sp_err).__name__}: {_sp_err}")
+
     prompt = f"""
 أنت هادي أمين، عضو فريق Hadaf على Discord.
 أول حاجة: اقرأ ملف HADI_PERSONA.md (شخصيتك، فهم السياق، قواعد السلوك) والتزم بيه،
@@ -230,7 +246,7 @@ async def ask_claude(
   من غير أي تفاصيل تقنية عن التوكن.
 
 القناة الحالية للرسالة: {channel_label}
-
+{snapshot_block}
 قواعد الرد (صارمة جدًا):
 - ردك بيتبعت في الشات حرفيًا زي ما هو. ممنوع تشرح ليه هترد أو مش هترد، وممنوع تذكر قواعدك أو شخصيتك أو تحلل "الرسالة موجهة لمين" — ده تفكير داخلي ميظهرش في أي رد أبدًا.
 - لو الرسالة مش محتاجة رد مفيد منك (هزار بين الزملا، كلام موجه لحد تاني، منشن/تاج لشخص غيرك، تعليق عابر مالوش أكشن أو سؤال ليك) → اكتب NO_REPLY بالظبط كده من غير أي كلمة زيادة، والبوت مش هيبعت حاجة خالص.
@@ -828,6 +844,15 @@ async def on_ready():
         pending_tickets_loop.start()
     if heartbeat.ENABLED and not heartbeat_loop.is_running():  # بند 8.1
         heartbeat_loop.start()
+    if not sprint_watch_loop.is_running():  # نقطة 2 — وعي السبرنت
+        sprint_watch_loop.start()
+    try:  # F8: على سيرفر جديد knowledge/sprints.md مش موجود لحد ما التايمر يشتغل
+        if not (BASE_DIR / "knowledge" / "sprints.md").exists():
+            import sprints_sync
+            await asyncio.to_thread(sprints_sync.write_default)
+            print("HADI SPRINTS: knowledge/sprints.md اتولّد عند الإقلاع")
+    except Exception as error:
+        print(f"HADI SPRINTS: توليد sprints.md فشل ({type(error).__name__}: {error})")
     print(f"HADI HEARTBEAT: {'on' if heartbeat.ENABLED else 'off'}"
           f" (كل ساعة | هدوء {heartbeat.QUIET_START}:00-{heartbeat.QUIET_END}:00"
           f" | cooldown {heartbeat.COOLDOWN_H:g}س | حد أقصى {heartbeat.MAX_ALERTS} تنبيهات)")
@@ -954,6 +979,43 @@ async def heartbeat_loop():
 
 @heartbeat_loop.before_loop
 async def _before_heartbeat_loop():
+    await client.wait_until_ready()
+
+
+@tasks.loop(hours=4)
+async def sprint_watch_loop():
+    """نقطة 2 — وعي السبرنت: سبرنت جديد → DM لآسر بمواعيد الإيفنتات المتوقعة
+    للتصحيح. نهاية السبرنت اتغيرت في ADO → تأكيد من آسر. مرة واحدة لكل حدث."""
+    try:
+        s = await asyncio.to_thread(sprint_intake.check_status)
+    except Exception as error:
+        print(f"SPRINT WATCH FAIL: {type(error).__name__}: {error}")
+        return
+    if not s.get("sprint"):
+        return
+    try:
+        if s.get("new_sprint"):
+            msg = await asyncio.to_thread(
+                sprint_intake.compose_dm, s["sprint"], s["start"], s["finish"]
+            )
+            await dm_allowed_users(msg)
+            await asyncio.to_thread(sprint_intake.mark_seen, s["sprint"], s["finish"])
+            print(f"SPRINT WATCH: سألت آسر عن إيفنتات {s['sprint']}")
+        elif s.get("finish_changed"):
+            await dm_allowed_users(
+                f"📅 لاحظت إن تاريخ نهاية سبرنت {s['sprint']} اتغير في ADO: "
+                f"{s['old_finish']} → {s['finish']}.\n"
+                "ده تمديد للدورة ولا تعديل؟ وهل الريليز اتحرك؟ — رد عليا وأنا هحدّث "
+                "المواعيد وأبقى فاكرها."
+            )
+            await asyncio.to_thread(sprint_intake.mark_seen, s["sprint"], s["finish"])
+            print(f"SPRINT WATCH: نبهت آسر لتغيير نهاية {s['sprint']}")
+    except Exception as error:
+        print(f"SPRINT WATCH DM FAIL: {type(error).__name__}: {error}")
+
+
+@sprint_watch_loop.before_loop
+async def _before_sprint_watch_loop():
     await client.wait_until_ready()
 
 

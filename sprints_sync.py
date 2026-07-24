@@ -61,11 +61,24 @@ def build(con):
     out.append("> ⚙️ الملف ده بيتولّد أوتوماتيك من ADO بواسطة `sprints_sync.py`. **ما تعدّلوش بالإيد.**")
     out.append(f"> آخر تحديث: {now} — نضارة: {fr['emoji']} {fr['label']}\n")
     out.append(f"## المواعيد\n- بداية: {start}\n- نهاية: {finish}\n")
-    out.append("## الإيفنتات (من DM آسر)")
-    if cer:
-        out.append("\n".join(f"- {k}: {v}" for k, v in cer.items()) + "\n")
-    else:
-        out.append("- (لسه) — هادي هيسأل آسر عليها في DM أول السبرنت.\n")
+    out.append("## إيفنتات الدورة (✅ مؤكد من آسر / «متوقع» محسوب من قواعد الدورة)")
+    try:
+        import sprint_intake
+        defaults = sprint_intake.compute_defaults(start, finish)
+        ev_lines = []
+        for key in sprint_intake.CEREMONY_KEYS:
+            label = sprint_intake.LABELS[key]
+            if cer.get(key):
+                ev_lines.append(f"- {label}: {cer[key]} ✅")
+            elif defaults.get(key):
+                ev_lines.append(f"- {label}: {sprint_intake._fmt(defaults[key])}"
+                                " (متوقع — لسه متأكدناش من آسر)")
+        out.append(("\n".join(ev_lines) if ev_lines else "- (لا يوجد)") + "\n")
+    except Exception:
+        if cer:
+            out.append("\n".join(f"- {k}: {v}" for k, v in cer.items()) + "\n")
+        else:
+            out.append("- (لسه) — هادي هيسأل آسر عليها في DM أول السبرنت.\n")
     out.append("## إجازات مجدولة (من Capacity)\n" + ("\n".join(off) if off else "- (لا يوجد)") + "\n")
     out.append("## ستوريز master\n" + _fmt(_tops(con, "master")))
     out.append("## ستوريز Feature Management (FM)\n" + _fmt(_tops(con, "FM")))
@@ -73,26 +86,32 @@ def build(con):
     return "\n".join(out) + "\n"
 
 
-def main():
-    p = argparse.ArgumentParser(description="Generate knowledge/sprints.md from the ADO snapshot.")
-    sub = p.add_subparsers(dest="cmd", required=True)
-    w = sub.add_parser("write")
-    w.add_argument("--path", default=os.environ.get(
+def write_default(path=None):
+    """يولّد knowledge/sprints.md من الـ snapshot — بيتنادى من refresh ومن البوت عند الإقلاع."""
+    path = path or os.environ.get(
         "ADO_SPRINTS_MD",
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge", "sprints.md")))
-    a = p.parse_args()
-
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "knowledge", "sprints.md"))
     con = snap._db()
     snap._init(con)
     try:
         content = build(con)
     finally:
         con.close()
-
-    os.makedirs(os.path.dirname(a.path), exist_ok=True)
-    with open(a.path, "w", encoding="utf-8") as f:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
         f.write(content)
-    print("wrote", a.path, f"({len(content)} chars)")
+    return path, len(content)
+
+
+def main():
+    p = argparse.ArgumentParser(description="Generate knowledge/sprints.md from the ADO snapshot.")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    w = sub.add_parser("write")
+    w.add_argument("--path", default=None)
+    a = p.parse_args()
+
+    path, size = write_default(a.path)
+    print("wrote", path, f"({size} chars)")
 
 
 if __name__ == "__main__":
