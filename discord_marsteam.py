@@ -20,6 +20,7 @@ import json
 import os
 import sys
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -30,7 +31,9 @@ from routines_common import log, api_get, api_post, auth_headers, get_token, is_
 routines_common.set_prefix("MARSTEAM")  # اللوج يفضل زي ما هو
 
 API_BASE = "https://discord.com/api/v10"
-CAIRO_TZ = timezone(timedelta(hours=3))
+# F5: توقيت القاهرة الحقيقي (بيتنقل EET/EEST لوحده) بدل UTC+3 الثابت اللي كان
+# هيغلط ساعة كاملة بعد رجوع الساعة الشتوي 2026-10-29.
+CAIRO_TZ = ZoneInfo("Africa/Cairo")
 
 
 MARS_TEAM_CHANNEL_ID = "1136668686044909761"

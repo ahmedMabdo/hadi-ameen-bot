@@ -1,0 +1,9 @@
+[Unit]
+Description=Timer: Hadi followup digest (19:20 Cairo)
+
+[Timer]
+OnCalendar=*-*-* 19:20:00 Africa/Cairo
+Persistent=true
+
+[Install]
+WantedBy=timers.target

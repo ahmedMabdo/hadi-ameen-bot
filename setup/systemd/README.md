@@ -1,0 +1,16 @@
+# تركيب تايمرات هادي (نقطة 5)
+
+```bash
+sudo cp setup/systemd/hadi-*.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now hadi-snapshot-refresh.timer \
+  hadi-digest-posthog.timer hadi-digest-marsteam.timer \
+  hadi-digest-podaily.timer hadi-digest-followup.timer
+systemctl list-timers 'hadi-*'
+```
+
+- **مهم:** بعد التفعيل، اوقفوا روتينز كلود القديمة المقابلة (التقرير الصباحي
+  والملخصات التلاتة) عشان ميحصلش ازدواج.
+- تجربة يدوية قبل التفعيل: `python3 daily_digests.py marsteam --dry-run`
+- تقرير الأوتوميشن 10:00 (hadi-mars-results.timer) قايم زي ما هو — مش هنا.
+- السجل: `logs/digests.jsonl` + `journalctl -u hadi-digest-*`

@@ -29,6 +29,7 @@ import subprocess
 import sys
 import uuid
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 import requests
@@ -40,7 +41,9 @@ from routines_common import log, api_get, api_post, auth_headers, get_token, is_
 routines_common.set_prefix("FOLLOWUP")  # اللوج يفضل زي ما هو
 
 API_BASE = "https://discord.com/api/v10"
-CAIRO_TZ = timezone(timedelta(hours=3))
+# F5: توقيت القاهرة الحقيقي (بيتنقل EET/EEST لوحده) بدل UTC+3 الثابت اللي كان
+# هيغلط ساعة كاملة بعد رجوع الساعة الشتوي 2026-10-29.
+CAIRO_TZ = ZoneInfo("Africa/Cairo")
 BASE = Path(__file__).resolve().parent
 PENDING_STORE = BASE / "followup_pending.json"
 

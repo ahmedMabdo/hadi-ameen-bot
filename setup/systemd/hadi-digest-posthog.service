@@ -1,0 +1,10 @@
+[Unit]
+Description=Hadi digest: تقرير PostHog الصباحي (بحارس LIVE/STALE/DOWN)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/hadi-ameen-bot
+ExecStart=/usr/bin/python3 /home/ubuntu/hadi-ameen-bot/daily_digests.py posthog

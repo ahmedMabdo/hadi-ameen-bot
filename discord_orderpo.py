@@ -33,6 +33,7 @@ import json
 import os
 import sys
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from urllib.parse import quote
 
 import requests
@@ -45,7 +46,9 @@ from discord_followup import (
     send_dm,
 )
 
-CAIRO_TZ = timezone(timedelta(hours=3))
+# F5: توقيت القاهرة الحقيقي (بيتنقل EET/EEST لوحده) بدل UTC+3 الثابت اللي كان
+# هيغلط ساعة كاملة بعد رجوع الساعة الشتوي 2026-10-29.
+CAIRO_TZ = ZoneInfo("Africa/Cairo")
 
 # قناة 8order-po — ثابتة، وممكن تتغير بـ env لو القناة اتنقلت
 DEFAULT_ORDERPO_CHANNEL_ID = "1358833733699899704"
