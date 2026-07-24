@@ -6,4 +6,5 @@ After=network-online.target
 Type=oneshot
 User=ubuntu
 WorkingDirectory=/home/ubuntu/hadi-ameen-bot
+EnvironmentFile=/home/ubuntu/hadi-ameen-bot/.env
 ExecStart=/usr/bin/python3 /home/ubuntu/hadi-ameen-bot/ado_snapshot.py refresh
