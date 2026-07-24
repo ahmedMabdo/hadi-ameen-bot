@@ -1024,6 +1024,21 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
         return
     if eval_store.attach_feedback(payload.message_id, str(payload.emoji), payload.user_id):
         print(f"EVAL FEEDBACK: {payload.emoji} على رد #{payload.message_id}")
+        # نقطة 7 (قرار آسر): فيدباك سلبي من التيم → تنبيه فوري لآسر في الـ DM،
+        # مش مستني تقرير الأسبوع.
+        try:
+            if str(payload.emoji) in eval_store.NEGATIVE:
+                info = eval_store.interaction_for_reply(payload.message_id)
+                if info:
+                    asyncio.create_task(dm_allowed_users(
+                        f"👎 فيدباك سلبي على رد ليا ({payload.emoji}) في "
+                        f"{info.get('channel', '?')}\n"
+                        f"السؤال: {(info.get('prompt_excerpt') or '')[:180]}\n"
+                        f"ردّي: {(info.get('reply_excerpt') or '')[:300]}\n"
+                        "هحطها في اعتباري — والتفاصيل في تقرير الـ evals الأسبوعي."
+                    ))
+        except Exception as _nf:
+            print(f"NEGATIVE FEEDBACK ALERT ERROR: {type(_nf).__name__}: {_nf}")
 
 
 @client.event

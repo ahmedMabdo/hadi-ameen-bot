@@ -1,0 +1,9 @@
+[Unit]
+Description=Timer: Hadi weekly evals report (Thu 09:30 Cairo)
+
+[Timer]
+OnCalendar=Thu *-*-* 09:30:00 Africa/Cairo
+Persistent=true
+
+[Install]
+WantedBy=timers.target

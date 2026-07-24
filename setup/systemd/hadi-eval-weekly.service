@@ -1,0 +1,9 @@
+[Unit]
+Description=Hadi weekly evals report (judge + DM to Asser)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/hadi-ameen-bot
+ExecStart=/usr/bin/python3 /home/ubuntu/hadi-ameen-bot/eval_report.py send --days 7 --with-judge

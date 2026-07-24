@@ -185,6 +185,25 @@ def stats(days: float = 7.0) -> dict:
     }
 
 
+def interaction_for_reply(reply_message_id):
+    """صف التفاعل اللي رده هو الرسالة دي — للتنبيه الفوري عند فيدباك سلبي (نقطة 7)."""
+    conn = connect()
+    row = conn.execute(
+        "SELECT * FROM interactions WHERE reply_message_id = ? ORDER BY id DESC LIMIT 1",
+        (str(reply_message_id),)).fetchone()
+    return dict(row) if row else None
+
+
+def sample_replied(days: float = 7.0, limit: int = 20):
+    """عينة عشوائية من الردود الحقيقية للفترة — غذاء الحكم الأسبوعي (LLM-as-judge)."""
+    conn = connect()
+    rows = conn.execute(
+        "SELECT * FROM interactions WHERE ts >= ? AND outcome = 'replied'"
+        " AND LENGTH(reply_excerpt) > 0 ORDER BY RANDOM() LIMIT ?",
+        (_since(days), limit)).fetchall()
+    return [dict(r) for r in rows]
+
+
 def worst(days: float = 7.0, limit: int = 10):
     """أسوأ التفاعلات: السلبي بالرياكشن أولًا، ثم الأخطاء والمهل، ثم الأبطأ."""
     conn = connect()

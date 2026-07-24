@@ -78,9 +78,64 @@ def check(expect: dict, reply: str):
 
 
 # --- التشغيل ---------------------------------------------------------------
+def normalize_case(case: dict) -> dict:
+    """ترجمة الحالات القديمة السكيما (F2) لسكيما الـ runner — دفاع في العمق حتى
+    بعد تصليح الملف: prompt→input.message، expect النصي بيتشال،
+    must_include→contains_all، must_not_include→not_contains."""
+    if "input" in case and isinstance(case.get("expect"), list):
+        return case
+    c = dict(case)
+    if "input" not in c:
+        c["input"] = {"message": c.pop("prompt", ""), "author": "آسر جميل",
+                      "channel": "رسالة خاصة (DM)"}
+    expect = c.get("expect")
+    checks = list(expect) if isinstance(expect, list) else []
+    if isinstance(expect, str):
+        c["note"] = expect  # الوصف النصي بيتحفظ كملاحظة مش كفحص
+        checks = []
+    mi = c.pop("must_include", None)
+    if mi:
+        checks.append({"type": "contains_all", "values": mi})
+    mni = c.pop("must_not_include", None)
+    if mni:
+        checks.append({"type": "not_contains", "values": mni})
+    c["expect"] = checks or [{"type": "replies"}]
+    return c
+
+
+def validate_cases(cases) -> list:
+    """فحص سكيما الحالات — بيرجع قايمة أخطاء (فاضية = سليم). بيمنع تكرار F2."""
+    errors, seen = [], set()
+    known = {"no_reply", "replies", "react_line", "contains_all", "contains_any",
+             "not_contains", "regex"}
+    for i, c in enumerate(cases):
+        cid = c.get("id") or f"#{i}"
+        if not c.get("id"):
+            errors.append(f"{cid}: مفيش id")
+        elif c["id"] in seen:
+            errors.append(f"{cid}: id مكرر")
+        seen.add(cid)
+        if not isinstance(c.get("input"), dict) or not c["input"].get("message"):
+            errors.append(f"{cid}: مفيش input.message (سكيما قديمة؟ شغّل normalize)")
+        exp = c.get("expect")
+        if not isinstance(exp, list) or not exp:
+            errors.append(f"{cid}: expect لازم يكون list فيها فحص واحد على الأقل")
+            continue
+        for e in exp:
+            if not isinstance(e, dict) or e.get("type") not in known:
+                errors.append(f"{cid}: فحص غير معروف: {e}")
+            elif e["type"] in ("contains_all", "contains_any", "not_contains") \
+                    and not e.get("values"):
+                errors.append(f"{cid}: {e['type']} من غير values")
+            elif e["type"] == "regex" and not e.get("pattern"):
+                errors.append(f"{cid}: regex من غير pattern")
+    return errors
+
+
 async def run_case(case: dict, sem: asyncio.Semaphore) -> dict:
     import discord_bot  # آمن: client.run متغلّف بـ __main__ (بند 5.3)
 
+    case = normalize_case(case)
     inp = case["input"]
     forwarded = inp.get("forwarded", "")
     message = inp["message"]
@@ -123,7 +178,17 @@ async def run_case(case: dict, sem: asyncio.Semaphore) -> dict:
 
 async def run_all(cases, concurrency: int) -> dict:
     sem = asyncio.Semaphore(max(1, concurrency))
-    results = await asyncio.gather(*(run_case(c, sem) for c in cases))
+    # F2: return_exceptions — حالة واحدة بايظة عمرها ما توقف الـ suite كله تاني
+    raw = await asyncio.gather(*(run_case(c, sem) for c in cases),
+                               return_exceptions=True)
+    results = []
+    for c, r in zip(cases, raw):
+        if isinstance(r, BaseException):
+            results.append({"id": c.get("id", "?"), "category": c.get("category", ""),
+                            "passed": False, "error": f"{type(r).__name__}: {r}",
+                            "latency_s": 0, "reply_excerpt": "", "checks": []})
+        else:
+            results.append(r)
     passed = sum(1 for r in results if r["passed"])
     return {
         "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -171,9 +236,20 @@ def main():
     r.add_argument("--concurrency", type=int, default=2)
     sub.add_parser("baseline")
     sub.add_parser("diff")
+    sub.add_parser("validate")  # F2: فحص سكيما الحالات من غير أي تشغيل (مجاني)
     args = parser.parse_args()
 
     cases = load_cases()
+
+    if args.cmd == "validate":
+        errors = validate_cases([normalize_case(c) for c in load_cases()])
+        if errors:
+            print(f"❌ {len(errors)} مشكلة سكيما:")
+            for e in errors:
+                print(" -", e)
+            sys.exit(1)
+        print(f"✅ السكيما سليمة — {len(load_cases())} حالة")
+        return
 
     if args.cmd == "list":
         print(f"{len(cases)} حالة:")
