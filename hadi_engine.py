@@ -459,6 +459,58 @@ async def run_oneshot(prompt: str, timeout: int = 300) -> str:
     return await run_agent(prompt, conv_key="", timeout=timeout)
 
 
+async def run_clean_json(prompt: str, image_paths=None, timeout: int = 220, model: str = None) -> str:
+    """نداء نظيف للموديل بدون برسونا المشروع (setting_sources=[]، cwd=/tmp) لإخراج JSON،
+    مع قدرة قراءة الصور المرفقة بأداة Read (vision). بيستخدمه channel_triage للاستخراج
+    والمراجعة عشان يطلّع JSON نضيف من غير تلوث بـ CLAUDE.md/شخصية هادي.
+
+    لو الـ SDK مش نشط أو حصل أي فشل/timeout → بيقع على ask_haiku نصّي بحت (cwd=/tmp)."""
+    paths = [p for p in (image_paths or []) if p]
+    full = prompt
+    if paths:
+        full = prompt + ("\n\nالصور المرفقة للتحليل (افتح كل ملف بأداة Read وحلل محتواه، "
+                         "ورقم الرسالة في اسم الملف):\n" + "\n".join(paths))
+    if not sdk_active():
+        return await ask_haiku(full, timeout=timeout, model=(model or "sonnet"), cwd="/tmp")
+    options = ClaudeAgentOptions(
+        model=(model or MODEL),
+        env=_actor_env(),
+        cwd="/tmp",
+        cli_path=CLAUDE_BIN if Path(CLAUDE_BIN).exists() else None,
+        system_prompt={"type": "preset", "preset": "claude_code"},
+        setting_sources=[],  # مفيش CLAUDE.md ولا إعدادات مشروع — إخراج نضيف
+        permission_mode="default",
+        max_turns=int(os.getenv("HADI_TRIAGE_MAX_TURNS", "10") or "10"),
+        hooks={
+            "PreToolUse": [
+                HookMatcher(matcher="Bash", hooks=[_bash_guard]),
+                HookMatcher(matcher="Read", hooks=[_file_guard]),
+                HookMatcher(matcher="Grep", hooks=[_file_guard]),
+                HookMatcher(matcher="Glob", hooks=[_file_guard]),
+            ]
+        },
+    )
+    parts: list = []
+
+    async def _consume():
+        async for msg in query(prompt=full, options=options):
+            if isinstance(msg, AssistantMessage):
+                for block in msg.content:
+                    if isinstance(block, TextBlock):
+                        parts.append(block.text)
+            elif isinstance(msg, ResultMessage):
+                if msg.is_error:
+                    raise EngineError(str(msg.result or msg.subtype or "SDK error")[:500])
+
+    try:
+        async with _sem:
+            await asyncio.wait_for(_consume(), timeout=timeout)
+    except Exception as error:  # timeout أو أي فشل SDK → fallback نصّي آمن
+        print(f"HADI ENGINE: run_clean_json fallback ({type(error).__name__}: {str(error)[:150]})")
+        return await ask_haiku(full, timeout=min(timeout, 150), model=(model or "sonnet"), cwd="/tmp")
+    return "".join(parts).strip()
+
+
 async def ask_haiku(prompt: str, timeout: int = 30, model: str = None, cwd: str = None) -> str:
     import asyncio
     try:

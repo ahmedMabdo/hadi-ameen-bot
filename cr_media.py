@@ -207,13 +207,23 @@ REQUIRED_DEFAULTS = {
         "Custom.CRorStoryCategory": "New Feature",
         "Custom.StoryApplication": "Customer Web",
         "Custom.WorkType": "Web",
+        # حقول إلزامية إضافية على Change Request (متأكد منها من ADO الحي — CR #102666):
+        "System.Description": "غير محدد",
+        "Custom.ContractFeature": False,
+        "Custom.FreeFeature": False,
+        "Custom.UserStoryStatus": "1 Not started",
     },
     "Customer Issue": {
         "System.Description": "غير محدد",
         "Microsoft.VSTS.TCM.SystemInfo": "غير محدد",
         "Microsoft.VSTS.TCM.Steps": "غير محدد",
         "Microsoft.VSTS.Scheduling.DueDate": None,
-        "Custom.IssueSeverity": "Low",
+        # حقول إلزامية على Customer Issue (متأكد منها من ADO الحي — CI #122273-5):
+        "HADAgile.IssuePriority": "Normal",
+        "Custom.IssueSeverity": "Minor",
+        "Custom.IssueOrdatahelp": False,
+        "Custom.Repeated": False,
+        "Custom.CoveredWithTestCase": False,
         "Custom.freshdeskid": "N/A",
     },
 }

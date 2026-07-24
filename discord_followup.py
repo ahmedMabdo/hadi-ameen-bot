@@ -66,30 +66,13 @@ def is_dry_run(cli_flag: bool = False) -> bool:
 
 
 def resolve_channel_id() -> str | None:
-    channel_id = os.environ.get("SUPPORT_CHANNEL_ID")
-    if channel_id:
-        return channel_id
+    """قناة الدعم بالـ ID دايمًا — مش بالبحث بالاسم.
 
-    guild_id = resolve_guild_id()
-    if not guild_id:
-        return None
-
-    channels = api_get(f"/guilds/{guild_id}/channels")
-    if not channels:
-        log("مقدرش أجيب قنوات الـ guild")
-        return None
-
-    name_hint = os.environ.get("SUPPORT_CHANNEL_NAME", "").strip().lower()
-    hints = [name_hint] if name_hint else ["support", "دعم", "سابورت"]
-
-    for channel in channels:
-        cname = (channel.get("name") or "").lower()
-        if any(hint and hint in cname for hint in hints):
-            log(f"تم إيجاد قناة الدعم تلقائيًا: #{channel.get('name')} ({channel['id']})")
-            return channel["id"]
-
-    log(f"مقدرش ألاقي قناة اسمها فيه أي من {hints} — حدد SUPPORT_CHANNEL_ID")
-    return None
+    اسم القناة الحقيقي «8orders-issues» مفهوش كلمة support/دعم/سابورت، فالبحث بالاسم
+    القديم كان بيفشل ويرجّع None. بنعتمد على الـ ID الرسمي (قابل للتعديل من .env)."""
+    return (os.environ.get("SUPPORT_CHANNEL_ID")
+            or os.environ.get("ISSUES_CHANNEL_ID")
+            or "1179369466279235584")
 
 
 def fetch_today_messages() -> list[dict]:

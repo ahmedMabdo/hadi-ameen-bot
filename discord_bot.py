@@ -35,6 +35,10 @@ ALLOWED_USER_IDS = {
     if user_id.strip().isdigit()
 }
 
+# قرار آسر: كل الـ DM الاستباقية (تنبيهات/تذكيرات/معلقات) لآسر فقط — مثبّت في الكود
+# مش معتمد على إعداد بيئة. (استثناء تقرير PostHog لمحمود بيتم في intel/discord_delivery.)
+ASSER_USER_ID = int(os.getenv("ASSER_USER_ID", "1378684355148386355") or "1378684355148386355")
+
 if not TOKEN:
     raise RuntimeError("DISCORD_BOT_TOKEN غير موجود في ملف .env")
 
@@ -547,13 +551,12 @@ async def send_long_message(channel, text: str, reply_to: discord.Message = None
 
 
 async def dm_allowed_users(text: str) -> None:
-    """يبعت DM لكل المستخدمين المصرح لهم (تنبيهات الفحص والطلبات المعلقة)."""
-    for uid in ALLOWED_USER_IDS:
-        try:
-            user = client.get_user(uid) or await client.fetch_user(uid)
-            await user.send(text)
-        except discord.HTTPException as error:
-            print(f"DM FAIL {uid}: {type(error).__name__}: {error}")
+    """يبعت DM لآسر فقط (قرار آسر: كل التنبيهات الاستباقية والتذكيرات لآسر بس)."""
+    try:
+        user = client.get_user(ASSER_USER_ID) or await client.fetch_user(ASSER_USER_ID)
+        await user.send(text)
+    except discord.HTTPException as error:
+        print(f"DM FAIL {ASSER_USER_ID}: {type(error).__name__}: {error}")
 
 
 def _current_pat() -> str:
@@ -677,9 +680,8 @@ async def _fire_reminder(item):
     target = item.get("target") or {}
     body = f"⏰ تذكير: {text}"
     if target.get("kind") == "dm":
-        for uid in ALLOWED_USER_IDS:
-            user = client.get_user(uid) or await client.fetch_user(uid)
-            await user.send(body)
+        user = client.get_user(ASSER_USER_ID) or await client.fetch_user(ASSER_USER_ID)
+        await user.send(body)
     elif target.get("kind") == "channel":
         cid = int(target["id"])
         ch = client.get_channel(cid) or await client.fetch_channel(cid)
@@ -883,8 +885,9 @@ class StatusReporter:
     async def _delayed_ack(self) -> None:
         try:
             await asyncio.sleep(25)
-            if not self._done:
-                await self._message.channel.send(HEAVY_ACK)
+            # اتشالت رسالة "." (HEAVY_ACK) اللي كانت بتفضل في القناة —
+            # الاعتماد على مؤشر الكتابة (typing) بدل إزعاج القناة بنقطة.
+            return
         except Exception:
             pass
     
@@ -1029,30 +1032,37 @@ async def on_message(message: discord.Message):
         forward_block = f"[رسالة محوّلة (Forward) — محتواها]:\n{forwarded_text}"
         content = f"{content}\n\n{forward_block}" if content else forward_block
 
-    try:
-        import channel_triage as _ct
-        if message.guild is not None and _ct.is_confirm(content):
-            _p = _ct.load_proposal(message.channel.id)
-            if _p and _p.get("issues"):
-                _links = await _ct.create_tickets(_p["issues"])
-                await send_long_message(message.channel, _ct.format_links(_links))
+    # بند 9: ترياج القناة — «اقرأ وحلل الرسايل والصور وارفع الإيشيوز تيكتات».
+    # بيشتغل بس لما الرسالة موجّهة لهادي (منشن/نداء/ريبلاي) + فيها نية ترياج واضحة،
+    # عشان ميفيرش على كل رسالة. مفيش تأكيد بشري (قرار آسر): هادي يجمّع → يراجع →
+    # يقيّم نفسه → يرفع (Customer Issue/Change Request حسب المحتوى) → يرجّع لينكات.
+    # أي خطأ بيتبلّغ صراحةً — مش بيسقط للمسار العام (اللي كان بيرفع تيكتات غلط).
+    if message.guild is not None and (mentioned or named or replying_to_hadi):
+        try:
+            import channel_triage as _ct
+            if _ct.is_trigger(content):
+                async with message.channel.typing():
+                    _msg = await _ct.run_triage(message.channel, client, hadi_engine)
+                await send_long_message(message.channel, _msg, reply_to=message)
                 return
-        elif message.guild is not None and _ct.is_trigger(content):
-            _rows = await _ct.collect_since(message.channel, client)
-            _iss = await _ct.extract(_rows, hadi_engine)
-            _iss = await _ct.reflect(_rows, _iss, hadi_engine)
-            _ct.save_proposal(message.channel.id, _iss)
-            await send_long_message(message.channel, _ct.format_proposal(_iss))
-            return
-    except Exception as _cte:
+        except Exception as _cte:
             print("channel_triage error:", _cte)
+            await send_long_message(
+                message.channel,
+                f"حصل خطأ أثناء ترياج القناة: {type(_cte).__name__}. جرّب تاني أو بلّغ آسر.",
+                reply_to=message,
+            )
+            return
     image_paths = await save_image_attachments(message)
     frame_paths, video_notes = await save_video_frames(message)
     image_paths = image_paths + frame_paths
     manifest = media_manifest(message)
     media_notes = "\n".join(([manifest] if manifest else []) + video_notes)
     if not content and not image_paths and not media_notes:
-        await message.channel.send("ابعت رسالة نصية.")
+        # رسالة فاضية تمامًا (ستيكر/نوع غير مدعوم): رد بس لو موجّهة لهادي، وإلا صمت تام
+        # (منع سبام «ابعت رسالة نصية» على كل ستيكر في القناة).
+        if message.guild is None or mentioned or named or replying_to_hadi:
+            await message.channel.send("مفيش نص في رسالتك — ابعتلي التفاصيل بالكتابة.")
         return
     if not content:
         content = "(بعت مرفقات من غير نص — بص على الصور وبيانات الميديا المرفقة ورد بناء عليها)"
@@ -1063,9 +1073,10 @@ async def on_message(message: discord.Message):
 
     # السياق (آخر الرسايل + الريبلاي) بيتبني للـ DM والقنوات على حد سواء —
     # قبل كده كان بيتبني للقنوات بس، فهادي كان بيرد في الـ DM من غير أي سياق.
-    if message.guild is not None and not (mentioned or named or replying_to_hadi):
+    if (message.guild is not None and not (mentioned or named or replying_to_hadi)
+            and not image_paths and not media_notes):
         try:
-            _v = await hadi_engine.ask_haiku("You are the gate for Hadi, a senior product/ops assistant in a team Discord. Answer ONE word. REPLY only if Hadi can add clear specific professional value right now (a direct question Hadi can answer, a bug/issue/blocker to log or analyze, or an explicit request to Hadi). SILENT for casual chat, people talking to each other, status updates, opinions, or anything a bot reply would not clearly improve. Default SILENT when unsure. Message: " + (content or "")[:1500])
+            _v = await hadi_engine.ask_haiku("You are the gate for Hadi, a senior product/ops assistant in a team Discord. Answer ONE word. REPLY only if Hadi can add clear specific professional value right now (a direct question Hadi can answer, a bug/issue/blocker to log or analyze, or an explicit request to Hadi). SILENT for casual chat, people talking to each other, status updates, opinions, or anything a bot reply would not clearly improve. Default SILENT when unsure. Message: " + (content or "")[:1500], cwd="/tmp")
             if "REPLY" not in (_v or "").upper():
                 print("HADI: haiku-gate skip -", author_name); return
         except Exception as _hg:
@@ -1171,9 +1182,9 @@ async def on_message(message: discord.Message):
                 outcome="timeout",
                 error_type="EngineTimeout",
             )
-            print(f"HADI: TIMEOUT (480s) - {author_name}: {content[:60]}")
+            print(f"HADI: TIMEOUT (900s) - {author_name}: {content[:60]}")
             if (message.guild is None or mentioned or named or replying_to_hadi): await message.reply(
-                "الطلب خد وقت أطول من الحد المسموح (8 دقايق) واتوقف. لو كان طلب تيكت، راجع البورد الأول قبل ما تكرر الطلب.",
+                "الطلب خد وقت أطول من الحد المسموح (15 دقيقة) واتوقف. لو كان طلب تيكت، راجع البورد الأول قبل ما تكرر الطلب.",
                 mention_author=False,
             )
 
