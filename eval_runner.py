@@ -304,6 +304,15 @@ def main():
         if not run:
             sys.exit("مفيش تشغيلات لسه — شغّل run الأول.")
         results = run.get("results", [])
+        total = len(load_cases())
+        if len(results) < total and not args.force:
+            sys.exit(
+                f"مارفضتش أحفظ خط الأساس: التشغيلة دي فيها {len(results)} حالة بس "
+                f"من أصل {total}.\n"
+                "غالبًا دي تشغيلة --case/--category للتأكد من تعديل واحد. خط أساس "
+                "جزئي بيخلي أي diff جاي يقارن حاجة بحاجة تانية.\n"
+                "شغّل run كامل الأول، أو --force لو متأكد."
+            )
         errored = [r for r in results if r.get("error")]
         if results and len(errored) == len(results) and not args.force:
             sample = errored[0].get("error", "")[:120]
