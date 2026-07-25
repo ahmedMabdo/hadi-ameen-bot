@@ -66,6 +66,39 @@ IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")
 VIDEO_EXTS = (".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v")
 MAX_VIDEO_BYTES = 25 * 1024 * 1024  # نفس حد إرفاق ADO في cr_media.py
 
+# --- تفريغ صوت الفيديو (faster-whisper محلي — من غير أي نداء شبكة) ---
+# الفريمات بتوري هادي «الشاشة»، والتفريغ بيوريه «الكلام». أغلب فيديوهات
+# القنوات دي شخص بيشرح مشكلة بصوته وبيأشر على الشاشة — الفريمات لوحدها
+# بتضيّع نص القصة.
+WHISPER_ENABLED = (os.getenv("HADI_WHISPER_ENABLED", "1") or "1").strip().lower() \
+    not in ("0", "false", "no", "off")
+# small: توازن مقبول للعامية المصرية على CPU (~460MB). base أضعف بوضوح،
+# وmedium بيوصل 4-6x realtime على CPU وده بطيء على مسار تفاعلي.
+WHISPER_MODEL_NAME = (os.getenv("HADI_WHISPER_MODEL", "small") or "small").strip()
+WHISPER_DEVICE = (os.getenv("HADI_WHISPER_DEVICE", "cpu") or "cpu").strip()
+WHISPER_COMPUTE = (os.getenv("HADI_WHISPER_COMPUTE", "int8") or "int8").strip()
+# سقف المدة اللي بتتفرّغ. الفيديو الأطول بيتقص وبيتقال في الملاحظات إنه اتقص —
+# من غير السقف ده فيديو ١٠ دقايق بيقفل الـ worker دقايق على مسار تفاعلي.
+WHISPER_MAX_SECONDS = int(os.getenv("HADI_WHISPER_MAX_SECONDS", "300") or "300")
+# سقف طول النص الداخل للبرومبت لكل فيديو
+WHISPER_MAX_CHARS = int(os.getenv("HADI_WHISPER_MAX_CHARS", "4000") or "4000")
+
+_whisper_model = None
+_whisper_load_failed = False
+# قفل: التفريغ بياكل CPU بالكامل، ولو اتنين اشتغلوا مع بعض الاتنين بيبقوا أبطأ
+# من التسلسل. القفل بيضمن تفريغ واحد في المرة عبر كل الرسايل.
+# بيتعمل كسول جوه اللوب مش هنا: بناء asyncio.Lock وقت الاستيراد بيربطه بلوب
+# غلط (أو ملوش لوب) على بايثون < 3.10.
+_whisper_lock = None
+
+
+def _get_whisper_lock():
+    global _whisper_lock
+    if _whisper_lock is None:
+        _whisper_lock = asyncio.Lock()
+    return _whisper_lock
+
+
 # --- مناعة الـ ADO: فحص دوري + إنذار مبكر قبل انتهاء الـ PAT + طابور طلبات معلقة ---
 ADO_ORG_URL = os.getenv(
     "AZURE_DEVOPS_ORG_URL", "https://hadafsolutions.visualstudio.com"
@@ -369,11 +402,108 @@ def _extract_frames(video_path, out_prefix, count: int = 3) -> list:
     return frames
 
 
+def _extract_audio(video_path, out_path) -> bool:
+    """يطلّع المسار الصوتي 16kHz مونو WAV — الصيغة اللي whisper بيتوقعها.
+
+    بيرجّع False لو الفيديو مافيهوش صوت أصلًا (حالة شائعة: تسجيل شاشة صامت)،
+    وساعتها مافيش داعي نحمّل الموديل من أساسه.
+    """
+    try:
+        proc = subprocess.run(
+            ["ffmpeg", "-y", "-i", str(video_path), "-vn",
+             "-t", str(WHISPER_MAX_SECONDS),
+             "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(out_path)],
+            capture_output=True, timeout=180, check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return False
+    out = Path(out_path)
+    # هيدر الـ WAV لوحده 44 بايت — أي حاجة أصغر من ~1KB يبقى مافيش صوت فعلي
+    return proc.returncode == 0 and out.exists() and out.stat().st_size > 1024
+
+
+def _load_whisper():
+    """يحمّل موديل faster-whisper مرة واحدة ويكاشه. None لو مش متاح.
+
+    التحميل بياخد ثواني وبياكل رام، فبيتعمل مرة على أول فيديو فيه صوت —
+    مش وقت الإقلاع، عشان بوت من غير فيديوهات مايدفعش التمن.
+    """
+    global _whisper_model, _whisper_load_failed
+    if _whisper_model is not None or _whisper_load_failed:
+        return _whisper_model
+    try:
+        from faster_whisper import WhisperModel
+        _whisper_model = WhisperModel(
+            WHISPER_MODEL_NAME, device=WHISPER_DEVICE, compute_type=WHISPER_COMPUTE)
+        print(f"WHISPER: اتحمّل موديل {WHISPER_MODEL_NAME} "
+              f"({WHISPER_DEVICE}/{WHISPER_COMPUTE})")
+    except Exception as error:
+        _whisper_load_failed = True  # مانحاولش تاني كل رسالة
+        print(f"WHISPER: مش متاح — {type(error).__name__}: {error}")
+    return _whisper_model
+
+
+def _transcribe(audio_path) -> tuple:
+    """(نص, لغة) من ملف صوت. ("", "") لو فشل أو مفيش كلام. بيشتغل في thread.
+
+    اللغة اكتشاف تلقائي (قرار آسر): الفيديوهات فيها عربي مصري وإنجليزي كامل،
+    وتثبيت ar كان هيغلط في الفيديوهات الإنجليزي بالكامل.
+    """
+    model = _load_whisper()
+    if model is None:
+        return "", ""
+    try:
+        segments, info = model.transcribe(
+            str(audio_path),
+            beam_size=5,
+            vad_filter=True,       # بيشيل الصمت — أسرع ونضيف من الهلوسة
+            vad_parameters={"min_silence_duration_ms": 500},
+        )
+        text = " ".join(seg.text.strip() for seg in segments).strip()
+        return text[:WHISPER_MAX_CHARS], (getattr(info, "language", "") or "")
+    except Exception as error:
+        print(f"WHISPER ERROR: {type(error).__name__}: {error}")
+        return "", ""
+
+
+async def _transcribe_video(video_path, tag) -> str:
+    """يفرّغ صوت فيديو ويرجّع سطر ملاحظات للبرومبت ("" لو مفيش حاجة تتقال)."""
+    if not WHISPER_ENABLED:
+        return ""
+    audio_path = Path(f"{video_path}.wav")
+    try:
+        got_audio = await asyncio.to_thread(_extract_audio, video_path, audio_path)
+        if not got_audio:
+            return ""
+        # قفل عالمي: تفريغ واحد في المرة (شوف تعليق _whisper_lock)
+        async with _get_whisper_lock():
+            text, lang = await asyncio.to_thread(_transcribe, audio_path)
+        if not text:
+            return ""
+        truncated = len(text) >= WHISPER_MAX_CHARS
+        cut = f" (اتقص عند {WHISPER_MAX_SECONDS // 60} دقايق)" if truncated else ""
+        lang_note = f" [لغة مكتشفة: {lang}]" if lang else ""
+        return (f"- تفريغ صوت {tag}{lang_note}{cut}:\n"
+                f"  «{text}»")
+    except Exception as error:
+        print(f"TRANSCRIBE ERROR: {type(error).__name__}: {error}")
+        return ""
+    finally:
+        try:
+            audio_path.unlink()
+        except OSError:
+            pass
+
+
 async def save_video_frames(message: discord.Message, limit_videos: int = 2) -> tuple:
-    """ينزّل الفيديوهات المرفقة مؤقتًا ويستخرج منها فريمات يشوفها هادي.
+    """ينزّل الفيديوهات المرفقة مؤقتًا ويستخرج منها فريمات + تفريغ صوت.
 
     بيرجع (frame_paths, notes): الفريمات بتتضاف لقايمة الصور، والـ notes بتشرح
-    حالة كل فيديو للبرومبت. الفيديو نفسه بيتمسح فورًا بعد الاستخراج."""
+    حالة كل فيديو للبرومبت وبتشيل نص التفريغ. الفيديو نفسه بيتمسح فورًا بعد
+    الاستخراج.
+
+    الفريمات + الصوت مع بعض: أغلب الفيديوهات هنا حد بيشرح مشكلة بصوته وبيأشر
+    على الشاشة، فالصورة لوحدها بتوصّل نص القصة بس."""
     vids = _collect_attachments(message, _is_video_attachment)
     frame_paths, notes = [], []
     if not vids:
@@ -401,6 +531,11 @@ async def save_video_frames(message: discord.Message, limit_videos: int = 2) -> 
                 notes.append(f"- الفيديو {label}: اتاخد منه {len(got)} فريمات — موجودة ضمن الصور اللي هتقراها")
             else:
                 notes.append(f"- الفيديو {label}: معرفتش أستخرج فريمات (صيغة غير مدعومة غالبًا) — متاح للإرفاق على ADO")
+            # التفريغ مستقل عن الفريمات: فيديو صيغته غريبة ممكن يفشل في
+            # الفريمات وينجح في الصوت، والعكس. فشل أي واحد فيهم ماينفيش التاني.
+            spoken = await _transcribe_video(video_path, label)
+            if spoken:
+                notes.append(spoken)
         except Exception as error:
             print(f"VIDEO FRAMES ERROR: {error}")
             notes.append(f"- الفيديو {label}: حصل خطأ في قراءته — متاح للإرفاق على ADO")
