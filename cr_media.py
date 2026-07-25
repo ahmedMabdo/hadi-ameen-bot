@@ -10,7 +10,9 @@ Self-contained: reuses the same ADO plumbing (ado_client) and Discord bot token
 that po_channel_cr.py already relies on.
 """
 import os
+import re
 import datetime as _dt
+import html as _html
 import requests
 
 import ado_client
@@ -189,6 +191,109 @@ def _today_iso():
     return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# ---------------------------------------------------------------------------
+# اشتقاق نص عربي للحقول السردية من نص الطلب (تعديل 2)
+#
+# الترتيب المقصود: هادي هو اللي بيكتب الحقول دي بـ --field لأنه شايف المحادثة
+# كلها وقادر يحكم. الاشتقاق هنا **شبكة أمان** بس — بيشتغل لما هادي يفوّت الحقل،
+# وبيستخرج اللي موجود فعلًا في نص الطلب من غير ما يخترع.
+#
+# القاعدة: لو النص مافيهوش الإجابة، الحقل بيقول كده صراحة بدل ما يخمّن. قيمة
+# مخترعة في حقل بيزنس أسوأ من قيمة ناقصة معلَّمة — نفس منطق «ربط غلط أسوأ من
+# مفيش ربط» في ado_features.
+# ---------------------------------------------------------------------------
+
+# علامة بتفضل في النص عشان أي حد يفتح التذكرة يفرق بين اللي هادي كتبه بحكم
+# على المحادثة واللي الكود اشتقه آليًا. ده أثر تدقيق مقصود.
+_DERIVED_MARK = "مشتق آليًا من نص الطلب — محتاج مراجعة"
+
+# جمل الهدف: اللي بعد الأداة دي هو القيمة اللي العميل قالها بنفسه
+_RX_GOAL = re.compile(
+    r"(?:عشان|علشان|بحيث|الهدف\s+منها?|الهدف|المطلوب\s+[إا]ن|"
+    r"لكي|حتى)\s+(.{8,220})", re.DOTALL)
+
+# إشارات الوجع: بتأكد إن في أثر سلبي قايم دلوقتي (مش مجرد تحسين)
+_RX_PAIN = re.compile(
+    r"مشكل[ةه]|بيشتك|بتشتك|شكوى|شكاوي|بيضيع|بتضيع|ضايع|بيتأخر|بتتأخر|تأخير|"
+    r"بطيء|بطيئ[ةه]|بطء|مابيعرفش|مش\s+بيعرف|مش\s+شغال|مابيشتغلش|بيقع|بيهنج|"
+    r"غلط|خطأ|بياخد\s+وقت|صعب|معقد|بيزهق|بنخسر|خسار[ةه]")
+
+# إشارات الإلحاح التشغيلي
+_RX_URGENT = re.compile(r"عاجل|ضروري|بسرع[ةه]|فور[اي]|حرج|blocker|urgent|critical",
+                        re.IGNORECASE)
+
+
+def _plain(text, limit=1500):
+    """نص مسطّح: بيشيل أي HTML جاي من ريتشرن ديسكورد ويوحّد المسافات."""
+    t = re.sub(r"<[^>]+>", " ", text or "")
+    t = re.sub(r"\s+", " ", t).strip()
+    return t[:limit]
+
+
+def _sentence(text, limit=220):
+    """أول جملة كاملة من نص — بيقطع عند علامة وقف مش في نص كلمة."""
+    t = _plain(text, limit + 80)
+    if len(t) <= limit:
+        return t
+    cut = t[:limit]
+    for sep in (". ", "،", "؛", " - ", " "):
+        idx = cut.rfind(sep)
+        if idx > limit * 0.5:
+            return cut[:idx].strip()
+    return cut.strip()
+
+
+def derive_cr_narrative(context_text):
+    """يشتق {Description, CustomerBusinessValue, Impact} عربي من نص الطلب.
+
+    بيرجع dict بالحقول اللي قدر يشتقها بثقة بس. الحقل اللي النص مافيهوش إجابته
+    بيترجع بصيغة صريحة إنه محتاج تحديد — مش قيمة مخترعة ومش "غير محدد" صامتة.
+    """
+    body = _plain(context_text)
+    if not body:
+        return {}
+
+    out = {}
+
+    # (1) الوصف — نص الطلب نفسه كما قيل. ده أضمن محتوى عندنا وأصدقه.
+    out["System.Description"] = (
+        f"<div><strong>الطلب كما ورد:</strong></div>"
+        f"<div>{_html.escape(body)}</div>"
+        f"<div><em>({_DERIVED_MARK})</em></div>"
+    )
+
+    # (2) القيمة للعميل — الهدف اللي الطالب قاله بنفسه، لو قاله.
+    goal = _RX_GOAL.search(body)
+    if goal:
+        out["Custom.CustomerBusinessValue"] = (
+            f"الهدف كما ذُكر في الطلب: {_sentence(goal.group(1))} "
+            f"({_DERIVED_MARK})")
+    else:
+        out["Custom.CustomerBusinessValue"] = (
+            f"الطلب مافيهوش قيمة بيزنس صريحة — محتاجة تحديد من فريق المنتج "
+            f"قبل التقدير. ({_DERIVED_MARK})")
+
+    # (3) الأثر — المنصة المتأثرة من الاستنتاج القايم + وجود وجع حالي من النص.
+    parts = []
+    try:
+        import ado_fields
+        inferred = ado_fields.infer_cr_fields(body)
+        if inferred.get("_inferred"):
+            parts.append(f"يمس {inferred.get('Custom.StoryApplication')} "
+                         f"(تصنيف: {inferred.get('Custom.CRorStoryCategory')})")
+    except Exception:
+        pass
+    if _RX_PAIN.search(body):
+        parts.append("في أثر سلبي قايم دلوقتي مذكور في الطلب")
+    else:
+        parts.append("مافيش أثر سلبي صريح في الطلب — يرجّح تحسين مش عطل")
+    if _RX_URGENT.search(body):
+        parts.append("الطلب متوصّف بإلحاح")
+    out["Custom.Impact"] = "؛ ".join(parts) + f". ({_DERIVED_MARK})"
+
+    return out
+
+
 # Fields the ADO process marks required on each work item type but the Discord
 # intake flow does not naturally have. Hadi may override any of these from the
 # ticket context via --field; these are only fallbacks so creation never fails.
@@ -241,7 +346,11 @@ def required_field_ops(wit_type, provided_paths, context_text=None):
     نقطة 4 (F12): لو النوع Change Request ومعانا نص الفكرة (context_text)،
     المنصة والتصنيف بيتستنتجوا من النص بـ ado_fields.infer_cr_fields بدل الـ
     defaults العمياء (Web/Customer Web/New Feature) — والـ fallback القديم بيفضل
-    آخر حل لو مفيش أي إشارة في النص."""
+    آخر حل لو مفيش أي إشارة في النص.
+
+    تعديل 2: الحقول السردية التلاتة (Description / CustomerBusinessValue /
+    Impact) بقت تتشتق عربي من نص الطلب بدل "غير محدد" الصامتة. الأولوية
+    دايمًا لهادي: أي حقل جه في --field بيغلب الاشتقاق وبيغلب الـ default."""
     defaults = dict(REQUIRED_DEFAULTS.get(wit_type, {}))
     if wit_type == "Change Request" and context_text:
         try:
@@ -253,6 +362,16 @@ def required_field_ops(wit_type, provided_paths, context_text=None):
                 print(f"CR FIELDS: استنتاج من النص — {inferred}")
         except Exception as error:  # الاستنتاج اختياري — فشله ميوقفش الإنشاء
             print(f"CR FIELDS WARN: {type(error).__name__}: {error}")
+    if context_text:
+        try:
+            narrative = derive_cr_narrative(context_text)
+            # بس الحقول اللي النوع ده محتاجها فعلًا — مانضيفش حقل مش في تعريفه
+            narrative = {k: v for k, v in narrative.items() if k in defaults}
+            if narrative:
+                defaults.update(narrative)
+                print(f"CR NARRATIVE: اشتقاق عربي لـ {sorted(narrative)}")
+        except Exception as error:  # شبكة أمان — فشلها ميوقفش الإنشاء
+            print(f"CR NARRATIVE WARN: {type(error).__name__}: {error}")
     provided = set(provided_paths or [])
     ops = []
     for path, val in defaults.items():
@@ -286,3 +405,82 @@ def resolve_channel_id(channel):
     if raw in _CHANNEL_DEFAULTS:
         return os.environ.get(_CHANNEL_ENV[raw], _CHANNEL_DEFAULTS[raw])
     return str(channel).strip()
+
+
+def selftest():
+    """اختبار محلي من غير شبكة: python3 cr_media.py"""
+    ok = True
+
+    def check(label, cond):
+        nonlocal ok
+        print(("PASS  " if cond else "FAIL  ") + label)
+        ok = ok and bool(cond)
+
+    UNSET = "غير محدد"
+    NARRATIVE = ("System.Description", "Custom.CustomerBusinessValue", "Custom.Impact")
+
+    def value_of(ops, path):
+        for op in ops:
+            if op["path"] == f"/fields/{path}":
+                return op["value"]
+        return None
+
+    # النص ده فيه هدف صريح (بعد «عشان») + إشارة وجع + منصة واضحة
+    text = ("التجار بيشتكوا إن صفحة الأصناف في تطبيق التاجر بطيئة جدًا، "
+            "عايزين نضيف بحث فوري عشان التاجر يلاقي الصنف من غير ما يفضل ينزل "
+            "في القايمة كلها ويضيع وقت على العميل")
+    ops = required_field_ops("Change Request", set(), context_text=text)
+
+    for path in NARRATIVE:
+        val = value_of(ops, path)
+        check(f"{path} اتملى", bool(val))
+        check(f"{path} مش «غير محدد»", val != UNSET)
+    check("الوصف بيحتوي نص الطلب", "بحث فوري" in (value_of(ops, "System.Description") or ""))
+    check("القيمة بتلتقط الهدف بعد «عشان»",
+          "يلاقي الصنف" in (value_of(ops, "Custom.CustomerBusinessValue") or ""))
+    check("الأثر بيرصد الوجع القايم",
+          "أثر سلبي قايم" in (value_of(ops, "Custom.Impact") or ""))
+    check("الأثر بيرصد المنصة",
+          "Merchant App" in (value_of(ops, "Custom.Impact") or ""))
+    check("كل حقل مشتق متعلّم للتدقيق",
+          all(_DERIVED_MARK in (value_of(ops, p) or "") for p in NARRATIVE))
+
+    # نص من غير هدف صريح: لازم يقول كده صراحة مش يخترع قيمة
+    ops2 = required_field_ops("Change Request", set(), context_text="زرار الحفظ لونه وحش")
+    bv = value_of(ops2, "Custom.CustomerBusinessValue") or ""
+    check("من غير هدف صريح: بيعلن النقص مش بيخترع", "محتاجة تحديد" in bv)
+    check("من غير وجع: بيوصفها تحسين",
+          "تحسين مش عطل" in (value_of(ops2, "Custom.Impact") or ""))
+
+    # أولوية هادي: أي حقل بعته بـ --field مايتلمسش
+    ops3 = required_field_ops("Change Request", {"Custom.Impact"}, context_text=text)
+    check("حقل هادي بيغلب الاشتقاق", value_of(ops3, "Custom.Impact") is None)
+
+    # مفيش سياق = السلوك القديم بالظبط (مفيش انحدار)
+    ops4 = required_field_ops("Change Request", set())
+    check("من غير سياق: الافتراضي القديم زي ما هو",
+          value_of(ops4, "Custom.Impact") == UNSET)
+
+    # Customer Issue: الوصف بس بيتشتق — الحقول التانية مش من تعريف النوع
+    ops5 = required_field_ops("Customer Issue", set(), context_text=text)
+    check("Customer Issue: الوصف اتشتق", value_of(ops5, "System.Description") != UNSET)
+    check("Customer Issue: مافيش حقول CR دخيلة",
+          value_of(ops5, "Custom.Impact") is None)
+
+    # الحقول الإلزامية التانية مالمستش
+    check("WorkAround فضل زي ما هو", value_of(ops, "Custom.WorkAround") == UNSET)
+    check("تواريخ الجدولة لسه بتتملى", bool(value_of(ops, "Microsoft.VSTS.Scheduling.DueDate")))
+
+    # HTML من ديسكورد مابيتسربش للوصف
+    ops6 = required_field_ops("Change Request", set(),
+                              context_text="<script>x</script> عايز تقرير جديد")
+    check("مفيش HTML خام في الوصف",
+          "<script>" not in (value_of(ops6, "System.Description") or ""))
+
+    print("\n" + ("ALL PASS" if ok else "THERE ARE FAILURES"))
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(selftest())

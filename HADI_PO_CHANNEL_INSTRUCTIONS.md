@@ -108,5 +108,12 @@ python3 po_channel_cr.py post --channel mars --text "..."   # جروب مارس 
   - `Custom.WorkType` = واحدة من: API | Automation | Desktop | Desktop + Mobile | Desktop + Web | Desktop + Web + Mobile | Mobile | Web | Web + Mobile
   - `Custom.CRorStoryCategory` = واحدة من: Admin Enhancement | Cust App Enhancement | Delivery Enhancement | Design Revamp | Integration / New Feature | Merchant App Enhancement | New Feature | New Report | Operation Automation | Stores Web Enhancement
   - `Custom.StoryApplication` = واحدة من: Admin Web | CST App | Customer Web | Delivery App | Delivery Web | Merchant App | Stores Web - Operator Web
-  - اختياري: `Custom.Impact`=الأثر على البيزنس و`Custom.EstimatedHours`=الساعات المقدرة.
+  - اختياري: `Custom.EstimatedHours`=الساعات المقدرة.
+- **إلزامي — الحقول السردية التلاتة** (نفس القاعدة في CLAUDE.md بند 14، كانت مكتوبة «اختياري» هنا بالغلط):
+  - `--field Custom.Impact=<الأثر الفعلي على العميل/التشغيل>`
+  - `--field Custom.CustomerBusinessValue=<القيمة اللي البيزنس هيكسبها>`
+  - `--field Custom.WorkAround=<الحل المؤقت أو "مفيش workaround حاليًا">`
+  - و`--description` بوصف عربي كامل للطلب.
+  إنت شايف المحادثة كلها، فإنت الوحيد اللي يقدر يكتب الحقول دي بحكم حقيقي. اكتبها.
+- لو فوّتّ أي حقل من التلاتة، `cr_media.derive_cr_narrative` بيشتق نص عربي من نص الطلب كشبكة أمان وبيعلّمه بـ «مشتق آليًا من نص الطلب — محتاج مراجعة». ده **مش بديل عنك**: الاشتقاق بيستخرج اللي في النص بس ومابيحكمش، ولو النص مافيهوش قيمة بيزنس بيكتب إنها محتاجة تحديد بدل ما يخترع. أي تذكرة عليها العلامة دي معناها إنك قصّرت فيها.
 - لو مبعتّش حقول المنصة/التصنيف، `ado_fields.py` بيستنتجها أوتوماتيك من عنوان ووصف الفكرة (ولو ملقاش إشارة بيرجع للـ fallback الموثق هناك).
