@@ -7,7 +7,9 @@
 مع حراس حتمية في الكود نفسه:
   - حد أدنى لعدد رسايل البشر قبل التلخيص (يوم فاضي = مفيش سبام).
   - تقرير PostHog عمره ما يتبعت من غير فحص LIVE/STALE/DOWN الأول —
-    لو DOWN بيتلغى التقرير وبيوصل تنبيه DM لآسر بدل أرقام مضللة.
+    لو DOWN بيتلغى التقرير وبيوصل تنبيه لآسر بدل أرقام مضللة. والتنبيه نفسه
+    له مسارين (DM ← قناة احتياطية) ونتيجته بتتسجّل في alert_via؛ لو محدش
+    اتبلّغ بيبقى ok=false وexit 1 — حارس بيمنع بصمت أخطر من مفيش حارس.
   - الموديل ممنوع يألّف: أي رقم/اسم لازم يكون من الرسايل المدخلة، وSKIP_EMPTY
     لو مفيش محتوى شغل حقيقي.
   - retry واحدة على فشل الموديل، وexit code غير صفري على أي فشل (يبان في systemd).
@@ -27,6 +29,8 @@ import os
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -44,6 +48,14 @@ MIN_HUMAN_MSGS = int(os.getenv("HADI_DIGEST_MIN_MSGS", "5") or "5")
 MAX_CHARS = int(os.getenv("HADI_DIGEST_MAX_CHARS", "1800") or "1800")
 LOG_FILE = BASE_DIR / "logs" / "digests.jsonl"
 ASSER_USER_ID = os.getenv("ASSER_USER_ID", "1378684355148386355").strip()
+
+# Discord بيرفض User-Agent الافتراضي بتاع urllib على مستوى Cloudflare (كود 1010)
+# قبل ما الطلب يوصله أصلًا. باقي ملفات المشروع بتستخدم requests فمابتتأثرش.
+DISCORD_UA = "DiscordBot (hadi-ameen-bot, 1.0)"
+
+# قناة احتياطية للتنبيه لو الـ DM فشل. تنبيه حارس مايوصلش = حارس أعمى.
+ALERT_CHANNEL_ID = (os.getenv("HADI_ALERT_CHANNEL_ID", "").strip()
+                    or os.getenv("MARS_CHANNEL_ID", "").strip())
 
 
 def _log(row):
@@ -84,28 +96,65 @@ def call_model(prompt, timeout=240):
     raise RuntimeError(f"model failed twice: {last}")
 
 
-def _dm_asser(text):
-    """DM لآسر بالـ REST مباشرة (للتنبيهات وقت ما البوت مش في الصورة). best-effort."""
+def _discord_post(path, payload, token):
+    req = urllib.request.Request(
+        f"https://discord.com/api/v10{path}",
+        data=json.dumps(payload).encode(),
+        headers={"Authorization": f"Bot {token}",
+                 "Content-Type": "application/json",
+                 # من غير السطر ده Cloudflare بيرد 1010 قبل ما Discord يشوف الطلب
+                 "User-Agent": DISCORD_UA},
+        method="POST")
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        return json.loads(resp.read().decode())
+
+
+def _reason(error):
+    """سبب مقروء — بيقرا جسم رد Discord بدل ما يرميه زي الأول."""
+    if isinstance(error, urllib.error.HTTPError):
+        try:
+            body = error.read().decode("utf-8", "replace").strip()[:200]
+        except Exception:
+            body = ""
+        return f"HTTP {error.code} {body}".strip()
+    return f"{type(error).__name__}: {error}"[:200]
+
+
+def alert_asser(text):
+    """تنبيه لآسر: DM الأول، وقناة احتياطية لو فشل.
+
+    بيرجع (via, error) — via = "dm" أو "channel" أو None لو محدش اتبلّغ.
+    لازم المُنادي يسجّل النتيجة: تنبيه فاشل مايتخبّاش تحت ok=true تاني.
+    """
     token = os.getenv("DISCORD_BOT_TOKEN", "").strip()
-    if not (token and ASSER_USER_ID):
-        return False
+    if not token:
+        return None, "DISCORD_BOT_TOKEN مش موجود"
+
+    dm_error = "ASSER_USER_ID فاضي"
+    if ASSER_USER_ID:
+        try:
+            ch = _discord_post("/users/@me/channels",
+                               {"recipient_id": ASSER_USER_ID}, token)
+            _discord_post(f"/channels/{ch['id']}/messages",
+                          {"content": text[:1900]}, token)
+            return "dm", None
+        except Exception as error:
+            dm_error = _reason(error)
+            print(f"DM ASSER FAIL: {dm_error}", file=sys.stderr)
+
+    if not ALERT_CHANNEL_ID:
+        return None, f"dm[{dm_error}] + مفيش قناة احتياطية (HADI_ALERT_CHANNEL_ID)"
+
     try:
-        import urllib.request
-        def _api(path, payload):
-            req = urllib.request.Request(
-                f"https://discord.com/api/v10{path}",
-                data=json.dumps(payload).encode(),
-                headers={"Authorization": f"Bot {token}",
-                         "Content-Type": "application/json"},
-                method="POST")
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                return json.loads(resp.read().decode())
-        ch = _api("/users/@me/channels", {"recipient_id": ASSER_USER_ID})
-        _api(f"/channels/{ch['id']}/messages", {"content": text[:1900]})
-        return True
+        mention = f"<@{ASSER_USER_ID}> " if ASSER_USER_ID else ""
+        _discord_post(f"/channels/{ALERT_CHANNEL_ID}/messages",
+                      {"content": (mention + text)[:1900]}, token)
+        print(f"ALERT عبر القناة الاحتياطية (الـ DM فشل: {dm_error})", file=sys.stderr)
+        return "channel", f"dm[{dm_error}]"
     except Exception as error:
-        print(f"DM ASSER FAIL: {type(error).__name__}: {error}", file=sys.stderr)
-        return False
+        both = f"dm[{dm_error}] channel[{_reason(error)}]"
+        print(f"ALERT FAIL: {both}", file=sys.stderr)
+        return None, both
 
 
 # ----------------------------- الملخصات -----------------------------
@@ -234,7 +283,17 @@ def run_posthog(dry_run=False):
                    f"تفاصيل الفحص: {row['health']}")
             print(msg)
             if not dry_run:
-                _dm_asser(msg)
+                via, alert_error = alert_asser(msg)
+                row["alert_via"] = via
+                if alert_error:
+                    row["alert_error"] = alert_error
+                if not via:
+                    # الحارس منع التقرير الغلط بس محدش اتبلّغ — ده مش نجاح.
+                    # exit code 1 بيخلي systemd يسجّلها failed = طبقة تنبيه تالتة.
+                    row["ok"] = False
+                    print("ALERT UNDELIVERED: التقرير اتمنع ومحدش اتبلّغ",
+                          file=sys.stderr)
+                    return 1
             return 0
         cmd = [sys.executable, str(BASE_DIR / "intel" / "8orders_report_generator.py"),
                "--push-ado"]
@@ -248,7 +307,11 @@ def run_posthog(dry_run=False):
         row.update(error=f"{type(error).__name__}: {error}"[:300])
         print(f"posthog FAILED: {row['error']}", file=sys.stderr)
         if not dry_run:
-            _dm_asser(f"⚠️ تقرير PostHog الصباحي فشل: {row['error']}")
+            via, alert_error = alert_asser(
+                f"⚠️ تقرير PostHog الصباحي فشل: {row['error']}")
+            row["alert_via"] = via
+            if alert_error:
+                row["alert_error"] = alert_error
         return 1
     finally:
         row["latency_ms"] = int((time.time() - t0) * 1000)
