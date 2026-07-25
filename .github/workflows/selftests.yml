@@ -1,0 +1,54 @@
+name: selftests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # نفس توقيت السيرفر — من غيره فحوصات التواريخ بتقيس نظام تاني
+      TZ: Africa/Cairo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: تثبيت الاعتماديات
+        run: pip install -r requirements.txt
+
+      - name: كل الملفات بتتكمبل
+        run: python3 -m compileall -q .
+
+      - name: selftests
+        run: |
+          set -e
+          for m in env_loader memory_guard memory_store knowledge_store \
+                   cr_media ado_features heartbeat eval_store posthog_cli \
+                   followup_store; do
+            echo "──────── $m"
+            python3 "$m.py" selftest
+          done
+
+      - name: سكيما الحالات الذهبية (من غير نداء موديل)
+        run: python3 eval_runner.py validate
+
+      - name: كل أداة متعلَّمة في CLAUDE.md ليها صلاحية مقابلة
+        run: |
+          MISSING=$(comm -23 \
+            <(grep -oE "python3 [a-z_0-9]+\.py" CLAUDE.md | awk '{print $2}' | sort -u) \
+            <(grep -oE "Bash\(python3 [a-z_0-9]+\.py" setup/settings.local.json | sed 's/.*python3 //' | sort -u))
+          if [ -n "$MISSING" ]; then
+            echo "❌ تعليمات من غير صلاحية (وعد كاذب):"; echo "$MISSING"; exit 1
+          fi
+          echo "✅ كل أداة متعلَّمة مسموحة"
+
+      - name: التوثيق متطابق مع الكود
+        run: |
+          BIZ=$(grep -oE "BIZ_END_HOUR = [0-9]+" intel/8orders_report_generator.py | grep -oE "[0-9]+$")
+          grep -q "0${BIZ}:00" CLAUDE.md || {
+            echo "❌ نافذة يوم العمل في CLAUDE.md مش متطابقة مع BIZ_END_HOUR=${BIZ}"; exit 1; }
+          echo "✅ نافذة يوم العمل متطابقة"
