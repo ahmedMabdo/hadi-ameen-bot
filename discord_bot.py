@@ -138,6 +138,17 @@ client = discord.Client(intents=intents)
 # بالتوازي، والحد الأقصى الإجمالي متحكم فيه بـ HADI_MAX_CONCURRENCY جوه hadi_engine.
 _conv_locks: dict = {}
 
+# مهام fire-and-forget: asyncio بيمسك مرجع ضعيف بس، فالـ GC ممكن يلغي المهمة
+# قبل ما تخلص. القاموس ده بيمسك مرجع قوي لحد ما تنتهي.
+_bg_tasks: set = set()
+
+
+def _spawn(coro):
+    task = asyncio.ensure_future(coro)
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
+    return task
+
 
 def get_conv_lock(key: str) -> asyncio.Lock:
     """قفل خاص بالمحادثة دي — بيحافظ على ترتيب الرسايل جوه نفس القناة/الـ DM.
@@ -1226,7 +1237,7 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
             if str(payload.emoji) in eval_store.NEGATIVE:
                 info = eval_store.interaction_for_reply(payload.message_id)
                 if info:
-                    asyncio.create_task(dm_allowed_users(
+                    _spawn(dm_allowed_users(
                         f"👎 فيدباك سلبي على رد ليا ({payload.emoji}) في "
                         f"{info.get('channel', '?')}\n"
                         f"السؤال: {(info.get('prompt_excerpt') or '')[:180]}\n"
@@ -1437,7 +1448,7 @@ async def on_message(message: discord.Message):
             print(f"HADI: claude run {time.time()-_t0:.0f}s - {author_name}: {content[:60]}")
             resp_clean = (response or "").strip()
             react_emoji, resp_clean = split_react_directive(resp_clean)
-            asyncio.create_task(swap_ack_reaction(message, ack_emoji, react_emoji))
+            _spawn(swap_ack_reaction(message, ack_emoji, react_emoji))
             if not resp_clean or (
                 resp_clean[:8].upper() == "NO_REPLY" and len(resp_clean) <= 40
             ):

@@ -31,6 +31,7 @@ import sys
 import json
 import asyncio
 import datetime
+import time
 import urllib.request
 from pathlib import Path
 
@@ -412,18 +413,24 @@ def evaluate(issues):
 
 
 # ----------------------------- dedup -----------------------------
+# أقصى عدد مفاتيح منع التكرار المحفوظة لكل قناة — القايمة كانت بتكبر للأبد
+STATE_MAX_KEYS = int(os.environ.get("TRIAGE_STATE_MAX_KEYS", "500"))
+
+
 def _load_state():
-    if os.path.exists(STATE_PATH):
-        try:
-            return json.load(open(STATE_PATH, encoding="utf-8"))
-        except Exception:
-            return {}
-    return {}
+    try:
+        with open(STATE_PATH, encoding="utf-8") as fh:   # context manager: مفيش fd مسرّب
+            return json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return {}
 
 
 def _save_state(state):
     try:
-        json.dump(state, open(STATE_PATH, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+        tmp = STATE_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(state, fh, ensure_ascii=False, indent=2)
+        os.replace(tmp, STATE_PATH)                      # كتابة ذرية
     except OSError as e:
         print(f"TRIAGE state save fail: {e}")
 
@@ -448,8 +455,9 @@ def _mark_filed(channel_id, issues):
     filed = set(entry.get("filed_keys", []))
     for it in issues:
         filed.add(_dedup_key(it))
-    entry["filed_keys"] = sorted(filed)
-    entry["ts"] = datetime.datetime.utcnow().isoformat()
+    # الأحدث بيفضل: مفاتيح منع التكرار مالهاش لازمة للأبد
+    entry["filed_keys"] = sorted(filed)[-STATE_MAX_KEYS:]
+    entry["ts"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     state[str(channel_id)] = entry
     _save_state(state)
 

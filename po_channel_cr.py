@@ -175,7 +175,7 @@ def cmd_fetch(args):
 def _cr_already_filed(dedup_tag, headers):
     wiql = {"query": ("SELECT [System.Id] FROM WorkItems "
                       f"WHERE [System.TeamProject] = '{ado_client.ADO_PROJECT}' "
-                      f"AND [System.Tags] CONTAINS '{dedup_tag}'")}
+                      f"AND [System.Tags] CONTAINS '{dedup_tag.replace(chr(39), chr(39) * 2)}'")}
     r = requests.post(f"{ADO_BASE}/wit/wiql?api-version={ADO_API_VERSION}",
                       headers={**headers, "Content-Type": "application/json"},
                       json=wiql, timeout=30)
@@ -264,15 +264,10 @@ def cmd_post(args):
     text = text.strip()
     if not text:
         sys.exit("ERROR: nothing to post — pass --text or pipe the message on stdin")
-    # Discord hard limit is 2000 chars per message; split on line boundaries
-    chunks, current = [], ""
-    for line in text.split("\n"):
-        if len(current) + len(line) + 1 > 2000:
-            chunks.append(current)
-            current = line
-        else:
-            current = f"{current}\n{line}" if current else line
-    chunks.append(current)
+    # Discord hard limit is 2000 chars per message. المصدر الواحد للتقسيم —
+    # النسخة القديمة هنا كانت بتبعت سطر أطول من 2000 كما هو وتاخد HTTP 400.
+    import routines_common
+    chunks = routines_common.split_for_discord(text)
     for chunk in chunks:
         r = requests.post(f"{API_BASE}/channels/{channel_id}/messages",
                           headers={**_discord_headers(),

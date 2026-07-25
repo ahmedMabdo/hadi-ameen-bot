@@ -541,10 +541,15 @@ def cmd_project(con):
     for r in rows.values():
         kids.setdefault(r["parent"], []).append(r)
 
-    def _walk(pid, depth):
+    def _walk(pid, depth, seen=None):
+        # حد عمق + كشف الحلقات: parent link دايري في ADO كان هيرمي RecursionError
+        seen = seen or set()
+        if depth > 12 or pid in seen:
+            return
+        seen = seen | {pid}
         for r in sorted(kids.get(pid, []), key=lambda x: x["id"]):
             print("  " * depth + f"- #{r['id']} [{r['type']}] {r['title']} ({r['state']})")
-            _walk(r["id"], depth + 1)
+            _walk(r["id"], depth + 1, seen)
 
     root = rows.get(PROJECT_ITEM_ID)
     if root:

@@ -142,6 +142,8 @@ CREATE TABLE IF NOT EXISTS notes(
   body TEXT NOT NULL,
   raw TEXT NOT NULL UNIQUE,
   norm TEXT NOT NULL,
+  -- active: محجوز للإخفاء المؤقت من غير حذف. مفيش كاتب ليه دلوقتي
+  -- (السحب بيتم في memory.md نفسه عبر memory_guard.revoke_lines).
   active INTEGER NOT NULL DEFAULT 1,
   embedding BLOB
 );
@@ -193,12 +195,14 @@ def rebuild() -> int:
         conn.execute("DELETE FROM notes")
         count = 0
         for note in iter_md_notes(md):
-            conn.execute(
+            cur = conn.execute(
                 "INSERT OR IGNORE INTO notes(section, mtype, author, noted_at, expires, body, raw, norm)"
                 " VALUES (:section, :mtype, :author, :noted_at, :expires, :body, :raw, :norm)",
                 note,
             )
-            count += 1
+            # العدّ على اللي اتسجّل فعلًا: raw عليه UNIQUE، فالسطر المكرر بيتتجاهل.
+            # العدّ الأعمى كان بيخلي status().in_sync يقول «مش متزامن» بالباطل.
+            count += cur.rowcount if cur.rowcount > 0 else 0
         conn.execute(
             "INSERT OR REPLACE INTO meta(k, v) VALUES ('rebuilt_at', ?)",
             (dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),),
@@ -313,7 +317,9 @@ def memory_block(query_text: str) -> str:
 def status() -> dict:
     conn = connect()
     md = MEM_PATH.read_text(encoding="utf-8") if MEM_PATH.exists() else ""
-    md_count = sum(1 for _ in iter_md_notes(md))
+    # raw عليه UNIQUE في الفهرس، فالمقارنة لازم تكون على السطور المتميّزة —
+    # وإلا أي سطر مكرر في memory.md كان بيخلي in_sync=False للأبد.
+    md_count = len({n["raw"] for n in iter_md_notes(md)})
     by_type = dict(conn.execute(
         "SELECT mtype, COUNT(*) FROM notes WHERE active=1 GROUP BY mtype"
     ).fetchall())

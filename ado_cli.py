@@ -149,13 +149,15 @@ def cmd_list_teams(args):
 
 
 def cmd_search(args):
+    # كل قيمة نصية بتتهرّب — مش terms بس. أي ' في اسم مشروع/مسار كان بيكسر
+    # الاستعلام بصمت ويرجّع نتيجة فاضية بدل خطأ.
     conditions = " OR ".join(f"[System.Title] CONTAINS '{_wiql_escape(t)}'" for t in args.terms)
     query = ("SELECT [System.Id] FROM WorkItems "
-             f"WHERE [System.TeamProject] = '{args.project}' AND ({conditions})")
+             f"WHERE [System.TeamProject] = '{_wiql_escape(args.project)}' AND ({conditions})")
     if args.area_path:
-        query += f" AND [System.AreaPath] = '{args.area_path}'"
+        query += f" AND [System.AreaPath] = '{_wiql_escape(args.area_path)}'"
     if args.type:
-        query += f" AND [System.WorkItemType] = '{args.type}'"
+        query += f" AND [System.WorkItemType] = '{_wiql_escape(args.type)}'"
     query += " ORDER BY [System.ChangedDate] DESC"
     _print_json(_run_wiql(query, args.project, args.top))
 
@@ -190,7 +192,7 @@ def cmd_wiql(args):
 
 def cmd_my_work_items(args):
     query = ("SELECT [System.Id] FROM WorkItems "
-             f"WHERE [System.TeamProject] = '{args.project}' AND [System.AssignedTo] = @Me "
+             f"WHERE [System.TeamProject] = '{_wiql_escape(args.project)}' AND [System.AssignedTo] = @Me "
              "ORDER BY [System.ChangedDate] DESC")
     _print_json(_run_wiql(query, args.project, args.top))
 

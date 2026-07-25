@@ -196,7 +196,7 @@ def already_filed(s, headers):
         "query": (
             "SELECT [System.Id] FROM WorkItems "
             f"WHERE [System.TeamProject] = '{ADO_PROJECT}' "
-            f"AND [System.Tags] CONTAINS '{_dedup_tag(s)}'"
+            f"AND [System.Tags] CONTAINS '{_dedup_tag(s).replace(chr(39), chr(39) * 2)}'"
         )
     }
     r = requests.post(f"{ADO_BASE}/wit/wiql?api-version={ADO_API_VERSION}",

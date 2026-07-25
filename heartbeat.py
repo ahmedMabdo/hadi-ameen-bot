@@ -121,16 +121,21 @@ def check_stale_p1(state):
         " AND [Microsoft.VSTS.Common.Priority] <= 1"
         f" AND [System.ChangedDate] < '{cutoff}'"
     )
-    ok, out = _ado("wiql", "--query", wiql)
+    # ado_cli.py wiql بياخد الاستعلام positional مش --query (كان بيرجّع exit 2)
+    ok, out = _ado("wiql", wiql)
     if not ok:
         return []
-    # F14: parse JSON بدل regex — الـ regex كان بيلقط السنين (2026) من التواريخ
-    # كأنها أرقام تذاكر وهمية.
+    # ado_cli.py wiql بيطبع list من dicts فيها "id" — مش {"workItems": [...]}.
+    # الشكل القديم كان بيرمي AttributeError وبيتبلع، فالفحص ده عمره ما اشتغل.
     try:
-        payload = json.loads(out)
-        ids = [str(w.get("id")) for w in payload.get("workItems", []) if w.get("id")]
-    except (json.JSONDecodeError, AttributeError):
+        rows = json.loads(out)
+    except json.JSONDecodeError:
         return []
+    if isinstance(rows, dict):  # توافق لو الشكل اتغير
+        rows = rows.get("workItems", [])
+    if not isinstance(rows, list):
+        return []
+    ids = [str(r.get("id")) for r in rows if isinstance(r, dict) and r.get("id")]
     ids = ids[:MAX_ALERTS]
     alerts = []
     for wid in ids:

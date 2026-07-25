@@ -2,7 +2,7 @@
 """متابعة يومية لهادي أمين على ديسكورد — Discord REST API v10 مباشرة.
 
 الأوامر:
-  python3 discord_followup.py fetch                -> يطبع رسائل اليوم (قناة الدعم) كـ JSON على stdout
+  python3 discord_followup.py fetch                -> يطبع رسائل آخر 24 ساعة (قناة الدعم) كـ JSON على stdout
   python3 discord_followup.py post "<نص>"          -> يبعت النص كرسالة في قناة الدعم
   python3 discord_followup.py post --dry-run "<نص>" -> وضع تجربة: ما يبعتش في القناة العامة
 
@@ -79,16 +79,16 @@ def resolve_channel_id() -> str | None:
 
 
 def fetch_today_messages() -> list[dict]:
-    """يجيب رسائل آخر 24 ساعة (من 7م امبارح لـ 7م النهاردة بتوقيت القاهرة) من قناة الدعم."""
+    """يجيب رسائل آخر 24 ساعة من لحظة التشغيل (توقيت القاهرة) من قناة الدعم."""
     channel_id = resolve_channel_id()
     if not channel_id:
         return []
 
-    now_cairo = datetime.now(CAIRO_TZ)
-    window_end = now_cairo.replace(hour=19, minute=0, second=0, microsecond=0)
-    if now_cairo < window_end:
-        window_end = window_end - timedelta(days=1)
-    window_start = window_end - timedelta(days=1)
+    # نافذة متحركة: آخر 24 ساعة من لحظة التشغيل — نفس podaily/marsteam بالظبط
+    # (قرار آسر 2026-07-26). قبل كده كانت مربوطة بمرساة ثابتة 19:00، فأي تشغيل
+    # يدوي خارج الميعاد كان بيقرا نافذة مختلفة عن التايمر.
+    window_end = datetime.now(CAIRO_TZ)
+    window_start = window_end - timedelta(hours=24)
 
     messages = []
     before = None

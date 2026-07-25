@@ -80,7 +80,8 @@ def _digests_section(days):
 
 
 def _golden_section():
-    latest = sorted(RUNS_DIR.glob("*.json")) if RUNS_DIR.exists() else []
+    # نفس النمط بتاع eval_runner.latest_run — "*.json" كان بيلقط baseline.json كمان
+    latest = sorted(RUNS_DIR.glob("run_*.json")) if RUNS_DIR.exists() else []
     if not latest:
         return "🏅 الحالات الذهبية: مفيش تشغيلة محفوظة — شغّل eval_runner.py run"
     try:
