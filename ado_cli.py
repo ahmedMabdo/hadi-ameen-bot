@@ -301,8 +301,37 @@ def _create(args, ops, label):
     return wi
 
 
+def _auto_parent_ops(args):
+    """يرجّع op ربط بالـ Feature الأب لو لقى وحدة مناسبة، وإلا [].
+
+    القاعدة (قرار آسر 2026-07-25): لقى Feature → يربطها. مالقاش → يرفع من غير
+    parent. مفيش سؤال ومفيش تعطيل — ربط غلط أسوأ من مفيش ربط.
+    أي عطل في الوحدة دي مايوقفش الرفع أبدًا.
+    """
+    if getattr(args, "no_auto_parent", False):
+        return []
+    try:
+        import ado_features
+        text = " ".join(filter(None, [getattr(args, "title", ""),
+                                      getattr(args, "description", "")]))
+        hit = ado_features.best(text)
+    except Exception as error:
+        print(f"AUTO-PARENT skipped ({type(error).__name__}: {error})", file=sys.stderr)
+        return []
+    if not hit:
+        print("AUTO-PARENT: مفيش Feature مناسبة — بيترفع من غير parent")
+        return []
+    print(f"AUTO-PARENT: #{hit['id']} {hit['title']} "
+          f"(درجة {hit['score']}) ← {hit['epic']}")
+    return [{
+        "op": "add", "path": "/relations/-",
+        "value": {"rel": "System.LinkTypes.Hierarchy-Reverse",
+                  "url": f"{_project_base(args.project)}/wit/workItems/{hit['id']}"},
+    }]
+
+
 def cmd_create_work_item(args):
-    wi = _create(args, _build_create_ops(args), args.type)
+    wi = _create(args, _build_create_ops(args) + _auto_parent_ops(args), args.type)
     if wi:
         _ch = cr_media.resolve_channel_id(getattr(args, "channel", None))
         cr_media.maybe_attach_media(args, wi, _ch, _headers())
@@ -446,6 +475,8 @@ def main():
         sp.add_argument("--channel", help="Discord channel for --source-msg: po/mars/support or raw id")
         sp.add_argument("--attach-url", action="append", default=[], help="image/video URL(s) to attach (repeatable)")
         sp.add_argument("--no-media", action="store_true", help="skip attaching media")
+        sp.add_argument("--no-auto-parent", action="store_true",
+                         help="don't auto-link a parent Feature from the 8Orders tree")
         sp.add_argument("--dry-run", action="store_true")
 
     s = sub.add_parser("create-work-item", help="create a work item")

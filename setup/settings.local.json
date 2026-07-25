@@ -9,21 +9,19 @@
   "_READ_GROUP": "knowledge_store, posthog_cli, ado_snapshot, sprints_sync, sprint_intake, memory, schedule, WebSearch, WebFetch",
   "_WRITE_GROUP": "ado_cli, po_channel_cr, ado_alerts, discord_followup, discord_orderpo, discord_mars_results",
   "_DENY_WHY": "التقارير المجدولة شغل التايمرات — لو هادي نداها بنفسه يتبعت تقرير مكرر للقناة.",
-
   "permissions": {
     "allow": [
       "mcp__plugin_discord_discord__reply",
-
       "Bash(python3 knowledge_store.py:*)",
       "Bash(python3 posthog_cli.py:*)",
       "Bash(python3 ado_snapshot.py:*)",
+      "Bash(python3 ado_features.py:*)",
       "Bash(python3 sprints_sync.py:*)",
       "Bash(python3 sprint_intake.py:*)",
       "Bash(python3 memory.py:*)",
       "Bash(python3 schedule.py:*)",
       "WebSearch",
       "WebFetch",
-
       "Bash(python3 ado_cli.py:*)",
       "Bash(python3 po_channel_cr.py:*)",
       "Bash(python3 ado_alerts.py:*)",

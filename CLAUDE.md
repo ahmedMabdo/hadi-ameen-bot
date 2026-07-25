@@ -468,6 +468,7 @@ PostHog بيرد `200 OK` وهو بيرمي الأحداث لما الكوتا �
 | الأمر | بيجيب إيه |
 |------|-----------|
 | `python3 ado_snapshot.py brief` | **الخلاصة الشاملة** (سبرنت + أيام متبقية + أقرب إيفنت + عدادات البوردات) — ابدأ بيها |
+- `python3 ado_features.py suggest --text "..."` — أنسب Feature أب من شجرة 8Orders (Project 53585 → Epic → Feature). بيتنادى **أوتوماتيك** جوه `ado_cli.py create-work-item`، فمحتاجش تنده عليه بنفسك إلا لو عايز تشوف المرشحين قبل الرفع. لقى Feature → بيربطها؛ مالقاش → بيرفع من غير parent من غير ما يسأل. `--no-auto-parent` بيوقف السلوك ده.
 | `python3 ado_snapshot.py boards --board support\|cr [--state Active]` | تذاكر بورد معين بالتفصيل |
 | `python3 ado_snapshot.py board-summary` | عدادات البوردين (حالة/نوع/جديد 24س) |
 | `python3 ado_snapshot.py whatsnew --hours 24` | الجديد والمتغير عبر كل البوردات |
