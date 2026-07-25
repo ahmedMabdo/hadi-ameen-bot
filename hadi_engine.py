@@ -166,6 +166,16 @@ def _remember_session(conv_key: str, session_id: str) -> None:
         _save_sessions(data)
 
 
+def has_session(conv_key: str) -> bool:
+    """هل المحادثة دي ليها جلسة حية (جوه الـ TTL)؟
+
+    البوت بيستخدمها عشان يبعت سياق القناة **مرة واحدة** في أول رسالة بالجلسة.
+    مع resume، الجلسة شايلة الترانسكريبت كله أصلًا — فإعادة إرسال آخر 80 رسالة
+    مع كل دور كانت تكرار خالص (وسبب مباشر لـ context rot).
+    """
+    return _get_resume(conv_key) is not None
+
+
 def reset_session(conv_key: str) -> None:
     with _sessions_mutex:
         data = _load_sessions()

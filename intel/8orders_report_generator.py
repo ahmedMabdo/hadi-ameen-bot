@@ -22,12 +22,21 @@ Env: POSTHOG_API_KEY (personal API key), optional POSTHOG_HOST.
 Usage:  python3 8orders_report_generator.py [--date 2026-06-18] [--out report.pdf]
 """
 import os, sys, json, argparse, datetime as dt, requests
+from zoneinfo import ZoneInfo
 
 PROJECT = "400872"
 UI_HOST = "https://us.posthog.com"                 # browser/replay links
 API = f"{UI_HOST}/api/projects/{PROJECT}"
 HEADERS = {"Authorization": f"Bearer {os.environ.get('POSTHOG_API_KEY','')}"}
-CAIRO_OFFSET = 3                                   # June: UTC+3
+# مصر بترجّع التوقيت الصيفي من 2023: UTC+2 شتاءً و UTC+3 صيفًا. الإزاحة الثابتة
+# كانت بتغلط ساعة كاملة من آخر أكتوبر لآخر أبريل — وبين 03:00 و04:00 القاهرة
+# شتاءً كانت بتخلي الروتين يلخّص **يوم العمل الغلط** (BIZ_END_HOUR = 4).
+CAIRO_TZ = ZoneInfo("Africa/Cairo")
+
+
+def cairo_now():
+    """الوقت الحقيقي في القاهرة — بيتنقل بين EET/EEST لوحده."""
+    return dt.datetime.now(CAIRO_TZ).replace(tzinfo=None)
 
 # ── نافذة يوم العمل (القاهرة) ──
 # 8Orders زودوا ساعات العمل (2026-07-24): اليوم بيقفل 04:00 بدل 02:00.
@@ -561,7 +570,7 @@ def build_html(d):
     day = d["day"]; prev = d["prev"]
     dd = dt.date.fromisoformat(day)
     ar_date = f"{dd.day} {AR_MONTHS[dd.month]} {dd.year}"
-    gen_now = dt.datetime.utcnow() + dt.timedelta(hours=CAIRO_OFFSET)
+    gen_now = cairo_now()
     gen_date = gen_now.date()
     gen_ar = f"{gen_date.day} {AR_MONTHS[gen_date.month]} {gen_date.year}"
     gen_clock = gen_now.strftime("%H:%M")
@@ -1045,7 +1054,7 @@ def build_html_tech(d):
     day = d["day"]; prev = d["prev"]
     dd = dt.date.fromisoformat(day)
     ar_date = f"{dd.day} {AR_MONTHS[dd.month]} {dd.year}"
-    gen_now = dt.datetime.utcnow() + dt.timedelta(hours=CAIRO_OFFSET)
+    gen_now = cairo_now()
     gen_date = gen_now.date()
     gen_ar = f"{gen_date.day} {AR_MONTHS[gen_date.month]} {gen_date.year}"
     gen_clock = gen_now.strftime("%H:%M")
@@ -1521,7 +1530,7 @@ def main():
     else:
         # Routine runs ~07:00 Cairo; the business day that just ended started "yesterday".
         # (Works for any run time from Cairo 04:00 to midnight — picks the same day.)
-        now_cairo = dt.datetime.utcnow() + dt.timedelta(hours=CAIRO_OFFSET)
+        now_cairo = cairo_now()
         day = (now_cairo.date() - dt.timedelta(days=1)).isoformat()
 
     dd = dt.date.fromisoformat(day)

@@ -1395,7 +1395,13 @@ async def on_message(message: discord.Message):
         if g_action != "reply":
             print("HADI: ambient-gate silent -", author_name)
             return
-    history_text = await build_channel_history(message.channel, message)
+    # سياق القناة بيتبعت في **أول رسالة بالجلسة بس**. بعد كده الجلسة المستأنفة
+    # (resume) شايلة المحادثة كلها، فإعادة إرسال آخر HISTORY_LIMIT رسالة مع كل
+    # دور كانت بتضاعف نفس النص في السياق من غير أي فايدة.
+    _conv_key_early = (f"dm:{message.author.id}" if message.guild is None
+                       else f"ch:{message.channel.id}")
+    history_text = ("" if hadi_engine.has_session(_conv_key_early)
+                    else await build_channel_history(message.channel, message))
     try:
         _docn = await file_extract.extract_attachment_texts(message)
         if _docn:

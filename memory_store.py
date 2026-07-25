@@ -40,6 +40,7 @@ import re
 import sqlite3
 import sys
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 BASE = Path(__file__).resolve().parent
 MEM_PATH = BASE / "knowledge" / "memory.md"
@@ -184,7 +185,22 @@ def _reset_conn():
         _conn = None
 
 
-_NOT_EXPIRED = "(expires = '' OR date(expires) >= date('now'))"
+def _cairo_today() -> str:
+    """تاريخ النهاردة بتوقيت القاهرة.
+
+    SQLite date('now') بيرجّع **UTC دايمًا**، والسيرفر على القاهرة (UTC+2/+3).
+    الفرق ده كان بيخلي الملاحظة المنتهية تفضل تتحقن في البرومبت لحد 3 ص
+    بتوقيت القاهرة — يعني كل يوم في نافذة الساعات اللي التطبيق شغال فيها.
+    باقي المشروع (identity/memory/schedule/heartbeat) بيستخدم ZoneInfo،
+    والوحدة دي كانت الاستثناء الوحيد.
+    """
+    return dt.datetime.now(ZoneInfo("Africa/Cairo")).date().isoformat()
+
+
+def _not_expired(prefix: str = "") -> str:
+    """شرط SQL: الملاحظة من غير تاريخ انتهاء، أو تاريخها لسه ماعداش (بتوقيت القاهرة)."""
+    col = f"{prefix}expires" if prefix else "expires"
+    return f"({col} = '' OR date({col}) >= '{_cairo_today()}')"
 
 
 def rebuild() -> int:
@@ -246,7 +262,7 @@ def search(query: str, k: int = None):
         "SELECT n.section, n.mtype, n.author, n.noted_at, n.expires, n.body, n.raw,"
         " bm25(notes_fts) AS score"
         " FROM notes_fts JOIN notes n ON n.id = notes_fts.rowid"
-        f" WHERE notes_fts MATCH ? AND n.active = 1 AND {_NOT_EXPIRED.replace('expires', 'n.expires')}"
+        f" WHERE notes_fts MATCH ? AND n.active = 1 AND {_not_expired('n.')}"
         " ORDER BY score LIMIT ?",
         (match, k or TOP_K),
     ).fetchall()
@@ -285,7 +301,7 @@ def memory_block(query_text: str) -> str:
 
     procedural = conn.execute(
         "SELECT raw FROM notes WHERE active=1 AND mtype='procedural'"
-        f" AND {_NOT_EXPIRED} ORDER BY noted_at LIMIT 10"
+        f" AND {_not_expired()} ORDER BY noted_at LIMIT 10"
     ).fetchall()
     if procedural:
         parts.append("[قواعد سلوك متعلمة — التزم بيها دايمًا]\n"
@@ -293,7 +309,7 @@ def memory_block(query_text: str) -> str:
 
     others = conn.execute(
         "SELECT section, mtype, author, noted_at, expires, body, raw FROM notes"
-        f" WHERE active=1 AND mtype != 'procedural' AND {_NOT_EXPIRED}"
+        f" WHERE active=1 AND mtype != 'procedural' AND {_not_expired()}"
     ).fetchall()
     if others:
         total = sum(len(r["raw"]) for r in others)
@@ -325,7 +341,7 @@ def status() -> dict:
     ).fetchall())
     expired = conn.execute(
         "SELECT COUNT(*) FROM notes WHERE active=1 AND expires != ''"
-        " AND date(expires) < date('now')"
+        f" AND date(expires) < '{_cairo_today()}'"
     ).fetchone()[0]
     db_count = conn.execute("SELECT COUNT(*) FROM notes WHERE active=1").fetchone()[0]
     return {
