@@ -28,18 +28,16 @@ A failure for one recipient never blocks delivery to the others.
 """
 import os, re, sys, requests
 
-def _load_dotenv():
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-    if not os.path.isfile(path):
-        return
-    for line in open(path, encoding="utf-8"):
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        os.environ.setdefault(k.strip(), v.strip())
-
-_load_dotenv()
+# .env بيتقرا بنفس دلالات `source` — شوف env_loader.py.
+# load_for بيدوّر في intel/.env وبعدين في .env بتاع الريبو. النسخة القديمة كانت
+# بتدوّر على intel/.env بس، وده ملف مش موجود عادةً — يعني الوحدة دي كانت
+# بتعتمد على بيئة العملية وحدها وبتفشل لو اتنادت لوحدها من الشِل.
+try:
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import env_loader
+    env_loader.load_for(__file__)
+except Exception:  # قراءة الإعدادات مالهاش لازمة توقف الوحدة
+    pass
 
 API_BASE = "https://discord.com/api/v10"
 RECIPIENT_NAME = "Mahmoud Abdou"

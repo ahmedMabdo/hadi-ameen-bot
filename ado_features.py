@@ -41,33 +41,17 @@ BASE = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE))
 
 
-def _load_dotenv():
-    """يقرا .env جنب الملف — نفس نمط ado_client.py و intel/discord_delivery.py.
-
-    من غير ده الوحدة دي كانت بتتقرا إعداداتها من بيئة العملية بس، فالتشغيل
-    المباشر من الشِل (`ado_features.py suggest`) كان بياخد الـ defaults بينما
-    الإنتاج (اللي بيتنادى من discord_bot بعد load_dotenv) بياخد قيم .env.
-    يعني أداة التشخيص كانت بتقيس نظام تاني غير اللي بيرفع فعلًا.
-
-    setdefault مقصود: بيئة العملية أقوى من الملف — عشان تقدر تجرّب قيمة مؤقتة
-    بـ `HADI_FEATURE_MIN_SCORE=0.5 ado_features.py suggest ...` من غير ما تعدّل .env.
-    """
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-    if not os.path.isfile(path):
-        return
-    try:
-        lines = open(path, encoding="utf-8").readlines()
-    except OSError:
-        return
-    for line in lines:
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        os.environ.setdefault(k.strip(), v.strip())
-
-
-_load_dotenv()
+# .env لازم يتقرا قبل أي قراءة لمتغير تحت.
+# من غير ده الوحدة كانت بتتقرا إعداداتها من بيئة العملية بس، فالتشغيل المباشر
+# من الشِل (`ado_features.py suggest`) كان بياخد الـ defaults بينما الإنتاج
+# (اللي بيتنادى من discord_bot بعد load_dotenv) بياخد قيم .env — يعني أداة
+# التشخيص كانت بتقيس نظام تاني غير اللي بيرفع فعلًا.
+# بيئة العملية بتفضل أقوى من الملف عشان `HADI_FEATURE_MIN_SCORE=0.5 ...` تفضل ممكنة.
+try:
+    import env_loader
+    env_loader.load_for(__file__)
+except Exception:  # قراءة الإعدادات مالهاش لازمة توقف الوحدة
+    pass
 
 DB_PATH = os.environ.get(
     "ADO_SNAPSHOT_DB", str(BASE / "ado_snapshot.db"))

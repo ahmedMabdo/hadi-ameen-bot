@@ -58,18 +58,12 @@ of any other taskboard URL (e.g. a Mars Team sprint board) seen elsewhere.
 """
 import os, sys, base64, datetime as dt, requests
 
-def _load_dotenv():
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-    if not os.path.isfile(path):
-        return
-    for line in open(path, encoding="utf-8"):
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        os.environ.setdefault(k.strip(), v.strip())
-
-_load_dotenv()
+# .env بيتقرا بنفس دلالات `source` (علامات/تعليق جانبي/export) — شوف env_loader.py
+try:
+    import env_loader
+    env_loader.load_for(__file__)
+except Exception:  # قراءة الإعدادات مالهاش لازمة توقف الوحدة
+    pass
 
 def _org_base_url(org):
     return org if "://" in org else f"https://{org}.visualstudio.com"
