@@ -119,8 +119,8 @@ def classify(hours_since, last24=None, baseline=None):
     if baseline and baseline > 0 and last24 is not None:
         ratio = last24 / baseline
         if ratio < DOWN_RATIO:
-            return "DOWN", (f"{last24:,} حدث في 24 ساعة مقابل {baseline:,.0f} المعتاد "
-                            f"({ratio*100:.1f}%) — الأنبوب مقطوع فعليًا")
+            return "DOWN", (f"{last24:,} حدث آخر 24 ساعة | المعتاد {baseline:,.0f} "
+                            f"({ratio*100:.1f}%) — غالبًا الكوتا خلصت")
     if hours_since >= DOWN_HOURS:
         return "DOWN", f"آخر حدث من {hours_since:.0f} ساعة — التتبع واقف"
     if hours_since >= STALE_HOURS:
@@ -165,9 +165,8 @@ def guard_banner():
              f"   آخر حدث: {last or 'مفيش'} | أحداث آخر 24 ساعة: {last24:,}"]
     if state == "DOWN":
         lines += [
-            "   ⚠️ الأرقام تحت **مش حقيقية**: PostHog بيرمي الأحداث بصمت لما الكوتا تتعدى",
-            "      (بيرد 200 OK من غير ما يسجّل). بلّغ ده قبل أي رقم، وشوف knowledge/memory.md",
-            "      لو الانقطاع ده متوقع ومعروف السبب.",
+            "   ⚠️ أي رقم تحت ده **مش حقيقي** — أحداث مترميّة، مش صفر فعلي.",
+            "      أكّد السبب من صفحة الفوترة: الأحداث اللي اتضربت مابترجعش.",
         ]
     elif state == "STALE":
         lines.append("   ⚠️ الأرقام ناقصة غالبًا — البيانات لسه بتتأخر في الوصول.")

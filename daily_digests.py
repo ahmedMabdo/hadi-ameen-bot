@@ -58,6 +58,21 @@ ALERT_CHANNEL_ID = (os.getenv("HADI_ALERT_CHANNEL_ID", "").strip()
                     or os.getenv("MARS_CHANNEL_ID", "").strip())
 
 
+def alert_recipients():
+    """آسر + نفس مستقبلي التقرير (MAHMOUD_DISCORD_USER_ID).
+
+    اللي مستني التقرير لازم يعرف ليه ماجاش — قبل كده كان بيوصله سكوت.
+    """
+    raw = f"{ASSER_USER_ID},{os.getenv('MAHMOUD_DISCORD_USER_ID', '')}"
+    out, seen = [], set()
+    for part in raw.replace(" ", ",").replace(";", ",").split(","):
+        part = part.strip()
+        if part and part not in seen:
+            seen.add(part)
+            out.append(part)
+    return out
+
+
 def _log(row):
     try:
         LOG_FILE.parent.mkdir(exist_ok=True)
@@ -120,35 +135,45 @@ def _reason(error):
     return f"{type(error).__name__}: {error}"[:200]
 
 
-def alert_asser(text):
-    """تنبيه لآسر: DM الأول، وقناة احتياطية لو فشل.
+def alert_owners(text):
+    """تنبيه لكل المعنيين: DM لكل واحد، وقناة احتياطية لو كلهم فشلوا.
 
-    بيرجع (via, error) — via = "dm" أو "channel" أو None لو محدش اتبلّغ.
-    لازم المُنادي يسجّل النتيجة: تنبيه فاشل مايتخبّاش تحت ok=true تاني.
+    بيرجع (via, error) — via = "dm" لو حد واحد على الأقل استلم، أو "channel"،
+    أو None لو محدش اتبلّغ. لازم المُنادي يسجّل النتيجة: تنبيه فاشل
+    مايتخبّاش تحت ok=true تاني.
     """
     token = os.getenv("DISCORD_BOT_TOKEN", "").strip()
     if not token:
         return None, "DISCORD_BOT_TOKEN مش موجود"
 
-    dm_error = "ASSER_USER_ID فاضي"
-    if ASSER_USER_ID:
-        try:
-            ch = _discord_post("/users/@me/channels",
-                               {"recipient_id": ASSER_USER_ID}, token)
-            _discord_post(f"/channels/{ch['id']}/messages",
-                          {"content": text[:1900]}, token)
-            return "dm", None
-        except Exception as error:
-            dm_error = _reason(error)
-            print(f"DM ASSER FAIL: {dm_error}", file=sys.stderr)
+    people = alert_recipients()
+    if not people:
+        dm_error = "مفيش مستقبِلين (ASSER_USER_ID / MAHMOUD_DISCORD_USER_ID)"
+    else:
+        sent, failures = 0, []
+        for user_id in people:
+            try:
+                ch = _discord_post("/users/@me/channels",
+                                   {"recipient_id": user_id}, token)
+                _discord_post(f"/channels/{ch['id']}/messages",
+                              {"content": text[:1900]}, token)
+                sent += 1
+            except Exception as error:
+                failures.append(f"{user_id}[{_reason(error)}]")
+                print(f"DM FAIL {user_id}: {_reason(error)}", file=sys.stderr)
+        if sent:
+            # وصل لواحد على الأقل — بس الفشل الجزئي بيتسجّل برضه
+            return "dm", ("لم يصل لـ " + ", ".join(failures)) if failures else None
+        dm_error = "; ".join(failures)
 
     if not ALERT_CHANNEL_ID:
         return None, f"dm[{dm_error}] + مفيش قناة احتياطية (HADI_ALERT_CHANNEL_ID)"
 
     try:
-        mention = f"<@{ASSER_USER_ID}> " if ASSER_USER_ID else ""
+        mention = " ".join(f"<@{uid}>" for uid in alert_recipients())
+        body = (mention + "\n" + text) if mention else text
         _discord_post(f"/channels/{ALERT_CHANNEL_ID}/messages",
-                      {"content": (mention + text)[:1900]}, token)
+                      {"content": body[:1900]}, token)
         print(f"ALERT عبر القناة الاحتياطية (الـ DM فشل: {dm_error})", file=sys.stderr)
         return "channel", f"dm[{dm_error}]"
     except Exception as error:
@@ -277,13 +302,15 @@ def run_posthog(dry_run=False):
         row["health"] = health.strip().splitlines()[0][:120] if health.strip() else "?"
         if "DOWN" in health.upper():
             row.update(ok=True, decision="blocked_down")
-            msg = ("⚠️ تقرير PostHog الصباحي اتوقف النهارده: حالة التتبع DOWN — "
-                   "أي أرقام هتطلع مش موثوقة (غالبًا صفر مش حقيقي). "
-                   "أول ما التتبع يرجع التقرير هيرجع لوحده.\n"
-                   f"تفاصيل الفحص: {row['health']}")
+            detail = row["health"]
+            if "—" in detail:            # نشيل "🔴 حالة البيانات: DOWN —" المكررة
+                detail = detail.split("—", 1)[1].strip()
+            msg = ("🔴 تقرير PostHog اتوقف — التتبع واقف\n"
+                   f"{detail}\n"
+                   "هيرجع لوحده أول ما التتبع يرجع.")
             print(msg)
             if not dry_run:
-                via, alert_error = alert_asser(msg)
+                via, alert_error = alert_owners(msg)
                 row["alert_via"] = via
                 if alert_error:
                     row["alert_error"] = alert_error
@@ -307,8 +334,8 @@ def run_posthog(dry_run=False):
         row.update(error=f"{type(error).__name__}: {error}"[:300])
         print(f"posthog FAILED: {row['error']}", file=sys.stderr)
         if not dry_run:
-            via, alert_error = alert_asser(
-                f"⚠️ تقرير PostHog الصباحي فشل: {row['error']}")
+            via, alert_error = alert_owners(
+                f"🔴 تقرير PostHog فشل\n{row['error']}")
             row["alert_via"] = via
             if alert_error:
                 row["alert_error"] = alert_error
