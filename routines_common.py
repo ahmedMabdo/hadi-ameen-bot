@@ -161,3 +161,56 @@ def send_dm(user_id: str, content: str) -> bool:
 
     result = api_post(f"/channels/{dm_channel_id}/messages", {"content": content})
     return result is not None
+
+
+# ---------------------------------------------------------------------------
+# النشر في القناة بمنشن آمن (بند المتابعة اليومية)
+# ---------------------------------------------------------------------------
+# ليه allowed_mentions إلزامية: نص الملخص جاي من موديل بيقرا رسايل مستخدمين.
+# من غير القيد ده، أي "@everyone" في كلام حد في القناة ممكن يعدّي في الملخص
+# ويعمل ping للسيرفر كله. parse=[] بيلغي @everyone/@here/الرولز تمامًا،
+# وusers بتحدد بالظبط مين ينفع يتنبّه.
+DISCORD_MSG_LIMIT = 2000
+
+
+def split_for_discord(text: str, limit: int = 1900) -> list:
+    """تقسيم على حدود الأسطر مع قطع اضطراري للسطر الأطول من الحد."""
+    chunks, current = [], ""
+    for line in (text or "").split("\n"):
+        while len(line) > limit:
+            if current:
+                chunks.append(current)
+                current = ""
+            chunks.append(line[:limit])
+            line = line[limit:]
+        candidate = f"{current}\n{line}" if current else line
+        if len(candidate) > limit:
+            if current:
+                chunks.append(current)
+            current = line
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+    return [c for c in chunks if c.strip()] or [(text or "")[:limit]]
+
+
+def post_to_channel(channel_id: str, content: str, mention_ids=None) -> bool:
+    """ينشر الملخص في القناة. المنشن مسموح بس للـ ids المحددة صراحةً.
+
+    بيرجّع True لو كل الأجزاء اتبعتت. أول جزء بس هو اللي بيحمل المنشنات —
+    الباقي بـ parse=[] عشان مايتكررش الإشعار.
+    """
+    ids = [str(i) for i in (mention_ids or []) if str(i).strip().isdigit()]
+    chunks = split_for_discord(content)
+    for index, chunk in enumerate(chunks):
+        payload = {
+            "content": chunk,
+            "allowed_mentions": {"parse": [], "users": ids if index == 0 else []},
+        }
+        if api_post(f"/channels/{channel_id}/messages", payload) is None:
+            log(f"فشل نشر الجزء {index + 1}/{len(chunks)} في القناة {channel_id}")
+            return False
+    log(f"تم إرسال الملخص لقناة {channel_id} ({len(chunks)} رسالة، "
+        f"{len(ids)} منشن)")
+    return True

@@ -70,3 +70,7 @@ sprint_intake_state.json
 sprint_ceremonies.json
 knowledge/sprints.md
 *.bak
+
+# مخزن النقاط المعلقة — حالة تشغيل (بيتولّد من الملخصات اليومية)
+pending_points.json
+pending_points.json.tmp

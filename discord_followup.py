@@ -126,6 +126,7 @@ def fetch_today_messages() -> list[dict]:
                     "id": msg.get("id"),
                     "author": display_name,
                     "author_id": author.get("id"),
+                    "bot": bool(author.get("bot")),
                     "content": msg.get("content", ""),
                     "timestamp": ts.isoformat(),
                 }
@@ -214,7 +215,7 @@ def cmd_pending_resolve(flags: dict) -> None:
     print(f"PENDING_RESOLVED #{item_id}")
 
 
-def post_message(content: str, dry_run: bool = False) -> bool:
+def post_message(content: str, dry_run: bool = False, mention_ids=None) -> bool:
     if dry_run:
         print("FOLLOWUP: DRY RUN — لم يُنشر في القناة العامة")
         print(content)
@@ -234,12 +235,9 @@ def post_message(content: str, dry_run: bool = False) -> bool:
     if not channel_id:
         return False
 
-    result = api_post(f"/channels/{channel_id}/messages", {"content": content})
-    if result is None:
-        return False
-
-    log(f"تم إرسال الملخص لقناة {channel_id}")
-    return True
+    # المنشن بيتحدد صراحةً في allowed_mentions — أي @everyone جاي في نص
+    # الموديل مابيتنفذش (parse=[]). التقسيم فوق 2000 حرف متعامل معاه.
+    return routines_common.post_to_channel(channel_id, content, mention_ids)
 
 
 def parse_flags(args: list[str]) -> dict:
@@ -266,6 +264,16 @@ def main() -> None:
     if cli_dry_run:
         args = [a for a in args if a != "--dry-run"]
 
+    # --mentions "id1,id2" — الـ ids المسموح تنبيهها في رسالة الملخص
+    mention_ids = []
+    if "--mentions" in args:
+        i = args.index("--mentions")
+        if i + 1 < len(args):
+            mention_ids = [x.strip() for x in args[i + 1].split(",") if x.strip().isdigit()]
+            del args[i:i + 2]
+        else:
+            del args[i]
+
     if not args:
         print(
             "Usage: discord_followup.py [--dry-run] fetch | post \"<text>\" | pending list|add|resolve",
@@ -285,7 +293,7 @@ def main() -> None:
         if len(args) < 2:
             log("محتاج تبعت النص اللي عايز تنشره: post \"<text>\"")
             sys.exit(1)
-        ok = post_message(args[1], dry_run=dry_run)
+        ok = post_message(args[1], dry_run=dry_run, mention_ids=mention_ids)
         sys.exit(0 if ok else 1)
 
     if command == "pending":

@@ -174,49 +174,39 @@ def check_sprint_tomorrow(state, today=None):
 
 
 def check_support_48h(state, now=None):
-    """نقطة سابورت متتبعة عدت الحد من غير رد (من ملف متابعة الروتين اليومي)."""
-    if not FOLLOWUP.exists():
-        return []
+    """نقطة مفتوحة عدّى عليها الحد من غير رد — من مخزن المتابعة الموحّد.
+
+    قبل كده كان بيقرا followup_pending.json مباشرة، والملف فضل [] لأن الروتين
+    اللي بيشتغل (daily_digests) ماكانش موصول بأداة الـ pending أصلًا — فالفحص
+    ده عمره ما اشتغل على داتا حقيقية. دلوقتي بيقرا نفس المخزن اللي الملخصات
+    بتكتب فيه، وبيغطي التلات قنوات مش الدعم بس.
+    """
     try:
-        data = json.loads(FOLLOWUP.read_text(encoding="utf-8"))
-    except Exception:
+        import followup_store
+        rows = followup_store.all_open()
+    except Exception as error:
+        print(f"HEARTBEAT WARN: مخزن المتابعة مش متاح ({type(error).__name__}: {error})")
         return []
-    items = data.get("points", data) if isinstance(data, dict) else data
-    if not isinstance(items, list):
-        return []
-    now = now or dt.datetime.now(dt.timezone.utc)
+
+    today = dt.datetime.now(TZ).date()
+    min_days = max(1, SUPPORT_HOURS // 24)
     alerts = []
-    for item in items:
-        if not isinstance(item, dict) or item.get("resolved") or item.get("answered"):
+    for item in rows:
+        try:
+            days = followup_store.age_days(item, today)
+        except Exception:
             continue
-        # F6: الملف الحقيقي (discord_followup.cmd_pending_add) بيكتب timestamp
-        # وflagged_at — مش first_seen/date/ts. الفحص كان عمره ما بيشتغل على داتا حقيقية.
-        raw_ts = (item.get("timestamp") or item.get("flagged_at")
-                  or item.get("first_seen") or item.get("date") or item.get("ts") or "")
-        first_seen = _parse_iso(raw_ts)
-        if not first_seen and raw_ts:
-            # صيغة flagged_at: "YYYY-MM-DD HH:MM القاهرة"
-            cleaned = str(raw_ts).replace("القاهرة", "").strip()
-            first_seen = _parse_iso(cleaned)
-            if first_seen and first_seen.tzinfo is None:
-                try:
-                    from zoneinfo import ZoneInfo
-                    first_seen = first_seen.replace(tzinfo=ZoneInfo("Africa/Cairo"))
-                except Exception:
-                    pass
-        if not first_seen:
+        if days < min_days:
             continue
-        if first_seen.tzinfo is None:
-            first_seen = first_seen.replace(tzinfo=dt.timezone.utc)
-        hours = (now - first_seen).total_seconds() / 3600
-        if hours < SUPPORT_HOURS:
-            continue
-        ident = str(item.get("id") or item.get("message_id") or item.get("summary", ""))[:40]
-        key = f"support:{ident}"
+        key = f"support:{item.get('digest', '?')}:{item.get('id', '')}"
         if recently_sent(state, key):
             continue
-        summary = str(item.get("summary") or item.get("text") or "نقطة سابورت")[:140]
-        alerts.append({"key": key, "text": f"🕒 نقطة سابورت عدّى عليها {hours:.0f} ساعة من غير رد: {summary}"})
+        who = item.get("owner") or "مش محدد"
+        alerts.append({
+            "key": key,
+            "text": (f"🕒 نقطة مفتوحة من {days} يوم في {item.get('digest', '?')} "
+                     f"(المسؤول: {who}): {str(item.get('content', ''))[:140]}"),
+        })
     return alerts[:MAX_ALERTS]
 
 
@@ -310,19 +300,23 @@ def selftest():
         SPRINTS.write_text(
             f"# سبرنتات\n- كود فريز {tomorrow}\n- Release MS-92 {today}\n- حاجة قديمة 2026-01-01\n",
             encoding="utf-8")
-        old = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=72)).isoformat()
-        recent = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=5)).isoformat()
-        FOLLOWUP.write_text(json.dumps([
-            {"id": "p1", "summary": "شكوى تاجر مستنية رد", "first_seen": old},
-            {"id": "p2", "summary": "نقطة جديدة", "first_seen": recent},
-            {"id": "p3", "summary": "اتحلت", "first_seen": old, "resolved": True},
-        ], ensure_ascii=False), encoding="utf-8")
+        import followup_store
+        followup_store.STORE = tmp / "pending.json"
+        old_day = (dt.datetime.now(TZ).date() - dt.timedelta(days=3)).isoformat()
+        new_day = dt.datetime.now(TZ).date().isoformat()
+        followup_store._save_all({"followup": [
+            {"id": "p1", "content": "شكوى تاجر مستنية رد", "owner": "غادة",
+             "owner_id": "1093636555362533498", "first_seen": old_day},
+            {"id": "p2", "content": "نقطة جديدة", "owner": "آسر",
+             "owner_id": "", "first_seen": new_day},
+        ]})
 
         state = {"sent": {}, "seen_iterations": []}
         assert len(check_sprint_tomorrow(state, today)) == 1, "حدث بكرة مااتمسكش"
         assert len(check_release_day(state, today)) == 1, "يوم الريليز مااتمسكش"
         sup = check_support_48h(state)
         assert len(sup) == 1 and "شكوى" in sup[0]["text"], f"فحص الـ 48 ساعة: {sup}"
+        assert "3 يوم" in sup[0]["text"], f"العمر مش ظاهر: {sup}"
 
         mark_sent(state, sup[0]["key"])
         assert check_support_48h(state) == [], "التكرار مااتمنعش (cooldown)"
