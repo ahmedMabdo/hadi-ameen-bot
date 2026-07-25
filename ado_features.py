@@ -163,16 +163,38 @@ def _lookup(tok):
     return None
 
 
+# كلمات بتنتهي بـ s وهي مفرد أصلًا — تجريدها بيخرّب التوكن
+_NOT_PLURAL = ("ss", "us", "is", "as", "os")
+
+
+def _singular(tok):
+    """يرجّع المفرد الإنجليزي للتوكن. بيسيبه زي ما هو لو مش جمع.
+
+    ليه ده لازم: المعايرة على الداتا الحقيقية طلّعت «order» و«orders» توكنين
+    منفصلين بوزنين مختلفين (0.607 و 0.557)، وكذلك customer/customers. يعني
+    طلب فيه «الطلبات» بيتحوّل لـ order وماكانش بيطابق فيتشر عنوانها
+    «Delayed Orders» خالص — استرجاع ضايع من غير أي سبب دلالي.
+
+    القاعدة محافظة: بنجرّد s الأخيرة بس، وبنستثني النهايات اللي بتبقى مفرد
+    (address / status / analysis) عشان مانخترعش توكنز مالهاش وجود.
+    """
+    if len(tok) > 3 and tok.endswith("ies"):
+        return tok[:-3] + "y"
+    if len(tok) > 3 and tok.endswith("s") and not tok.endswith(_NOT_PLURAL):
+        return tok[:-1]
+    return tok
+
+
 def _tokens(text):
-    """توكنز مطبّعة + ترجمة المرادفات العربية لمقابلها الإنجليزي."""
+    """توكنز مطبّعة + توحيد الجمع + ترجمة المرادفات العربية لمقابلها الإنجليزي."""
     out = set()
     for tok in _TOKEN_RX.findall(_normalize(text)):
         if len(tok) < 2 or tok in _STOPWORDS:
             continue
-        out.add(tok)
+        out.add(_singular(tok))
         mapped = _lookup(tok)
         if mapped:
-            out.add(mapped)
+            out.add(_singular(mapped))
     return out
 
 
@@ -382,14 +404,25 @@ def calibrate(top_collisions=12, top_tokens=15):
     for tok, w in sorted(idf.items(), key=lambda kv: kv[1])[:top_tokens]:
         print(f"   {w:.3f}  {tok}")
 
+    # فيتشرز بنفس العنوان بالظبط (بعد التطبيع) = نفس النطاق. مطابقة أي واحدة
+    # فيهم مش غلط، فلو عدّيناها كتطابق غلط بنضخّم التوزيع ونرفع الحد بالباطل.
+    def _norm_title(t):
+        return " ".join(sorted(_tokens(t or "")))
+
+    dupe_groups = {}
+    for f in live:
+        dupe_groups.setdefault(_norm_title(f["title"]), []).append(f)
+    dupes = {k: v for k, v in dupe_groups.items() if len(v) > 1}
+
     selves, impostors, collisions = [], [], []
     for f in live:
         qt = _tokens(f["title"] or "")
+        mine = _norm_title(f["title"])
         selves.append(_score(qt, f["title"] or "", idf))
         best_other, best_row = 0.0, None
         for g in live:
-            if g["id"] == f["id"]:
-                continue
+            if g["id"] == f["id"] or _norm_title(g["title"]) == mine:
+                continue  # نفس الفيتشر أو نسخة مكررة منها — مش تطابق غلط
             s = _score(qt, g["title"] or "", idf)
             if s > best_other:
                 best_other, best_row = s, g
@@ -399,6 +432,18 @@ def calibrate(top_collisions=12, top_tokens=15):
 
     selves.sort()
     impostors.sort()
+
+    if dupes:
+        total = sum(len(v) for v in dupes.values())
+        print(f"\n⚠ {len(dupes)} مجموعة عناوين مكررة ({total} فيتشر) — "
+              f"اتشالت من حساب «التطابق الغلط»:")
+        for grp in list(dupes.values())[:8]:
+            ids = ", ".join(f"#{x['id']}" for x in grp)
+            print(f"   «{grp[0]['title']}»  →  {ids}")
+        if len(dupes) > 8:
+            print(f"   ... و{len(dupes) - 8} مجموعة كمان")
+        print("   دي مشكلة داتا على ADO مش مشكلة تسجيل: الشغل على نفس النطاق "
+              "بيتقسم على فيتشرين، والتقارير بتتفرّق.")
 
     print("\nتوزيع درجة «التطابق الغلط» (أعلى فيتشر تانية لكل طلب):")
     for p in (50, 75, 90, 95, 99):
@@ -437,6 +482,18 @@ def selftest():
         ok = ok and bool(cond)
 
     check("التطبيع بيوحّد الألف", _tokens("أوردر") == _tokens("اوردر"))
+
+    # توحيد الجمع — الفجوة دي طلعت من المعايرة على الداتا الحقيقية
+    check("الجمع بيتوحّد مع المفرد", _singular("orders") == "order")
+    check("customers → customer", _singular("customers") == "customer")
+    check("categories → category", _singular("categories") == "category")
+    check("address مابيتجرّدش", _singular("address") == "address")
+    check("status مابيتجرّدش", _singular("status") == "status")
+    check("analysis مابيتجرّدش", _singular("analysis") == "analysis")
+    check("توكن قصير مابيتلمسش", _singular("cst") == "cst")
+    check("«الطلبات» بتطابق عنوان فيه Orders",
+          _tokens("الطلبات المتأخرة") & _tokens("Delayed Orders"))
+    check("Reports و Report نفس التوكن", _tokens("Reports") == _tokens("Report"))
     check("المرادف بيبني الجسر عربي↔إنجليزي", "order" in _tokens("الاوردر اتلغى"))
     check("أداة التعريف بتتجرّد في البحث", _lookup("الخصم") == "promo")
 
