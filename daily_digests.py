@@ -307,14 +307,19 @@ def _parse_digest_json(raw: str):
         return None
 
 
-def _apply_model_decisions(digest, data, roster, seen_ids):
+def _apply_model_decisions(digest, data, roster, seen_ids, dry_run=False):
     """ينفّذ قرارات الموديل على المخزن. بيرجّع (اتقفل, اتسجّل).
 
     الحراسة في الكود مش في البرومبت:
       - resolve بيشتغل على ids موجودة فعلًا بس (منع هلوسة).
       - owner_id لازم يكون من الروستر أو من كاتب رسالة النهاردة (منع منشن مخترع).
     """
-    closed = followup_store.resolve(digest, data.get("resolved") or [])
+    # تجربة جافة = صفر أثر جانبي. قبل الإصلاح ده، `--dry-run` كان بيكتب في
+    # pending_points.json فعليًا، والنقاط التجريبية كانت بتظهر بكرة كأنها حقيقية.
+    closed = ([r for r in followup_store.load(digest)
+               if r["id"] in {str(i) for i in (data.get("resolved") or [])}]
+              if dry_run else
+              followup_store.resolve(digest, data.get("resolved") or []))
 
     valid_ids = set(roster.values()) | set(seen_ids)
     added = []
@@ -326,7 +331,14 @@ def _apply_model_decisions(digest, data, roster, seen_ids):
             print(f"OWNER WARN: id مش من الروستر ({owner_id}) — اتشال",
                   file=sys.stderr)
             owner_id = ""
-        row = followup_store.add(digest, str(item.get("content") or ""),
+        content = str(item.get("content") or "")
+        if dry_run:  # معاينة بس — من غير كتابة
+            if len(content.strip()) >= 8:
+                added.append({"id": "dry", "content": content[:500],
+                              "owner": str(item.get("owner") or ""),
+                              "owner_id": owner_id})
+            continue
+        row = followup_store.add(digest, content,
                                  str(item.get("owner") or ""), owner_id)
         if row:
             added.append(row)
@@ -389,8 +401,9 @@ def run_digest(name, dry_run=False):
         if len(humans) < MIN_HUMAN_MSGS:
             if aged_text:
                 _post(cfg, aged_text, aged_ids, dry_run)
-                row.update(ok=True, decision="posted_reminders_only",
-                           mentions=len(aged_ids))
+                row.update(ok=True, mentions=len(aged_ids),
+                           decision="dry_run_reminders" if dry_run
+                           else "posted_reminders_only")
                 print(f"{name}: يوم هادي ({len(humans)} رسالة) — اتبعت تذكير "
                       f"بالنقاط المفتوحة بس")
                 return 0
@@ -418,8 +431,8 @@ def run_digest(name, dry_run=False):
         else:
             row["json_parse"] = True
             summary = str(data.get("summary") or "").strip()
-            closed, added = _apply_model_decisions(name, data, roster,
-                                                   {m["author_id"] for m in humans})
+            closed, added = _apply_model_decisions(
+                name, data, roster, {m["author_id"] for m in humans}, dry_run)
 
         row["resolved"] = len(closed)
         row["new_points"] = len(added)
@@ -439,9 +452,9 @@ def run_digest(name, dry_run=False):
         if not dry_run:
             followup_store.bump_reminders(
                 name, [{"id": i["id"]} for i in followup_store.load(name)])
-        row.update(ok=True, decision="posted", chars_out=len(text),
-                   mentions=len(mentions))
-        print(f"{name}: الملخص اتبعت ({len(text)} حرف من {len(humans)} رسالة | "
+        row.update(ok=True, decision="dry_run" if dry_run else "posted",
+                   chars_out=len(text), mentions=len(mentions))
+        print(f"{name}: {'[تجربة] الملخص' if dry_run else 'الملخص اتبعت'} ({len(text)} حرف من {len(humans)} رسالة | "
               f"اتقفل {len(closed)} | جديد {len(added)} | منشن {len(mentions)})")
         return 0
     except Exception as error:
