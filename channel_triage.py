@@ -340,9 +340,13 @@ def _norm_issue(it, rows, channel_id):
         media.extend(rows[i]["media"])
         mids.append(rows[i]["mid"])
     try:
-        conf = float(it.get("confidence", 0.8))
+        # ب-3 (2026-07-26): الافتراضي 0.0 مش 0.8. برومبت extract مابيطلبش
+        # confidence خالص، فمخرجاته كلها كانت بتاخد 0.8 — وهي فوق حد الـ 0.65
+        # فبوابة الثقة كانت **بتعدّي افتراضيًا**. برومبت reflect بيطلب
+        # confidence صراحةً، فالمسار الطبيعي للرفع بيفضل شغال زي ما هو.
+        conf = float(it.get("confidence", 0.0))
     except (TypeError, ValueError):
-        conf = 0.8
+        conf = 0.0
     issue = {
         "title": (it.get("title") or "").strip()[:250],
         "description": (it.get("description") or "").strip(),
@@ -422,7 +426,12 @@ async def reflect(rows, issues, hadi_engine, channel_id):
         raise ReflectFailed("رد المراجعة مش JSON صالح")
     out = [_norm_issue(it, rows, channel_id) for it in data["issues"]]
     out = [it for it in out if it["is_problem"] and (it["title"] or it["description"])]
-    return out or issues
+    # ب-3 (2026-07-26): كان `return out or issues` — يعني لو المراجعة رجّعت قايمة
+    # فاضية (وده بالظبط معناه «راجعت ولقيت إن كل دول مش مشاكل حقيقية») الكود
+    # بيتجاهل قرارها ويرجّع مخرجات الاستخراج الأصلية بثقة 0.8 → رفع تلقائي.
+    # يعني أوضح حالة نجاح للمراجعة كانت بتتحول لتجاهل كامل ليها.
+    # قايمة فاضية دلوقتي = قرار صريح بعدم الرفع.
+    return out
 
 
 def evaluate(issues):

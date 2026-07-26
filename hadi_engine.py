@@ -213,6 +213,48 @@ def _remember_session(conv_key: str, session_id: str) -> None:
             print("HADI ENGINE WARN: قفل sessions.json مشغول — الجلسة مااتسجلتش")
 
 
+def session_cursor(conv_key: str):
+    """id آخر رسالة عالجها هادي في المحادثة دي، أو None لو الجلسة جديدة.
+
+    ب-1 (2026-07-26): البوت كان بيبعت سياق القناة في **أول رسالة بالجلسة بس**،
+    بحجّة إن «الجلسة المستأنفة شايلة المحادثة كلها». الحجّة غلط: الجلسة شايلة
+    **الأدوار اللي هادي عالجها** بس. الرسايل اللي التيم كتبها وبوابة الحضور
+    سكتت عليها (وده الافتراضي) مش موجودة في الجلسة إطلاقًا — فطلب زي «إيه رأيك
+    في اللي فوق؟» كان بيوصل من غير أي سياق بينه وبين آخر رد.
+    و MIGRATION_SDK.md كان بيوصف السلوك القديم (سياق مع كل رسالة) وبيشرح السبب.
+
+    الحل: مؤشر — نبعت الرسايل **من بعد** آخر واحدة عالجها بس.
+    """
+    if not conv_key:
+        return None
+    entry = _load_sessions().get(conv_key)
+    if not entry:
+        return None
+    if time.time() - float(entry.get("ts", 0)) > SESSION_TTL_HOURS * 3600:
+        return None
+    return entry.get("last_msg_id") or None
+
+
+def mark_processed(conv_key: str, msg_id) -> None:
+    """بيعلّم إن الرسالة دي بقت جوّه الجلسة — بيتنادى بعد أي دور مكتمل.
+
+    مابيتناداش عند الخطأ/المهلة: الرسالة ساعتها ممكن ماتكونش دخلت الجلسة،
+    فالأفضل تفضل في الـ delta بدل ما السياق يضيع.
+    """
+    if not conv_key or not msg_id:
+        return
+    with _sessions_mutex:
+        try:
+            with state_lock.write_lock("hadi-sessions", timeout=10):
+                data = _load_sessions()
+                entry = data.get(conv_key)
+                if entry:
+                    entry["last_msg_id"] = str(msg_id)
+                    _save_sessions(data)
+        except TimeoutError:
+            pass
+
+
 def has_session(conv_key: str) -> bool:
     """هل المحادثة دي ليها جلسة حية (جوه الـ TTL)؟
 

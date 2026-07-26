@@ -249,7 +249,8 @@ async def ask_claude(
 ميديا الرسالة (الحالية + الريبلاي + الفورورد):
 {media_notes}
 قدراتك على الميديا حقيقية ومتاحة فعلًا — ممنوع تمامًا تقول "مش قادر أشوف الصور/الفيديوهات" أو "مش قادر أرفعها على Azure":
-- الصور بتشوفها فعليًا (بأداة Read)، والفيديوهات بتشوف فريمات مستخرجة منها لو متاحة (من غير صوت).
+- الصور بتشوفها فعليًا (بأداة Read)، والفيديوهات بتشوف فريمات مستخرجة منها لو متاحة.
+- **الصوت**: لو مفيش سطر "تفريغ صوت" في ملاحظات الميديا تحت، يبقى التفريغ مش متاح على السيرفر — قول كده بصراحة لو حد سألك عن كلام في الفيديو، ومتدّعيش إنك سمعته.
 - رفع/إرفاق الميديا على Azure DevOps بيتم عن طريق التذاكر:
   * مع إنشاء تذكرة جديدة: po_channel_cr.py file-cr أو ado_cli.py create-work-item/add-child
     مع --source-msg {message_id} و --channel <channel_id بتاع الرسالة> —
@@ -668,6 +669,45 @@ async def build_channel_history(channel, before_message, limit: int = HISTORY_LI
 
     lines.reverse()
     return "\n".join(lines)
+
+
+async def build_channel_history_after(channel, before_message, after_id,
+                                      cap: int = 40) -> str:
+    """الرسايل اللي حصلت **بعد** رسالة معينة ولحد الرسالة الحالية (ب-1).
+
+    نفس تنسيق build_channel_history بالظبط. الغرض: الجلسة المستأنفة شايلة
+    أدوار هادي بس، فالكلام اللي حصل وهو ساكت لازم يوصله — بس من غير إعادة
+    إرسال الـ 80 رسالة كل دور.
+    """
+    lines = []
+    try:
+        async for prev in channel.history(limit=cap, before=before_message,
+                                          after=discord.Object(id=int(after_id)),
+                                          oldest_first=True):
+            if prev.author.bot and prev.author.id != client.user.id:
+                continue
+            text = prev.clean_content.strip()
+            if not text:
+                fwd = extract_forwarded_text(prev)
+                if fwd:
+                    text = f"(فورورد) {fwd}"
+            if not text and any(_is_image_attachment(a) or _is_video_attachment(a)
+                                for a in (prev.attachments or [])):
+                text = "(بعت مرفق ميديا — صورة أو فيديو)"
+            if not text:
+                continue
+            label = ("هادي (أنت)" if prev.author.id == client.user.id
+                     else prev.author.display_name)
+            lines.append(f"[{label}] {text}")
+    except (discord.HTTPException, ValueError, TypeError):
+        return ""
+    if not lines:
+        return ""
+    head = ("الكلام اللي حصل في القناة من آخر مرة اتكلمت فيها (الأقدم فالأحدث) — "
+            "الجلسة عندك شايلة ردودك بس، فده اللي فاتك:")
+    if len(lines) >= cap:
+        head += f"\n(معروض آخر {cap} رسالة — في كلام أقدم مش معروض)"
+    return head + "\n" + "\n".join(lines)
 
 
 async def build_reply_context(message: discord.Message) -> str:
@@ -1393,20 +1433,24 @@ async def on_message(message: discord.Message):
                 reply_to=message,
             )
             return
-    image_paths = await save_image_attachments(message)
-    frame_paths, video_notes = await save_video_frames(message)
-    image_paths = image_paths + frame_paths
-    manifest = media_manifest(message)
-    media_notes = "\n".join(([manifest] if manifest else []) + video_notes)
-    if not content and not image_paths and not media_notes:
+    # ب-2 (2026-07-26): معالجة الميديا اتأخّرت لبعد بوابة الحضور.
+    # الغلط القديم: تنزيل الصور واستخراج الفريمات والتفريغ كانوا بيحصلوا هنا
+    # **قبل** البوابة، والشرط `and not image_paths` كان بيخلي أي رسالة فيها
+    # مرفق **تتخطى البوابة بالكامل** وتروح للموديل الكامل — يعني أي سكرين شوت
+    # في القناة (وقناة 8orders-issues طبيعتها كده) بيشغّل Sonnet + vision،
+    # وسقف الردود الـ ambient (2/ساعة) ماكانش بيتفحص أصلًا.
+    # الدليل: رسالتين ambient في logs وصلوا للموديل والبوابة سمحت بواحدة بس.
+    #
+    # الإشارة دي مجانية — قراءة metadata من كائن الرسالة، مفيش أي نداء شبكة.
+    has_media = any(_is_image_attachment(a) or _is_video_attachment(a)
+                    for a in (message.attachments or []))
+    media_hint = "\n[الرسالة معاها مرفق ميديا]" if has_media else ""
+    if not content and not has_media and not message.attachments:
         # رسالة فاضية تمامًا (ستيكر/نوع غير مدعوم): رد بس لو موجّهة لهادي، وإلا صمت تام
         # (منع سبام «ابعت رسالة نصية» على كل ستيكر في القناة).
         if message.guild is None or mentioned or named or replying_to_hadi:
             await message.channel.send("مفيش نص في رسالتك — ابعتلي التفاصيل بالكتابة.")
         return
-    if not content:
-        content = "(بعت مرفقات من غير نص — بص على الصور وبيانات الميديا المرفقة ورد بناء عليها)"
-
     if content.lower() == "!ping":
         await message.channel.send("HADI_OK")
         return
@@ -1418,7 +1462,7 @@ async def on_message(message: discord.Message):
     # الضوابط (سقف الردود/كولداون الرياكشن) والتسجيل جوه ambient_gate.py.
     ambient = (message.guild is not None
                and not (mentioned or named or replying_to_hadi))
-    if ambient and not image_paths and not media_notes:
+    if ambient:
         if not ambient_gate.enabled():
             return
         try:
@@ -1426,7 +1470,7 @@ async def on_message(message: discord.Message):
                 message.channel, message, limit=ambient_gate.HISTORY_N
             )
             g_action, g_emoji = await ambient_gate.decide(
-                hadi_engine, content, author_name, str(message.author.id),
+                hadi_engine, content + media_hint, author_name, str(message.author.id),
                 message.channel.id, getattr(message.channel, "name", "?"),
                 gate_history,
             )
@@ -1443,13 +1487,33 @@ async def on_message(message: discord.Message):
         if g_action != "reply":
             print("HADI: ambient-gate silent -", author_name)
             return
-    # سياق القناة بيتبعت في **أول رسالة بالجلسة بس**. بعد كده الجلسة المستأنفة
+    # الميديا بتتنزّل هنا — بعد ما اتأكدنا إن الرسالة مستحقة معالجة كاملة.
+    image_paths = await save_image_attachments(message)
+    frame_paths, video_notes = await save_video_frames(message)
+    image_paths = image_paths + frame_paths
+    manifest = media_manifest(message)
+    media_notes = "\n".join(([manifest] if manifest else []) + video_notes)
+    if not content and not image_paths and not media_notes:
+        # رسالة فاضية تمامًا (ستيكر/نوع غير مدعوم): رد بس لو موجّهة لهادي، وإلا صمت
+        if message.guild is None or mentioned or named or replying_to_hadi:
+            await message.channel.send("مفيش نص في رسالتك — ابعتلي التفاصيل بالكتابة.")
+        return
+    if not content:
+        content = "(بعت مرفقات من غير نص — بص على الصور وبيانات الميديا المرفقة ورد بناء عليها)"
+
+    # سياق القناة: **الرسايل اللي حصلت من آخر مرة هادي اتكلم فيها** (ب-1).
     # (resume) شايلة المحادثة كلها، فإعادة إرسال آخر HISTORY_LIMIT رسالة مع كل
     # دور كانت بتضاعف نفس النص في السياق من غير أي فايدة.
     _conv_key_early = (f"dm:{message.author.id}" if message.guild is None
                        else f"ch:{message.channel.id}")
-    history_text = ("" if hadi_engine.has_session(_conv_key_early)
-                    else await build_channel_history(message.channel, message))
+    _cursor = hadi_engine.session_cursor(_conv_key_early)
+    if _cursor is None:
+        # جلسة جديدة: دفعة السياق الكاملة زي الأول بالظبط
+        history_text = await build_channel_history(message.channel, message)
+    else:
+        # جلسة شغالة: الرسايل اللي حصلت من آخر مرة هادي اتكلم فيها بس
+        history_text = await build_channel_history_after(
+            message.channel, message, after_id=_cursor)
     try:
         _docn = await file_extract.extract_attachment_texts(message)
         if _docn:
@@ -1517,6 +1581,7 @@ async def on_message(message: discord.Message):
                 engine=hadi_engine.describe().split()[0],
                 outcome="no_reply",
                 )
+                hadi_engine.mark_processed(conv_key, message.id)
                 print(f"HADI: NO_REPLY skip — {author_name}: {content[:80]}")
                 # F18: «الصمت قرار» يعني صمت كامل — رياكشن الاستلام المبدئي بيتشال
                 # عشان مايفضلش أثر لتفاعل اتقرر إلغاؤه.
@@ -1534,6 +1599,7 @@ async def on_message(message: discord.Message):
                 resp_clean,
                 reply_to=message if message.guild is not None else None,
             )
+            hadi_engine.mark_processed(conv_key, message.id)
             if ambient:  # الرد اتبعت فعلًا → بيتحسب على عداد الـ ambient بتاع القناة
                 ambient_gate.note_reply(message.channel.id)
             eval_store.record_interaction(
