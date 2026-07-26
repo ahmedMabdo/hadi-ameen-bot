@@ -33,14 +33,19 @@ jobs:
             python3 "$m.py" selftest
           done
 
+      - name: اختبار حراس الـ Bash (آخر خط دفاع برمجي)
+        run: python3 tests/test_guards.py
+
       - name: سكيما الحالات الذهبية (من غير نداء موديل)
         run: python3 eval_runner.py validate
 
       - name: كل أداة متعلَّمة في CLAUDE.md ليها صلاحية مقابلة
         run: |
+          # jq مش grep: الـ grep كان بيمشي على الملف كله فبيلقط قسم deny كأنه
+          # allow — يعني أداة **ممنوعة** ومتعلَّمة في CLAUDE.md كانت بتعدّي الفحص.
           MISSING=$(comm -23 \
             <(grep -oE "python3 [a-z_0-9]+\.py" CLAUDE.md | awk '{print $2}' | sort -u) \
-            <(grep -oE "Bash\(python3 [a-z_0-9]+\.py" setup/settings.local.json | sed 's/.*python3 //' | sort -u))
+            <(jq -r '.permissions.allow[]' setup/settings.local.json | grep -oE "python3 [a-z_0-9]+\.py" | awk '{print $2}' | sort -u))
           if [ -n "$MISSING" ]; then
             echo "❌ تعليمات من غير صلاحية (وعد كاذب):"; echo "$MISSING"; exit 1
           fi
@@ -52,3 +57,8 @@ jobs:
           grep -q "0${BIZ}:00" CLAUDE.md || {
             echo "❌ نافذة يوم العمل في CLAUDE.md مش متطابقة مع BIZ_END_HOUR=${BIZ}"; exit 1; }
           echo "✅ نافذة يوم العمل متطابقة"
+
+      - name: مفيش أسرار في الريبو
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
