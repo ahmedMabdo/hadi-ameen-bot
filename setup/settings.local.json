@@ -7,7 +7,7 @@
     "في المرحلة 2)، والفاصل بينهم WebFetch."
   ],
   "_READ_GROUP": "knowledge_store, posthog_cli, ado_snapshot, sprints_sync, sprint_intake, memory, schedule, WebSearch, WebFetch",
-  "_WRITE_GROUP": "ado_cli, po_channel_cr, ado_alerts, discord_followup, discord_orderpo, discord_mars_results",
+  "_WRITE_GROUP": "ado_cli, po_channel_cr, ado_alerts, discord_followup, discord_mars_results",
   "_DENY_WHY": "التقارير المجدولة شغل التايمرات — لو هادي نداها بنفسه يتبعت تقرير مكرر للقناة.",
   "permissions": {
     "allow": [
@@ -26,7 +26,6 @@
       "Bash(python3 po_channel_cr.py:*)",
       "Bash(python3 ado_alerts.py:*)",
       "Bash(python3 discord_followup.py:*)",
-      "Bash(python3 discord_orderpo.py:*)",
       "Bash(python3 discord_mars_results.py:*)",
       "Bash(.venv/bin/python discord_mars_results.py:*)"
     ],
@@ -35,5 +34,6 @@
       "Bash(python3 eval_report.py:*)",
       "Bash(python3 eval_judge.py:*)"
     ]
-  }
+  },
+  "_RETIRED": "discord_orderpo.py اتشال 2026-07-26 (حقول ناقصة + تكرار CRs مع po_channel_cr و channel_triage) → legacy/"
 }

@@ -1,3 +1,18 @@
+# ⛔ متقاعد 2026-07-26 — متشغّلوش.
+#
+# ليه اتشال:
+#  1) create_cr كان بيبعت 4 حقول بس (Title/Description/AreaPath/Tags) من غير
+#     myagile.Customer ولا أي حقل من الـ 14 الإلزامية اللي cr_media بيوثقها
+#     («متأكد منها من ADO الحي — CR #102666») → الإنشاء بيفشل بـ 400.
+#  2) تلات أدوات كانت بتستهدف نفس قناة الـ PO بـ 3 آليات منع تكرار مختلفة
+#     مش عارفة بعض (هنا: بحث بالعنوان من الموديل · po_channel_cr: تاج
+#     po-msg-<id> + WIQL · channel_triage: triage_state.json) — فنفس الفكرة
+#     كانت تقدر ترتفع 3 مرات.
+#  3) po_channel_cr.py file-cr بيعمل نفس الشغل بحقول كاملة ومنع تكرار أقوى.
+#
+# البديل:  python3 po_channel_cr.py file-cr --title "..." --brief "..." --source-msg <id>
+#
+# سايبينه للتاريخ. اتشال من allow-list الصلاحيات فهادي مايقدرش ينده عليه.
 #!/usr/bin/env python3
 """روتين هادي أمين لقناة 8order-po — كل يومين: أفكار → CRs على Azure DevOps + متابعة.
 

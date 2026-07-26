@@ -35,7 +35,10 @@ KDIR = BASE / "knowledge"
 DB_PATH = KDIR / "knowledge_index.db"
 
 # ملفات الذاكرة ليها مخزنها الخاص (memory_store) — متتفهرسش هنا مرتين
-SKIP_NAMES = {"memory.md", "memory_core.md", "memory_archive.md"}
+# sprints.md متولّد أوتوماتيك من ado_snapshot كل ~15 دقيقة، فوجوده في الفهرس كان
+# بيخلي البصمة تتغير باستمرار → rebuild كامل (145 مقطع) عند كل بحث. وحالة
+# السبرنت متاحة أصلًا بأمر ado_snapshot brief وهو أدق وأسرع للغرض ده.
+SKIP_NAMES = {"memory.md", "memory_core.md", "memory_archive.md", "sprints.md"}
 SKIP_SUFFIX = {".db", ".db-wal", ".db-shm", ".json", ".tmp"}
 TEXT_SUFFIX = {".txt", ".md"}
 
@@ -189,9 +192,20 @@ def connect():
 
 
 def _fingerprint() -> str:
-    """بصمة الملفات (اسم+حجم+وقت تعديل) — بيها نعرف الفهرس بايت ولا لأ."""
-    parts = [f"{p.name}:{p.stat().st_size}:{int(p.stat().st_mtime)}" for p in indexable_files()]
-    return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
+    """بصمة **محتوى** الملفات — بيها نعرف الفهرس بايت ولا لأ.
+
+    2026-07-26: كانت (اسم+حجم+mtime). أي ملف بيتكتب دوريًا بنفس المحتوى كان
+    بيغيّر الـ mtime فيخلي `fresh` تساوي False للأبد → rebuild كامل عند كل بحث.
+    الهاش على المحتوى بيقفل الفئة دي كلها مهما اتضاف ملفات متولّدة بكرة.
+    """
+    h = hashlib.sha256()
+    for p in indexable_files():
+        h.update(p.name.encode())
+        try:
+            h.update(p.read_bytes())
+        except OSError:
+            h.update(b"?")
+    return h.hexdigest()[:16]
 
 
 def rebuild(force: bool = True) -> int:

@@ -7,4 +7,4 @@ Type=oneshot
 User=ubuntu
 WorkingDirectory=/home/ubuntu/hadi-ameen-bot
 EnvironmentFile=/home/ubuntu/hadi-ameen-bot/.env
-ExecStart=/usr/bin/python3 /home/ubuntu/hadi-ameen-bot/eval_report.py send --days 7 --with-judge
+ExecStart=/home/ubuntu/hadi-ameen-bot/.venv/bin/python /home/ubuntu/hadi-ameen-bot/eval_report.py send --days 7 --with-judge

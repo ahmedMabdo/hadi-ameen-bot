@@ -1,0 +1,20 @@
+[Unit]
+Description=Hadi Ameen Discord Bot
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/hadi-ameen-bot
+
+Environment=HOME=/home/ubuntu
+Environment=PATH=/home/ubuntu/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+ExecStart=/home/ubuntu/hadi-ameen-bot/.venv/bin/python /home/ubuntu/hadi-ameen-bot/discord_bot.py
+
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

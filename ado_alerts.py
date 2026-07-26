@@ -177,14 +177,20 @@ def run(which):
         print(head)
         print(json.dumps(res, ensure_ascii=False, indent=2))
         if WEBHOOK:
-            _post_discord(_summary(res, meta))
+            _post_discord(_summary(res, meta, con))
         return 0
     finally:
         con.close()
 
 
-def _summary(res, meta):
-    lines = [f"**تنبيهات هادي — {meta.get('sprint_name','')}**", snap.banner_from(res['freshness']) if hasattr(snap, 'banner_from') else ""]
+def _summary(res, meta, con=None):
+    # 2026-07-26: كان snap.banner_from(...) — دالة مش موجودة في ado_snapshot،
+    # فالـ hasattr كان دايمًا False والسطر دايمًا "". يعني ملخص الـ webhook كان
+    # بيروح من غير بانر النضارة، وهو أهم سطر في فلسفة المشروع.
+    fr = res.get("freshness") or {}
+    banner = (f"{fr.get('emoji','')} {fr.get('label','?')} "
+              f"(snapshot age {fr.get('age_min','?')}m)").strip()
+    lines = [f"**تنبيهات هادي — {meta.get('sprint_name','')}**", banner]
     b = res.get("blocked") or []
     if b:
         lines.append(f"🚧 متبلوك ({len(b)}): " + "، ".join(f"#{x['id']} ({x['blocked_working_days']}ي)" for x in b[:5]))

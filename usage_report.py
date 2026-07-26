@@ -16,6 +16,7 @@ import argparse
 import json
 import time
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 
 LOG = Path(__file__).resolve().parent / "logs" / "usage.jsonl"
@@ -32,7 +33,9 @@ def load_rows(days: float):
             continue
         try:
             r = json.loads(line)
-            ts = time.mktime(time.strptime(r["ts"][:19], "%Y-%m-%dT%H:%M:%S"))
+            # fromisoformat بيفهم الـ +0300 اللي %z بيكتبه — mktime على نص مقصوص
+            # كان بيتعامل معاه كتوقيت محلي (2026-07-26)
+            ts = datetime.fromisoformat(r["ts"]).timestamp()
             if ts >= cutoff:
                 r["_day"] = r["ts"][:10]
                 rows.append(r)

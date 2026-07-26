@@ -74,3 +74,9 @@ knowledge/sprints.md
 # مخزن النقاط المعلقة — حالة تشغيل (بيتولّد من الملخصات اليومية)
 pending_points.json
 pending_points.json.tmp
+
+# 2026-07-26
+triage_state.json
+logs/alive
+reminders.json.corrupt-*
+tests/__pycache__/

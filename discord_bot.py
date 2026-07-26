@@ -721,7 +721,9 @@ def _split_message(text: str, limit: int = 1900) -> list:
             current = candidate
     if current:
         chunks.append(current)
-    return chunks or [text[:limit]]
+    # 2026-07-26: فلترة الأجزاء الفاضية — Discord بيرفضها بـ 400 (50035) Invalid
+    # Form Body. routines_common.split_for_discord كان بيفلتر والنسخة دي لأ.
+    return [c for c in chunks if c.strip()] or [text[:limit]]
 
 
 async def send_long_message(channel, text: str, reply_to: discord.Message = None):
@@ -731,7 +733,14 @@ async def send_long_message(channel, text: str, reply_to: discord.Message = None
     first = None
     for i, chunk in enumerate(chunks):
         if i == 0 and reply_to is not None:
-            sent = await reply_to.reply(chunk, mention_author=False)
+            try:
+                sent = await reply_to.reply(chunk, mention_author=False)
+            except discord.HTTPException as error:
+                # 2026-07-26: الريبلاي بيفشل بـ 50035 لو الرسالة المرجعية اتمسحت
+                # وسط التشغيل (بيحصل مع الترياج اللي بياخد دقايق). الشغل خلص
+                # وكلّف فلوس — فمنرميهوش، نبعته رسالة عادية من غير reference.
+                print(f"REPLY FAILED ({error}) — بيتبعت كرسالة عادية")
+                sent = await channel.send(chunk)
         else:
             sent = await channel.send(chunk)
         if first is None:
@@ -797,6 +806,24 @@ def pat_expiry_days():
     except ValueError:
         return None
     return (expires - date.today()).days
+
+
+_engine_down_last_alert = 0.0
+
+
+async def _alert_engine_down(detail: str) -> None:
+    """تبليغ آسر إن المحرك واقع — مرة واحدة كل ساعة مهما وصل رسايل كتير."""
+    global _engine_down_last_alert
+    if time.time() - _engine_down_last_alert < 3600:
+        return
+    _engine_down_last_alert = time.time()
+    await dm_allowed_users(
+        "🔴 **هادي مش قادر يشتغل** — سبب تشغيلي مش بق في الكود:\n"
+        f"`{detail[:200]}`\n\n"
+        "لو رصيد: بيرجع لوحده في الميعاد المكتوب فوق.\n"
+        "لو `Not logged in`: محتاج `claude /login` على السيرفر.\n"
+        "التشخيص: `journalctl -u hadi-discord -n 50 --no-pager`"
+    )
 
 
 def _pending_items_exist() -> bool:
@@ -906,8 +933,14 @@ async def reminder_loop():
         return
     now = time.time()
     updates = {}
+    give_up = []
     for item in items:
         if item.get("fired") or float(item.get("at_epoch", 0)) > now:
+            continue
+        # 2026-07-26: انتظار متزايد بين المحاولات. قبل كده 5 محاولات × 30 ثانية
+        # = دقيقتين ونص وبعدها استسلام نهائي — أي انقطاع شبكة أطول من كده كان
+        # بيضيّع التذكير.
+        if float(item.get("next_attempt_at", 0)) > now:
             continue
         try:
             await _fire_reminder(item)
@@ -915,12 +948,18 @@ async def reminder_loop():
             print(f"REMINDER FIRED: #{item.get('id')} {(item.get('text') or '')[:40]}")
         except Exception as error:
             att = int(item.get("attempts", 0)) + 1
-            upd = {"attempts": att}
-            if att >= 5:
-                upd["fired"] = True
+            upd = {"attempts": att,
+                   "next_attempt_at": now + min(30 * (2 ** (att - 1)), 900)}
+            if att >= 10:
+                # بيتعلّم fired عشان الحلقة تسيبه، بس **مع تبليغ** — قبل كده كان
+                # بيتعلّم «اتنفذ» ويختفي من schedule.py list فمحدش يعرف إنه ضاع.
+                upd.update(fired=True, failed=True,
+                           last_error=f"{type(error).__name__}: {error}"[:200])
+                give_up.append(item)
                 print(f"REMINDER GIVEN UP: #{item.get('id')}")
             updates[item["id"]] = upd
-            print(f"REMINDER FAIL #{item.get('id')}: {type(error).__name__}: {error}")
+            print(f"REMINDER FAIL #{item.get('id')} (محاولة {att}): "
+                  f"{type(error).__name__}: {error}")
     if updates:
 
         def _apply_updates():
@@ -934,6 +973,13 @@ async def reminder_loop():
                 _save_reminders(current)
 
         await asyncio.to_thread(_apply_updates)
+
+    for item in give_up:
+        await dm_allowed_users(
+            f"⚠️ تذكير #{item.get('id')} فشل نهائيًا بعد 10 محاولات ومااتبعتش.\n"
+            f"النص: {(item.get('text') or '')[:200]}\n"
+            f"الوجهة: {item.get('target')}\n"
+            f"آخر خطأ: {(item.get('last_error') or '?')[:150]}")
 
 
 @tasks.loop(hours=24)
@@ -1012,6 +1058,7 @@ async def _before_pending_tickets_loop():
 @client.event
 async def on_ready():
     print(f"HADI ONLINE: {client.user} | ID: {client.user.id}")
+    heartbeat.touch_alive()
     print(f"HADI ENGINE: {hadi_engine.describe()}")
     try:  # بند 4.2 (RAG): يعيد بناء فهرس /knowledge بس لو الملفات اتغيرت
         import knowledge_store
@@ -1142,6 +1189,7 @@ async def heartbeat_loop():
     نفس فلسفة NO_REPLY: تنبيه من غير داعي أسوأ من مفيش تنبيه، لأنه بيخلي الفريق
     يتجاهل التنبيهات كلها. الضوابط (cooldown / ساعات الهدوء / حد أقصى للتنبيهات)
     كلها جوه heartbeat.py وقابلة للضبط من .env."""
+    heartbeat.touch_alive()   # للـ watchdog — بيتحدث حتى في ساعات الهدوء
     if not heartbeat.ENABLED:
         return
     if heartbeat.in_quiet_hours():
@@ -1502,6 +1550,27 @@ async def on_message(message: discord.Message):
                 outcome="replied",
             )
 
+        except hadi_engine.EngineUnavailable as error:
+            # رصيد Claude خلص أو الـ CLI مسجّل خارج. حادثة 2026-07-23: هادي كان
+            # واقع من 9ص لـ 1م اليوم اللي بعده والمستخدم شاف «EngineError» بس
+            # ومحدش اتبلّغ. الفئة دي محتاجة تبليغ + رسالة مفهومة.
+            eval_store.record_interaction(
+                conv_key=conv_key, channel=channel_label, author=author_name,
+                user_message_id=message.id, prompt=content,
+                latency_ms=int((time.time() - _t0) * 1000), stats=eval_stats,
+                engine=hadi_engine.describe().split()[0],
+                outcome="error", error_type="EngineUnavailable",
+                error_msg=str(error)[:300],
+            )
+            print(f"ENGINE UNAVAILABLE: {error}")
+            _spawn(_alert_engine_down(str(error)))
+            if (message.guild is None or mentioned or named or replying_to_hadi):
+                await message.reply(
+                    "مش قادر أشتغل دلوقتي — الرصيد بتاعي خلص أو الجلسة محتاجة "
+                    "تسجيل دخول. بلّغت آسر، وهرجع أول ما يتصلح.",
+                    mention_author=False,
+                )
+
         except hadi_engine.EngineTimeout:
             eval_store.record_interaction(
                 conv_key=conv_key,
@@ -1514,6 +1583,7 @@ async def on_message(message: discord.Message):
                 engine=hadi_engine.describe().split()[0],
                 outcome="timeout",
                 error_type="EngineTimeout",
+                error_msg=f"عدّى {900}s من غير رد",
             )
             print(f"HADI: TIMEOUT (900s) - {author_name}: {content[:60]}")
             if (message.guild is None or mentioned or named or replying_to_hadi): await message.reply(
@@ -1533,6 +1603,7 @@ async def on_message(message: discord.Message):
                 engine=hadi_engine.describe().split()[0],
                 outcome="error",
                 error_type=type(error).__name__,
+                error_msg=str(error)[:300],
             )
             print(f"ERROR: {type(error).__name__}: {error}")
             if (message.guild is None or mentioned or named or replying_to_hadi): await message.reply(
@@ -1550,4 +1621,11 @@ async def on_message(message: discord.Message):
                     pass
 
 if __name__ == "__main__":  # بند 5.3: الاستيراد من eval_runner مايشغلش البوت
+    # حارس العملية الواحدة (2026-07-26). حادثة 2026-07-23: عمليتين اشتغلوا مع
+    # بعض (واحدة من systemd وواحدة يدوية سايبة) → الاتنين استقبلوا كل رسالة →
+    # رد مكرر، تذكرتين لنفس الطلب، وردود متناقضة (كل عملية بجلسة مختلفة).
+    # asyncio.Lock و ambient_gate._Limiter بيحميوا جوّه العملية بس، فمفيش
+    # حاجة كانت بتمنع ده.
+    if not state_lock.acquire_singleton("hadi-discord"):
+        raise SystemExit(1)
     client.run(TOKEN)

@@ -9,10 +9,14 @@ larger than the cap, drop a link into the work item discussion instead.
 Self-contained: reuses the same ADO plumbing (ado_client) and Discord bot token
 that po_channel_cr.py already relies on.
 """
+import ipaddress
 import os
 import re
+import socket
 import datetime as _dt
 import html as _html
+from urllib.parse import urlparse
+
 import requests
 
 import ado_client
@@ -72,12 +76,71 @@ def fetch_message(channel_id, message_id):
     return r.json()
 
 
+# ---------------------------------------------------------------------------
+# SSRF guard (2026-07-26)
+#
+# --attach-url بتقبل أي URL، والأمر ado_cli.py في allow-list الصلاحيات، و
+# CLAUDE.md بيعلّم هادي يستخدمه. يعني نص محقون في رسالة قناة كان يقدر يخلي هادي
+# يجيب http://169.254.169.254/latest/meta-data/... ويرفعه **كمرفق على تذكرة ADO**
+# — يعني تسريب بيانات السيرفر لمكان الفريق بيقراه. حارس الـ Bash مش بيمسكها
+# (متحقق بالتشغيل) لأن الأمر نفسه مسموح.
+#
+# القايمة قابلة للتوسيع من .env من غير تعديل كود.
+_DEFAULT_HOSTS = ("cdn.discordapp.com", "media.discordapp.net",
+                  "images-ext-1.discordapp.net", "images-ext-2.discordapp.net")
+ALLOWED_ATTACH_HOSTS = {
+    h.strip().lower()
+    for h in (os.environ.get("HADI_ATTACH_ALLOWED_HOSTS", "").split(",") or [])
+    if h.strip()
+} or set(_DEFAULT_HOSTS)
+
+
+class UnsafeURL(ValueError):
+    """URL مرفوض — مش https، أو host مش في القايمة، أو بيحل لـ IP داخلي."""
+
+
+def check_url(url):
+    """بيرمي UnsafeURL لو الـ URL مش آمن. بيرجّع الـ url لو تمام."""
+    u = urlparse(url or "")
+    if u.scheme != "https":
+        raise UnsafeURL(f"https فقط (جاي: {u.scheme or 'بدون scheme'})")
+    host = (u.hostname or "").lower()
+    if host not in ALLOWED_ATTACH_HOSTS:
+        raise UnsafeURL(f"host مش في القايمة البيضاء: {host}")
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError as error:
+        # القايمة البيضاء هي الجدار؛ فحص الـ IP دفاع إضافي ضد DNS rebinding على
+        # host موثوق. فشل الـ DNS نفسه مش سبب لرفض مرفق شرعي — requests هيفشل
+        # لوحده لو الشبكة فعلًا واقعة.
+        print(f"MEDIA WARN: DNS مش متاح للتحقق من {host} ({error}) — "
+              "بنكمّل بالقايمة البيضاء")
+        return url
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast):
+            raise UnsafeURL(f"الـ host بيحل لـ IP داخلي ({ip}) — مرفوض")
+    return url
+
+
 def _download(url, known_size=None):
     """Return (bytes, oversized). bytes is None if oversized or failed."""
     if known_size and known_size > MAX_ATTACH_BYTES:
         return None, True
     try:
-        resp = requests.get(url, timeout=90, stream=True)
+        check_url(url)
+    except UnsafeURL as error:
+        # مرفوض ≠ فشل التذكرة: بنتخطى المرفق ونكمّل الإنشاء.
+        print(f"MEDIA BLOCKED: {error} — {str(url)[:80]}")
+        return None, False
+    try:
+        # allow_redirects=False: redirect لـ host جوه القايمة ناحية IP داخلي
+        # بيتخطى الفحص لو سيبنا requests يتابع لوحده.
+        resp = requests.get(url, timeout=90, stream=True, allow_redirects=False)
+        if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
+            print(f"MEDIA BLOCKED: redirect مرفوض — {str(url)[:80]}")
+            return None, False
         resp.raise_for_status()
     except Exception as e:
         print(f"MEDIA WARN: download failed {url[:80]} - {e}")
@@ -470,6 +533,29 @@ def selftest():
     # الحقول الإلزامية التانية مالمستش
     check("WorkAround فضل زي ما هو", value_of(ops, "Custom.WorkAround") == UNSET)
     check("تواريخ الجدولة لسه بتتملى", bool(value_of(ops, "Microsoft.VSTS.Scheduling.DueDate")))
+
+    # --- حارس الـ SSRF (2026-07-26) ---
+    for bad, why in [
+        ("http://169.254.169.254/latest/meta-data/", "IMDS بـ http"),
+        ("https://169.254.169.254/latest/meta-data/", "IMDS بـ https"),
+        ("http://cdn.discordapp.com/x.png", "http مرفوض"),
+        ("https://evil.example.com/x.png", "host غريب"),
+        ("https://localhost/x.png", "localhost"),
+        ("file:///etc/passwd", "file scheme"),
+        ("", "URL فاضي"),
+    ]:
+        try:
+            check_url(bad)
+            check(f"SSRF: {why} بيترفض", False)
+        except UnsafeURL:
+            check(f"SSRF: {why} بيترفض", True)
+        except Exception:
+            check(f"SSRF: {why} بيترفض", True)
+    try:
+        check_url("https://cdn.discordapp.com/attachments/1/2/a.png")
+        check("SSRF: مرفق ديسكورد الشرعي بيعدّي", True)
+    except UnsafeURL as e:
+        check(f"SSRF: مرفق ديسكورد الشرعي بيعدّي ({e})", False)
 
     # HTML من ديسكورد مابيتسربش للوصف
     ops6 = required_field_ops("Change Request", set(),

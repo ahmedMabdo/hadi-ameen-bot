@@ -152,17 +152,39 @@ def cmd_search(args):
     print("\n".join(hits) if hits else "مفيش نتيجة في الذاكرة.")
 
 
-def _git_persist(msg):
+def _git_commit_only(msg):
+    """commit محلي بس — سريع، وبيتنفّذ جوّه قفل الكتابة."""
     try:
         for cmd in (["add", str(MEM)], ["commit", "-m", msg]):
             subprocess.run(["git", "-C", str(BASE), *cmd],
                            check=True, capture_output=True, timeout=30)
+        return True
+    except Exception as e:
+        print(f"WARN: git commit فشل: {type(e).__name__} "
+              "(الذاكرة محفوظة على القرص)")
+        return False
+
+
+def _git_push_async():
+    """push **بره** قفل الكتابة.
+
+    2026-07-26: كان الـ push (لحد 60 ثانية شبكة) بيتنفّذ جوّه state_lock اللي
+    مهلة المنتظرين فيه 60 ثانية — فأي حفظ تاني أو reminder_loop كان بياخد
+    TimeoutError لما GitHub يبطّأ. القاعدة: عمليات الشبكة مابتتحطش جوّه أقفال
+    بتحمي حالة محلية.
+    """
+    try:
         subprocess.run(["git", "-C", str(BASE), "push"],
                        check=True, capture_output=True, timeout=60)
         print("PERSISTED (committed + pushed)")
     except Exception as e:
-        print(f"WARN: saved locally but git persist failed: {type(e).__name__} "
-              "(الذاكرة محفوظة على القرص، هتتزامن مع أول push ناجح)")
+        print(f"WARN: push فشل: {type(e).__name__} "
+              "(الـ commit محلي وهيتزامن مع أول push ناجح)")
+
+
+def _git_persist(msg):
+    """للتوافق: commit جوّه القفل، والـ push بيتأجل للمُنادي."""
+    return _git_commit_only(msg)
 
 
 def cmd_pending(args):
@@ -280,6 +302,7 @@ def main():
     q.set_defaults(func=cmd_search)
 
     args = p.parse_args()
+    _needs_push = args.cmd in ("add", "approve", "revoke")
     if args.cmd == "add":
         # بند 3.3: الكتابة (memory.md + git commit/push) بتتسلسل في طابور كتابة
         # واحد (flock) مشترك مع schedule.py وreminder_loop — منع سباقات الملف
@@ -288,6 +311,8 @@ def main():
             args.func(args)
     else:
         args.func(args)
+    if _needs_push:
+        _git_push_async()   # بره القفل — الشبكة مش بتحجز الطابور
 
 
 if __name__ == "__main__":

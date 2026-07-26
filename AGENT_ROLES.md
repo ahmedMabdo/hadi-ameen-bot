@@ -14,7 +14,7 @@
 
 | # | الوكيل | الكود | الموديل | شغله | معاه إيه |
 |---|--------|-------|---------|------|----------|
-| 1 | **بوابة الحضور** | `ambient_gate.py` | Haiku | يقرر: أسكت / رياكشن / أرد | **مفيش أدوات خالص** — نص داخل، قرار خارج. `cwd=/tmp` |
+| 1 | **بوابة الحضور** | `ambient_gate.py` | Haiku | يقرر: أسكت / رياكشن / أرد | **مفيش أدوات خالص — مفروض في الأمر** بـ `--allowedTools "" --permission-mode plan` (اتضاف 2026-07-26؛ قبله كان الوصف ده وعد في التوثيق والكود بينده الـ CLI بالافتراضيات). `cwd=/tmp` |
 | 2 | **المحاور** | `hadi_engine.run_agent` | Sonnet | يتكلم مع الناس — الشخصية والذاكرة والمعرفة | كل الـ allow-list (قراءة **وكتابة** — ده اللي المرحلة 2 هتقسمه) |
 | 3 | **المستخرج** | `hadi_engine.run_clean_json` | Sonnet | يطلّع JSON نضيف للترياج | جلسة معزولة: `setting_sources=[]` — **مفيش CLAUDE.md ولا شخصية**، `cwd=/tmp`، 10 أدوار |
 | 4 | **الكاتب** | `daily_digests.py` | Sonnet | التقارير الأربعة المجدولة | برومبت ثابت مقفول + `PERSONA_CORE.md`. بينده `posthog_cli health` قبل أي نشر |
@@ -44,12 +44,17 @@ WebSearch, WebFetch
 
 ### كتابة ونشر — دي اللي هتتنقل لـ Ops Agent في المرحلة 2
 ```
-ado_cli.py               إنشاء/تعديل work items
+ado_cli.py               إنشاء work items + إرفاق ميديا (إضافة فقط)
 po_channel_cr.py         إنشاء CR من قناة الـ PO
 ado_alerts.py            تنبيهات
 discord_followup.py      نشر في قناة السابورت
-discord_orderpo.py       نشر في قناة الـ PO
 discord_mars_results.py  نشر نتائج الأوتوميشن
+```
+
+**اتشال 2026-07-26:** `discord_orderpo.py` → `legacy/` (حقول CR ناقصة +
+تكرار مع `po_channel_cr` و`channel_triage` على نفس القناة).
+
+```
 ```
 
 **ليه التقسيم ده مهم دلوقتي حتى قبل المرحلة 2:** الحدود بقت **مرسومة**. فصل

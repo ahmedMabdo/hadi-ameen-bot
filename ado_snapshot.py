@@ -47,7 +47,12 @@ API = "7.0"
 ORG_URL = os.environ.get("ADO_ORG_URL", "https://hadafsolutions.visualstudio.com").rstrip("/")
 PROJECT = os.environ.get("ADO_PROJECT", "0_Projects_Team")
 TEAM = os.environ.get("ADO_TEAM", "Mars Team")
-PAT = os.environ.get("AZURE_DEVOPS_PAT") or os.environ.get("ADO_PAT", "")
+# 2026-07-26: توكن قراءة منفصل. الملف ده «NEVER WRITES TO ADO» (الـ docstring)
+# ومع ذلك كان بياخد نفس التوكن اللي يقدر يكتب. ADO_PAT_READ (Work Items: Read)
+# بياخد الأولوية، وبيقع على القديم لو مش موجود — فمفيش أي كسر لو مضفتوش.
+PAT = (os.environ.get("ADO_PAT_READ")
+       or os.environ.get("AZURE_DEVOPS_PAT")
+       or os.environ.get("ADO_PAT", ""))
 DB_PATH = os.environ.get(
     "ADO_SNAPSHOT_DB",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "ado_snapshot.db"),

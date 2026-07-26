@@ -26,6 +26,7 @@ import argparse
 import datetime
 import json
 import os
+import re
 
 import ado_snapshot as snap
 
@@ -60,10 +61,21 @@ AR_DAYS = {0: "الاتنين", 1: "الثلاثاء", 2: "الأربع", 3: "ا
 def _load(path, default):
     if os.path.exists(path):
         try:
-            return json.load(open(path, encoding="utf-8"))
+            with open(path, encoding="utf-8") as fh:   # context manager: مفيش fd مسرّب
+                return json.load(fh)
         except Exception:
             return default
     return default
+
+
+def _save_json(path, data):
+    """كتابة ذرية. 2026-07-26: كان json.dump(..., open(path,"w")) — و open("w")
+    بيفضّي الملف **فورًا**، فأي استثناء وسط الكتابة كان بيسيب
+    sprint_ceremonies.json فاضي = ضياع كل مواعيد السبرنت اللي آسر أكدها."""
+    tmp = f"{path}.tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
 
 
 def _parse_date(s):
@@ -167,9 +179,9 @@ def check_status():
 
 
 def mark_seen(name, finish=""):
-    json.dump({"last_sprint": name, "last_finish": finish,
-               "seen_at": datetime.datetime.now(datetime.timezone.utc).isoformat()},
-              open(STATE, "w", encoding="utf-8"), ensure_ascii=False)
+    _save_json(STATE, {"last_sprint": name, "last_finish": finish,
+                       "seen_at": datetime.datetime.now(
+                           datetime.timezone.utc).isoformat()})
 
 
 def check_rollover():
@@ -186,7 +198,13 @@ def compose_dm(name, start_iso=None, finish_iso=None):
     defaults = compute_defaults(start_iso, finish_iso)
     prev = {}
     cer = _load(CEREMONIES, {})
-    for k in sorted(cer.keys()):
+    # ترتيب **رقمي**: sorted النصي بيرتب ["MS-9","MS-10","MS-91"] كـ
+    # MS-10, MS-9, MS-91 — فـ«السبرنت اللي فات» المعروض لآسر كان ممكن يكون
+    # سبرنت من شهور. (2026-07-26)
+    def _num(k):
+        digits = re.sub(r"\D", "", k)
+        return int(digits) if digits else 0
+    for k in sorted(cer.keys(), key=_num):
         if k != name and cer[k]:
             prev = cer[k]
     lines = [f"يا آسر، بدأنا سبرنت جديد ({name}: {start_iso} → {finish_iso}) 🎯",
@@ -211,7 +229,7 @@ def save_answers(name, answers):
     cur = cer.get(name, {})
     cur.update({k: v for k, v in answers.items() if v})
     cer[name] = cur
-    json.dump(cer, open(CEREMONIES, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+    _save_json(CEREMONIES, cer)
     return cur
 
 

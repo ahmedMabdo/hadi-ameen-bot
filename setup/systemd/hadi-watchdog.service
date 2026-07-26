@@ -1,0 +1,7 @@
+[Unit]
+Description=Hadi watchdog - restart the bot if it stops touching logs/alive
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/home/ubuntu/hadi-ameen-bot/scripts/watchdog.sh

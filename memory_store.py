@@ -300,8 +300,12 @@ def memory_block(query_text: str) -> str:
         parts.append("[نواة الذاكرة — سارية دايمًا]\n" + core)
 
     procedural = conn.execute(
+        # 2026-07-26: DESC + سقف 20. كان ORDER BY noted_at (الأقدم أولًا) LIMIT 10 —
+        # فلو بقى عندك 12 قاعدة، الاتنين الأحدث بيسقطوا من البرومبت **بصمت**،
+        # رغم إنهم عدّوا بوابة مراجعة بشرية. القياس على السيرفر: 0 قاعدة حاليًا،
+        # فالتغيير ده وقاية مش إصلاح لعطل قايم.
         "SELECT raw FROM notes WHERE active=1 AND mtype='procedural'"
-        f" AND {_not_expired()} ORDER BY noted_at LIMIT 10"
+        f" AND {_not_expired()} ORDER BY noted_at DESC LIMIT 20"
     ).fetchall()
     if procedural:
         parts.append("[قواعد سلوك متعلمة — التزم بيها دايمًا]\n"
@@ -344,8 +348,13 @@ def status() -> dict:
         f" AND date(expires) < '{_cairo_today()}'"
     ).fetchone()[0]
     db_count = conn.execute("SELECT COUNT(*) FROM notes WHERE active=1").fetchone()[0]
+    proc_total = conn.execute(
+        "SELECT COUNT(*) FROM notes WHERE active=1 AND mtype='procedural'"
+        f" AND {_not_expired()}").fetchone()[0]
     return {
         "md_notes": md_count, "db_notes": db_count, "by_type": by_type,
+        # عشان سقف الحقن يبقى مرئي بدل ما يقص في صمت
+        "procedural_total": proc_total, "procedural_injected": min(proc_total, 20),
         "expired_hidden": expired,
         "in_sync": md_count == db_count,
         "core_active": bool(_read_core()),

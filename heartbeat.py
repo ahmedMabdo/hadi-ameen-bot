@@ -256,7 +256,76 @@ def check_new_sprint(state):
     return alerts
 
 
+# --- فحوصات صحة النظام نفسه (2026-07-26) --------------------------------
+# heartbeat كان بيراقب الشغل (تذاكر/سبرنت) ومش بيراقب **نفسه**. النتيجة: حادثة
+# 2026-07-23 (رصيد Claude خلص + CLI مسجّل خارج) عدّت من غير أي تنبيه.
+def check_error_rate(state):
+    """معدل فشل التفاعلات فوق الحد → تنبيه بنص أكتر خطأ متكرر."""
+    try:
+        import eval_store
+        st = eval_store.error_rate(days=7)
+    except Exception as error:
+        print(f"HEARTBEAT WARN: eval_store مش متاح ({type(error).__name__}: {error})")
+        return []
+    limit = float(os.environ.get("HADI_HB_ERROR_PCT", "5") or "5")
+    if st["total"] < 10 or st["pct"] < limit:
+        return []
+    key = f"errrate:{int(st['pct'])}"
+    if recently_sent(state, key):
+        return []
+    top = st["top"][0] if st["top"] else {}
+    return [{"key": key,
+             "text": (f"⚠️ معدل فشل هادي آخر ٧ أيام **{st['pct']}%** "
+                      f"({st['failures']} من {st['total']}).\n"
+                      f"  أكتر خطأ: `{top.get('type','?')}` ×{top.get('count',0)} — "
+                      f"{top.get('msg','')[:140]}")}]
+
+
+def check_disk(state):
+    """القرص قرب يملا → SQLite بيفشل والبوت بيقع بطرق غريبة."""
+    try:
+        import shutil
+        usage = shutil.disk_usage(str(BASE))
+    except Exception:
+        return []
+    pct = 100.0 * usage.used / usage.total
+    limit = float(os.environ.get("HADI_HB_DISK_PCT", "90") or "90")
+    if pct < limit:
+        return []
+    key = f"disk:{int(pct)}"
+    if recently_sent(state, key):
+        return []
+    return [{"key": key,
+             "text": (f"💾 القرص على **{pct:.0f}%** "
+                      f"(فاضل {usage.free // (1024*1024)}MB). "
+                      "SQLite بيفشل لما يملا.")}]
+
+
+def check_memory_index(state):
+    """الفهرس اتفرّق عن memory.md، أو قواعد سلوك بتتقص من الحقن."""
+    try:
+        import memory_store
+        st = memory_store.status()
+    except Exception:
+        return []
+    out = []
+    if not st.get("in_sync") and not recently_sent(state, "memidx"):
+        out.append({"key": "memidx",
+                    "text": (f"🧠 فهرس الذاكرة مش متزامن "
+                             f"(md={st.get('md_notes')} db={st.get('db_notes')}) — "
+                             "شغّل: `python3 memory_store.py rebuild`")})
+    tot, inj = st.get("procedural_total", 0), st.get("procedural_injected", 0)
+    if tot > inj and not recently_sent(state, "proccut"):
+        out.append({"key": "proccut",
+                    "text": (f"📋 {tot - inj} قاعدة سلوك مش بتتحقن في البرومبت "
+                             f"(الحقن {inj} من {tot}) — راجعها أو اسحب القديم.")})
+    return out
+
+
 CHECKS = [
+    ("error_rate", check_error_rate),
+    ("disk", check_disk),
+    ("memory_index", check_memory_index),
     ("stale_p1", check_stale_p1),
     ("sprint_tomorrow", check_sprint_tomorrow),
     ("support_48h", check_support_48h),
@@ -265,9 +334,27 @@ CHECKS = [
 ]
 
 
+def touch_alive() -> None:
+    """طابع زمني للـ watchdog. لو الملف ده قديم = البوت متعلّق أو ميت.
+
+    2026-07-26: `!ping` كان الفحص الوحيد وهو **يدوي** — لو البوت اتعلّق
+    (قفل معلّق أو الـ Gateway فقد الاتصال من غير crash) محدش يعرف غير لما
+    حد يكلّمه ويستنى.
+    """
+    try:
+        (BASE / "logs").mkdir(exist_ok=True)
+        (BASE / "logs" / "alive").write_text(
+            f"{int(time.time())} {dt.datetime.now(TZ).isoformat(timespec='seconds')}\n",
+            encoding="utf-8")
+    except OSError:
+        pass
+
+
 def run_checks(state=None, dry_run=True):
     """بيرجّع (تنبيهات, الحالة). الصمت لو مفيش حاجة — نفس فلسفة NO_REPLY."""
     state = load_state() if state is None else state
+    if not dry_run:
+        touch_alive()
     alerts = []
     for name, func in CHECKS:
         try:

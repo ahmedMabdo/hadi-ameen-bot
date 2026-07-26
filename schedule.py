@@ -45,16 +45,36 @@ CHANNEL_ALIASES = {
 
 
 def _load():
-    if STORE.exists():
+    """بيقرا المخزن. الملف التالف بياخد نسخة **وبيتبلّغ** بدل ما يرجّع [] في صمت.
+
+    2026-07-26: القراءة كانت `except Exception: return []` — يعني ملف تالف
+    (من كتابة اتقطعت) = «مفيش تذكيرات» بصمت تام، وكل المجدول يضيع من غير ما
+    حد يعرف. والكتابة كانت مباشرة مش ذرية، فالفساد كان ممكن أصلًا — بينما
+    discord_bot._save_reminders و4 موديولات تانية كانوا بيعملوا tmp+replace صح.
+    """
+    if not STORE.exists():
+        return []
+    try:
+        return json.loads(STORE.read_text(encoding="utf-8"))
+    except Exception as error:
+        stamp = dt.datetime.now(TZ).strftime("%Y%m%d-%H%M%S")
+        bad = STORE.with_suffix(f".json.corrupt-{stamp}")
         try:
-            return json.loads(STORE.read_text(encoding="utf-8"))
-        except Exception:
-            return []
-    return []
+            STORE.replace(bad)
+            print(f"SCHEDULE ERROR: {STORE.name} تالف ({type(error).__name__}) — "
+                  f"اتنقل لـ {bad.name}. المجدول اللي كان فيه محتاج مراجعة.",
+                  file=sys.stderr)
+        except OSError:
+            print(f"SCHEDULE ERROR: {STORE.name} تالف ومقدرتش آخد نسخة",
+                  file=sys.stderr)
+        return []
 
 
 def _save(items):
-    STORE.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    """كتابة ذرية: tmp ثم replace — نفس نمط باقي الموديولات."""
+    tmp = STORE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(STORE)
 
 
 def _parse_when(s):

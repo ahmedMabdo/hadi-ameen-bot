@@ -80,6 +80,10 @@ PAYMENT_CONTEXT_NOTE = (
 
 # ───────────────────────── PostHog query helper ─────────────────────────
 def hogql(q, retries=3):
+    """2026-07-26: اتضاف backoff بـ jitter. كانت 3 محاولات **فورية** ورا بعض
+    من غير أي انتظار — يعني وقت الـ rate limit بنضرب الخدمة 3 مرات في نفس
+    اللحظة بدل ما ننسحب."""
+    import random, time as _t
     last = None
     for i in range(retries):
         try:
@@ -90,6 +94,8 @@ def hogql(q, retries=3):
             last = f"HTTP {r.status_code}: {r.text[:200]}"
         except Exception as e:
             last = str(e)
+        if i < retries - 1:
+            _t.sleep(min(2.0 ** (i + 1), 30.0) * (0.5 + random.random()))
     raise RuntimeError(f"HogQL failed after {retries} tries: {last}\nQuery: {q[:200]}")
 
 def D(day):

@@ -19,6 +19,7 @@ import argparse
 import json
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -41,10 +42,13 @@ def _read_jsonl(path, days):
         except json.JSONDecodeError:
             continue
         try:
-            ts = time.mktime(time.strptime(row.get("ts", "")[:19], "%Y-%m-%dT%H:%M:%S"))
+            # 2026-07-26: الطابع مكتوب بـ %z (فيه +0300). القص على 19 حرف كان
+            # بيشيل الـ offset وmktime كان بيفسّر الباقي كتوقيت محلي — فأي تشغيل
+            # على UTC (CI/container) كان بيفلتر غلط بساعتين/تلاتة.
+            ts = datetime.fromisoformat(row.get("ts", "")).timestamp()
             if ts < cutoff:
                 continue
-        except ValueError:
+        except (ValueError, TypeError):
             pass
         out.append(row)
     return out

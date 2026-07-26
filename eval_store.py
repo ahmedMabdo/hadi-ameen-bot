@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS interactions(
   reply_excerpt TEXT NOT NULL DEFAULT '',
   outcome TEXT NOT NULL DEFAULT '',
   error_type TEXT NOT NULL DEFAULT '',
+  error_msg TEXT NOT NULL DEFAULT '',
   latency_ms INTEGER NOT NULL DEFAULT 0,
   cost_usd REAL,
   input_tokens INTEGER NOT NULL DEFAULT 0,
@@ -78,6 +79,14 @@ def connect():
         _conn.row_factory = sqlite3.Row
         _conn.execute("PRAGMA journal_mode=WAL")
         _conn.executescript(_SCHEMA)
+        # ترقية جداول قديمة (2026-07-26): نص الخطأ كان مش متخزّن خالص — بس
+        # error_type — فأي تشخيص كان محتاج SSH + journalctl. حادثة 2026-07-23
+        # (رصيد خلص + logged out) عدّت أسبوعين قبل ما نعرف سببها.
+        cols = {r[1] for r in _conn.execute("PRAGMA table_info(interactions)")}
+        if "error_msg" not in cols:
+            _conn.execute("ALTER TABLE interactions ADD COLUMN"
+                          " error_msg TEXT NOT NULL DEFAULT ''")
+            _conn.commit()
     return _conn
 
 
@@ -88,7 +97,8 @@ def _clip(text: str) -> str:
 
 def record_interaction(conv_key="", channel="", author="", user_message_id="",
                        reply_message_id="", prompt="", reply="", outcome="",
-                       error_type="", latency_ms=0, stats=None, engine=""):
+                       error_type="", latency_ms=0, stats=None, engine="",
+                       error_msg=""):
     """صف واحد لكل رسالة اتعالجت. فشل التسجيل عمره ما يوقف الرد (best-effort)."""
     stats = stats or {}
     usage = stats.get("usage") or {}
@@ -98,10 +108,12 @@ def record_interaction(conv_key="", channel="", author="", user_message_id="",
             cur = conn.execute(
                 "INSERT INTO interactions(ts, conv_key, channel, author, user_message_id,"
                 " reply_message_id, prompt_excerpt, reply_excerpt, outcome, error_type,"
-                " latency_ms, cost_usd, input_tokens, cache_read, output_tokens, num_turns, engine)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " error_msg, latency_ms, cost_usd, input_tokens, cache_read, output_tokens,"
+                " num_turns, engine)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (time.time(), conv_key, channel, author, str(user_message_id or ""),
                  str(reply_message_id or ""), _clip(prompt), _clip(reply), outcome, error_type,
+                 str(error_msg or "")[:300],
                  int(latency_ms), stats.get("cost"),
                  int(usage.get("input_tokens") or 0),
                  int(usage.get("cache_read_input_tokens") or 0),
@@ -182,6 +194,27 @@ def stats(days: float = 7.0) -> dict:
         "feedback_pos": fb["pos"] or 0,
         "feedback_neg": fb["neg"] or 0,
         "feedback_total": fb["total"] or 0,
+    }
+
+
+def error_rate(days: float = 7.0) -> dict:
+    """معدل الفشل + أكتر خطأ متكرر بنصه — غذاء تنبيه heartbeat (2026-07-26)."""
+    conn = connect()
+    cutoff = _since(days)
+    row = conn.execute(
+        "SELECT COUNT(*) n, SUM(outcome IN ('error','timeout')) e"
+        " FROM interactions WHERE ts >= ?", (cutoff,)).fetchone()
+    n, e = row["n"] or 0, row["e"] or 0
+    top = conn.execute(
+        "SELECT error_type, error_msg, COUNT(*) c FROM interactions"
+        " WHERE ts >= ? AND outcome IN ('error','timeout')"
+        " GROUP BY error_type, error_msg ORDER BY c DESC LIMIT 3",
+        (cutoff,)).fetchall()
+    return {
+        "total": n, "failures": e,
+        "pct": round(100.0 * e / n, 1) if n else 0.0,
+        "top": [{"type": r["error_type"], "msg": (r["error_msg"] or "")[:160],
+                 "count": r["c"]} for r in top],
     }
 
 

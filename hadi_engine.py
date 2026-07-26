@@ -29,6 +29,8 @@ import threading
 import time
 from pathlib import Path
 
+import state_lock  # قفل الكتابة المشترك بين العمليات (sessions.json)
+
 BASE_DIR = Path(__file__).resolve().parent
 
 try:  # تحميل .env لو المحرك اتستورد لوحده (البوت بيحمّله قبلنا أصلًا — مفيش ضرر من التكرار)
@@ -54,7 +56,12 @@ def _actor_env() -> dict:
 
 MAX_CONCURRENCY = max(1, int(os.getenv("HADI_MAX_CONCURRENCY", "2") or "2"))
 SESSION_TTL_HOURS = float(os.getenv("HADI_SESSION_TTL_HOURS", "6") or "6")
-MAX_TURNS = int(os.getenv("HADI_MAX_TURNS", "50") or "50")
+# 2026-07-26: الرقم مقاس مش مخمّن — logs/usage.jsonl على 117 تفاعل:
+# p50=2 p90=8 p95=12 p99=17 max=17. الـ 50 القديمة كانت 3x أعلى حالة حصلت،
+# يعني مساحة هروب واسعة لو الموديل دخل حلقة. 22 = p99 + هامش 5.
+MAX_TURNS = int(os.getenv("HADI_MAX_TURNS", "22") or "22")
+# المهام الخلفية (pending flush) والتقارير محتاجة مساحة أوسع من الرد التفاعلي.
+HEAVY_MAX_TURNS = int(os.getenv("HADI_HEAVY_MAX_TURNS", "50") or "50")
 SESSIONS_FILE = BASE_DIR / "sessions.json"
 LOGS_DIR = BASE_DIR / "logs"
 USAGE_LOG = LOGS_DIR / "usage.jsonl"
@@ -66,6 +73,32 @@ class EngineError(RuntimeError):
 
 class EngineTimeout(EngineError):
     """الطلب عدّى المهلة."""
+
+
+class EngineUnavailable(EngineError):
+    """المحرك مش متاح لسبب تشغيلي مش برمجي — رصيد خلص أو مش مسجّل دخول.
+
+    حادثة 2026-07-23: هادي كان واقع من 9ص لـ 1م اليوم اللي بعده على
+    «You've hit your weekly limit»، وبعدين على «Not logged in · Please run
+    /login» — والمستخدم كان بيشوف «حصل خطأ: EngineError» ومحدش اتبلّغ.
+    الفئة دي محتاجة: تنبيه للمسؤول + رسالة مفهومة للمستخدم، ومفيش retry
+    (إعادة المحاولة على حد أسبوعي مالهاش فايدة).
+    """
+
+
+# الأنماط الحرفية من لوج الإنتاج (journalctl 2026-07-23)
+_UNAVAILABLE_RX = re.compile(
+    r"hit your (weekly|session|usage) limit"
+    r"|not logged in"
+    r"|please run /login"
+    r"|credit balance is too low"
+    r"|insufficient.{0,20}quota",
+    re.IGNORECASE,
+)
+
+
+def is_unavailable(message: str) -> bool:
+    return bool(_UNAVAILABLE_RX.search(message or ""))
 
 
 # --- توفر الـ SDK ---------------------------------------------------------
@@ -158,12 +191,26 @@ def _get_resume(conv_key: str):
 
 
 def _remember_session(conv_key: str, session_id: str) -> None:
+    """يسجّل جلسة المحادثة.
+
+    2026-07-26: القفل بقى flock مشترك بين العمليات مش threading.Lock بس.
+    السبب: threading.Lock بيحمي جوه العملية الواحدة فقط. لما اشتغلت عمليتين
+    discord_bot مع بعض (حادثة 2026-07-23) كل واحدة كتبت session_id مختلف فوق
+    التانية في نفس الملف، فالجلسات اتلخبطت والردود بقت متناقضة. sessions.json
+    كان الملف المشترك الوحيد اللي مش تحت الـ flock — بينما memory.md و
+    reminders.json كانوا محميين. الفجوة دي اتقفلت.
+    """
     if not conv_key or not session_id:
         return
     with _sessions_mutex:
-        data = _load_sessions()
-        data[conv_key] = {"session_id": session_id, "ts": time.time()}
-        _save_sessions(data)
+        try:
+            with state_lock.write_lock("hadi-sessions", timeout=10):
+                data = _load_sessions()
+                data[conv_key] = {"session_id": session_id, "ts": time.time()}
+                _save_sessions(data)
+        except TimeoutError:
+            # فقدان تسجيل جلسة = جلسة جديدة في الرسالة الجاية. مش سبب لفشل الرد.
+            print("HADI ENGINE WARN: قفل sessions.json مشغول — الجلسة مااتسجلتش")
 
 
 def has_session(conv_key: str) -> bool:
@@ -178,10 +225,14 @@ def has_session(conv_key: str) -> bool:
 
 def reset_session(conv_key: str) -> None:
     with _sessions_mutex:
-        data = _load_sessions()
-        if conv_key in data:
-            data.pop(conv_key, None)
-            _save_sessions(data)
+        try:
+            with state_lock.write_lock("hadi-sessions", timeout=10):
+                data = _load_sessions()
+                if conv_key in data:
+                    data.pop(conv_key, None)
+                    _save_sessions(data)
+        except TimeoutError:
+            print("HADI ENGINE WARN: قفل sessions.json مشغول — الجلسة مااتصفرتش")
 
 
 # --- سجل الاستخدام (بند 3.1/F5) ----------------------------------------
@@ -218,34 +269,10 @@ def _log_usage(conv_key: str, resumed, final: dict) -> None:
 # بيحدد إيه اللي ينفع يتنفذ أصلًا. الـ denylist بيمسك المحاولات الواضحة بدري
 # ويوفر سبب رفض مفهوم في اللوج، بس عمره ما يكون خط الدفاع الوحيد.
 # .env هو ملف الأسرار — ممنوع قراءته أو نقله بأي أمر. (.env.example عادي.)
-_ENV_FILE_RX = re.compile(r"\.env(?!\.example)\b")
-_SECRET_NAMES = r"(AZURE_DEVOPS_PAT|DISCORD_BOT_TOKEN|POSTHOG_API_KEY|ANTHROPIC_API_KEY)"
-
-_DANGEROUS_BASH = [
-    (re.compile(r"\brm\s+(-[a-zA-Z]*[rR][a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*[rR])\s+(/|~|\$HOME)"),
-     "حذف جذري خارج مجلد المشروع"),
-    (re.compile(r"\bgit\s+push\b.*(--force|-f\b)"), "git push بالقوة"),
-    (re.compile(r"\bgit\s+reset\s+--hard"), "git reset --hard"),
-    (re.compile(r"\b(shutdown|reboot|poweroff|halt|mkfs\w*|dd\s+if=)"), "أوامر نظام خطرة"),
-    (re.compile(r"(?<![.\w-])(printenv|env)\s*(\||>|$)"), "تفريغ متغيرات البيئة"),
-    (re.compile(r"\becho\b[^\n]*\$\{?" + _SECRET_NAMES), "طباعة قيمة توكن"),
-    (re.compile(r"\b(cat|less|more|head|tail|grep|awk|sed|cut|sort|xxd|od|base64|strings|cp|mv|scp|rsync|curl|wget|tar|zip)\b[^\n|;&]*" + _ENV_FILE_RX.pattern),
-     "قراءة/نقل ملف .env"),
-    (re.compile(r"\bsource\s+[^\n;|&]*" + _ENV_FILE_RX.pattern), "تحميل .env في شل ظاهر"),
-    # --- F4: قراءات الأسرار عبر المفسّرات (الثغرات اللي الأوديت أثبتها) ---
-    # ملحوظة معمارية: الحارس ده denylist = طبقة دفاع إضافية بس — الجدار الحقيقي هو
-    # allow-list الأوامر في settings.local.json + صلاحيات الأدوات. متعتمدش عليه لوحده.
-    (re.compile(r"\bopen\s*\(\s*['\"][^'\"]*\.env(?!\.example)"),
-     "قراءة .env عبر open() في مفسّر"),
-    (re.compile(r"\b(python3?|perl|ruby|node|php)\b[^\n]*(?:-c|-e|<<)[^\n]*" + _ENV_FILE_RX.pattern),
-     "قراءة .env عبر كود inline/heredoc"),
-    (re.compile(r"/proc/(?:self|\d+)/environ"), "قراءة بيئة العملية من /proc"),
-    (re.compile(r"\bdotenv\b[^\n]*\.env(?!\.example)|load_dotenv"),
-     "تحميل .env برمجيًا في أمر"),
-    # F4: منع تمرير متغير تخطي بوابة المراجعة البشرية على نفس سطر الأمر —
-    # ده كان بيقلب memory_guard.is_human() لصالح الموديل.
-    (re.compile(r"HADI_MEMORY_ADMIN"), "محاولة تخطي بوابة المراجعة البشرية للذاكرة"),
-]
+# الأنماط اتنقلت لـ guards.py (2026-07-26) عشان تتستورد في اختبار من غير الـ SDK.
+# الجدار الحقيقي يفضل allow-list الأوامر في .claude/settings.local.json — ده
+# denylist = دفاع في العمق، بيمسك المحاولات الواضحة بدري وبيوفّر سبب رفض مفهوم.
+from guards import _DANGEROUS_BASH, _ENV_FILE_RX, bash_reason  # noqa: E402
 
 
 def _deny(reason: str) -> dict:
@@ -260,10 +287,10 @@ def _deny(reason: str) -> dict:
 
 async def _bash_guard(input_data, tool_use_id, context):
     cmd = str((input_data.get("tool_input") or {}).get("command", "") or "")
-    for rx, why in _DANGEROUS_BASH:
-        if rx.search(cmd):
-            print(f"HADI GUARD: Bash مرفوض ({why}): {cmd[:120]}")
-            return _deny(why)
+    why = bash_reason(cmd)
+    if why:
+        print(f"HADI GUARD: Bash مرفوض ({why}): {cmd[:120]}")
+        return _deny(why)
     return {}
 
 
@@ -423,6 +450,8 @@ async def _run_sdk(prompt: str, conv_key: str, timeout: int, on_progress=None, s
         raise
     except EngineError as error:
         msg = str(error)
+        if is_unavailable(msg):  # رصيد/تسجيل دخول — مفيش فايدة من retry
+            raise EngineUnavailable(msg) from error
         # جلسة قديمة/مفقودة → صفّرها وحاول مرة واحدة بجلسة جديدة
         if conv_key and _RESUME_ERR_RX.search(msg):
             print(f"HADI ENGINE: resume فشل — جلسة جديدة لـ {conv_key}")
@@ -430,12 +459,22 @@ async def _run_sdk(prompt: str, conv_key: str, timeout: int, on_progress=None, s
             return await _run_sdk_once(prompt, conv_key, timeout, on_progress, stats)
         if _is_transient(msg):
             print(f"HADI ENGINE: transient، محاولة تانية — {msg[-200:]}")
-            await asyncio.sleep(5)
+            await asyncio.sleep(_backoff(1))
             return await _run_sdk_once(prompt, conv_key, timeout, on_progress, stats)
         raise
 
 
 # --- مسار الـ CLI (القديم كما هو — زرار الرجوع) -----------------------------
+def _backoff(attempt: int, cap: float = 30.0) -> float:
+    """انتظار متزايد بـ jitter — بدل رقم ثابت (Google SRE).
+
+    الـ jitter مهم: من غيره كل الطلبات الفاشلة بتعيد المحاولة في نفس اللحظة
+    بالظبط وبتضرب الخدمة اللي لسه بتقوم (thundering herd).
+    """
+    import random
+    return min(2.0 ** attempt, cap) * (0.5 + random.random())
+
+
 def _is_transient(message: str) -> bool:
     m = (message or "").lower()
     return any(s in m for s in (
@@ -472,7 +511,7 @@ def _run_cli_sync(prompt: str, timeout: int) -> str:
         if not _is_transient(str(error)):
             raise
         print(f"HADI ENGINE: cli transient، محاولة تانية — {str(error)[-200:]}")
-        time.sleep(5)
+        time.sleep(_backoff(1))
         try:
             return _run_cli_once(prompt, min(timeout, 300))
         except subprocess.TimeoutExpired:
@@ -506,8 +545,16 @@ async def run_agent(prompt: str, conv_key: str = "", timeout: int = 900, on_prog
 
 
 async def run_oneshot(prompt: str, timeout: int = 300) -> str:
-    """مهمة خلفية بجلسة نظيفة (من غير resume) — زي الـ pending flush."""
-    return await run_agent(prompt, conv_key="", timeout=timeout)
+    """مهمة خلفية بجلسة نظيفة (من غير resume) — زي الـ pending flush.
+
+    بتاخد HEAVY_MAX_TURNS مش MAX_TURNS: تنفيذ طابور تذاكر معلقة محتاج أدوار
+    أكتر من رد محادثة عادي."""
+    global MAX_TURNS
+    saved, MAX_TURNS = MAX_TURNS, HEAVY_MAX_TURNS
+    try:
+        return await run_agent(prompt, conv_key="", timeout=timeout)
+    finally:
+        MAX_TURNS = saved
 
 
 async def run_clean_json(prompt: str, image_paths=None, timeout: int = 220, model: str = None) -> str:
@@ -522,7 +569,8 @@ async def run_clean_json(prompt: str, image_paths=None, timeout: int = 220, mode
         full = prompt + ("\n\nالصور المرفقة للتحليل (افتح كل ملف بأداة Read وحلل محتواه، "
                          "ورقم الرسالة في اسم الملف):\n" + "\n".join(paths))
     if not sdk_active():
-        return await ask_haiku(full, timeout=timeout, model=(model or "sonnet"), cwd="/tmp")
+        return await ask_haiku(full, timeout=timeout, model=(model or "sonnet"),
+                               cwd="/tmp", allow_tools=["Read"])
     options = ClaudeAgentOptions(
         model=(model or MODEL),
         env=_actor_env(),
@@ -558,15 +606,48 @@ async def run_clean_json(prompt: str, image_paths=None, timeout: int = 220, mode
             await asyncio.wait_for(_consume(), timeout=timeout)
     except Exception as error:  # timeout أو أي فشل SDK → fallback نصّي آمن
         print(f"HADI ENGINE: run_clean_json fallback ({type(error).__name__}: {str(error)[:150]})")
-        return await ask_haiku(full, timeout=min(timeout, 150), model=(model or "sonnet"), cwd="/tmp")
+        return await ask_haiku(full, timeout=min(timeout, 150),
+                               model=(model or "sonnet"), cwd="/tmp",
+                               allow_tools=["Read"])
     return "".join(parts).strip()
 
 
-async def ask_haiku(prompt: str, timeout: int = 30, model: str = None, cwd: str = None) -> str:
+async def ask_haiku(prompt: str, timeout: int = 30, model: str = None, cwd: str = None,
+                    allow_tools=False) -> str:
+    """نداء موديل نصّي بحت: نص داخل، نص خارج.
+
+    2026-07-26 — تقييد الأدوات: AGENT_ROLES.md بيوصف بوابة الحضور بـ «مفيش أدوات
+    خالص»، والكود كان بينده الـ CLI بالافتراضيات (كل الأدوات متاحة نظريًا) وفي
+    برومبته **نص رسالة مستخدم خام**. بقى مفروض في الأمر نفسه:
+        allow_tools=False        → --allowedTools "" + --permission-mode plan
+        allow_tools=["Read"]     → للـ vision fallback بتاع run_clean_json بس
+
+    لو نسخة الـ CLI مابتعرفش الفلاجز دي (رجوع لإصدار أقدم)، بنعيد المحاولة من
+    غيرها مرة واحدة — عشان تقييد الأمان مايسكّتش البوابة بالكامل في صمت.
+    """
     import asyncio
+    base = [CLAUDE_BIN, "-p", prompt, "--model",
+            (model or os.getenv("HAIKU_MODEL", "haiku"))]
+    tools = "" if not allow_tools else ",".join(allow_tools)
+    hardened = base + ["--allowedTools", tools, "--permission-mode", "plan"]
+
+    async def _run(cmd):
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, cwd=cwd, stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE)
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        return proc.returncode, (out or b"").decode("utf-8", "replace").strip(), \
+            (err or b"").decode("utf-8", "replace")[:300]
+
     try:
-        proc = await asyncio.create_subprocess_exec(CLAUDE_BIN, "-p", prompt, "--model", (model or os.getenv("HAIKU_MODEL","haiku")), cwd=cwd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-        out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-        return (out or b"").decode("utf-8","replace").strip()
+        code, out, err = await _run(hardened)
+        if out:
+            return out
+        if code != 0:
+            print(f"ASK_HAIKU: المحاولة المقيّدة فشلت (rc={code}: {err}) — "
+                  "إعادة من غير الفلاجز")
+            _, out, _ = await _run(base)
+            return out
+        return ""
     except Exception:
         return ""
