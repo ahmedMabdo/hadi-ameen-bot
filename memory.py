@@ -101,8 +101,9 @@ def cmd_add(args):
                                          args.section, source, trust)
         print(f"QUEUED [{pid}] قاعدة سلوك مستنية مراجعة بشرية — "
               "مادخلتش الذاكرة.\n"
-              "المراجعة: python3 memory.py pending  ثم  "
-              f"python3 memory.py approve --id {pid} --by \"اسمك\"")
+              f"  الموافقة (بني آدم على SSH): python3 memory.py approve --id {pid} --by \"اسمك\"\n"
+              f"  الرفض (هادي مسموح):        python3 memory.py reject --id {pid} --by \"آسر\"\n"
+              "  الخطوة الجاية لهادي: شاور آسر في الـ DM بـ notify.py وقوله الـ id ده.")
         return
 
     line = f"- [{_now()} — {author}] {args.text.strip()}{_meta_suffix(mtype, expires, source, trust)}\n"
@@ -230,6 +231,26 @@ def cmd_approve(args):
     _index_note(line, rec["section"])
 
 
+def cmd_reject(args):
+    """يشيل قاعدة سلوك من طابور المراجعة — **مسموح لهادي** (2026-07-26).
+
+    ليه approve محتاج بني آدم و reject لأ: الاتجاه الآمن. approve بيضيف قاعدة
+    بتغيّر سلوك هادي (خطر لو اتحقن)، أما reject بيمنع قاعدة من الدخول —
+    أسوأ نتيجة إن قاعدة شرعية مادخلتش، وده فشل آمن.
+
+    وكان مفيش مسار «رفض» أصلًا: drop_pending كان بيتنادى من approve بس، فأي
+    قاعدة آسر يرفضها كانت بتفضل في الطابور للأبد.
+    """
+    try:
+        rec = memory_guard.drop_pending(args.pid)
+    except memory_guard.GuardError as e:
+        sys.exit(str(e))
+    by = (args.by or "").strip() or "غير محدد"
+    print(f"REJECTED [{args.pid}] بقرار {by}: {rec['text']}")
+    if args.reason:
+        print(f"السبب: {args.reason}")
+
+
 def cmd_revoke(args):
     try:
         memory_guard.require_human("revoke")
@@ -287,6 +308,12 @@ def main():
     ap.add_argument("--by", required=True, help="مين اللي وافق")
     ap.set_defaults(func=cmd_approve)
 
+    rj = sub.add_parser("reject", help="ارفض قاعدة سلوك من الطابور (مسموح لهادي)")
+    rj.add_argument("--id", dest="pid", required=True)
+    rj.add_argument("--by", default="", help="مين اللي رفض")
+    rj.add_argument("--reason", default="", help="السبب")
+    rj.set_defaults(func=cmd_reject)
+
     rv = sub.add_parser("revoke", help="اسحب ملاحظة من الذاكرة (بني آدم بس)")
     rv.add_argument("--match", required=True, help="نص موجود في السطر")
     rv.add_argument("--by", default="", help="مين اللي سحبها")
@@ -302,6 +329,7 @@ def main():
     q.set_defaults(func=cmd_search)
 
     args = p.parse_args()
+    # reject مش في القايمة: الطابور ملف حالة محلي، مفيش commit ولا push
     _needs_push = args.cmd in ("add", "approve", "revoke")
     if args.cmd == "add":
         # بند 3.3: الكتابة (memory.md + git commit/push) بتتسلسل في طابور كتابة

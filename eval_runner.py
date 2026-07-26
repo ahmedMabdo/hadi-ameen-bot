@@ -323,7 +323,9 @@ def main():
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("list")
     r = sub.add_parser("run")
-    r.add_argument("--case"); r.add_argument("--category")
+    r.add_argument("--case", action="append",
+                   help="id حالة (يتكرر لأكتر من حالة)")
+    r.add_argument("--category")
     r.add_argument("--limit", type=int, default=0)
     r.add_argument("--concurrency", type=int, default=2)
     b = sub.add_parser("baseline")
@@ -355,7 +357,8 @@ def main():
 
     if args.cmd == "run":
         if args.case:
-            cases = [c for c in cases if c["id"] == args.case]
+            wanted = set(args.case)
+            cases = [c for c in cases if c["id"] in wanted]
         if args.category:
             cases = [c for c in cases if c.get("category") == args.category]
         if args.limit:
