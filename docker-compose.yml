@@ -1,0 +1,16 @@
+version: "3.9"
+
+services:
+  hadi-ameen-bot:
+    image: ghcr.io/assergameel-soul/hadi-ameen-bot:latest  # or your registry/image name
+    restart: unless-stopped
+    #env_file:
+    #  - .env  # use the same .env pattern already documented in the repo
+    # Or set env vars individually:
+     environment:
+       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID}
+       AZURE_DEVOPS_PAT: ${AZURE_DEVOPS_PAT}
+    # networks, volumes, etc., if needed
+
+# Optional: define networks/volumes here
