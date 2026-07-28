@@ -1,25 +1,23 @@
 requests
 claude-agent-sdk>=0.2.122
 
-# بوت الديسكورد نفسه — من غيرها discord_bot.py مابيستوردش أصلاً.
-# 2.5+ إلزامية: message_snapshots (الرسايل المحوّلة) وMessageReferenceType.
+# discord_bot.py — متماشٍ مع discord.py 2.5+
+# MessageReferenceType.message_snapshots (الرسائل المحذوفة)
 discord.py>=2.5.0
 
 # قراءة .env في discord_bot / hadi_engine / posthog_cli / daily_digests
 python-dotenv>=1.0.0
 
-# استخراج نص المرفقات (file_extract.py) — من غيرها الاستخراج بيفشل بصمت
-# وبيحقن رسالة الخطأ في البرومبت كأنها محتوى المستند.
+# استخراج نص المرفقات (file_extract.py)
+# يبحث في البوت عن محتوى المستند بدل رسالة الخطأ
 pypdf>=4.0.0
 python-docx>=1.1.0
 openpyxl>=3.1.0
 
-# كارت نتائج الأوتوميشن (discord_mars_results.py)
+# إنشاء تقارير PDF الخاصة بـ PostHog
 Pillow>=10.0.0
+weasyprint>=69.0
 
-# تفريغ صوت الفيديو محليًا — **اختياري ومش متثبت على السيرفر الحالي** (2026-07-26):
-# موديل small ~460MB والقرص كان 92%. الكود بيتدهور بهدوء لو المكتبة مش موجودة،
-# و CLAUDE.md مكتوب عليه إن الصوت مش متاح فهادي مايدّعيش إنه سمع.
-# للتفعيل: كبّر القرص الأول، ثم pip install "faster-whisper>=1.0.0"
-# (بيحتاج ffmpeg — وهو متثبت أصلًا لاستخراج الفريمات).
+# تقرير صوت الفيديو محليًا (اختياري)
+# يحتاج ffmpeg مثبتًا على السيرفر
 # faster-whisper>=1.0.0
