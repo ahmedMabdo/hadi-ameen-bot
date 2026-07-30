@@ -24,3 +24,22 @@ systemctl list-timers 'hadi-*'
   ```
 - تقرير الأوتوميشن 10:00 (hadi-mars-results.timer) قايم زي ما هو — مش هنا.
 - السجل: `logs/digests.jsonl` + `journalctl -u hadi-digest-*`
+
+## hadi-digest-product-weekly (Product Metrics Report — أسبوعي)
+
+تقرير مؤشرات المنتج الأسبوعي (`intel/weekly_product_metrics.py`). كل الأرقام تُحسب في
+بايثون من PostHog مباشرة؛ الـ LLM يكتب التقييم النوعي فقط (لا يحسب أرقامًا). يُسلَّم كـ
+DM لآسر عبر `discord_delivery`.
+
+الجدول: كل خميس 12:00 بتوقيت القاهرة.
+
+التفعيل على السيرفر (بعد تشغيل تجريبي ناجح):
+```
+sudo cp setup/systemd/hadi-digest-product-weekly.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now hadi-digest-product-weekly.timer
+```
+تشغيل تجريبي يدوي (من غير إرسال):
+```
+.venv/bin/python intel/weekly_product_metrics.py --dry-run
+```

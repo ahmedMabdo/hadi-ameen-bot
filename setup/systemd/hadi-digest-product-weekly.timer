@@ -1,0 +1,9 @@
+[Unit]
+Description=Timer: Product Metrics Report (Thu 12:00 Cairo)
+
+[Timer]
+OnCalendar=Thu *-*-* 12:00:00 Africa/Cairo
+Persistent=true
+
+[Install]
+WantedBy=timers.target

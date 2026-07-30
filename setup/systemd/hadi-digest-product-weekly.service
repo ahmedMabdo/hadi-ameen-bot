@@ -1,0 +1,11 @@
+[Unit]
+Description=Hadi weekly Product Metrics Report (live PostHog data, DM to Asser)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/hadi-ameen-bot
+EnvironmentFile=/home/ubuntu/hadi-ameen-bot/.env
+ExecStart=/home/ubuntu/hadi-ameen-bot/.venv/bin/python /home/ubuntu/hadi-ameen-bot/intel/weekly_product_metrics.py
