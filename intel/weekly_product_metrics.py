@@ -479,18 +479,19 @@ def render(d, a):
     return "".join(P)
 
 # ───────────────────────── delivery + CLI ─────────────────────────
-def deliver(pdf_path, day_label, dry_run=False):
+def deliver(pdf_path, day_label, dry_run=False, to=None):
     msg = f"تقرير مؤشرات المنتج الأسبوعي — {day_label} 📊 (Product Metrics Report)"
+    raw = to or os.environ.get("ASSER_USER_ID", "1378684355148386355")
+    recipients = [x.strip() for x in raw.split(",") if x.strip()]
     if dry_run:
-        print(f"[dry-run] would DM: {pdf_path} — {msg}")
+        print(f"[dry-run] would DM {recipients}: {pdf_path} — {msg}")
         return True
     try:
         sys.path.insert(0, str(Path(__file__).resolve().parent))          # intel/
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # repo root
         import discord_delivery
-        asser = os.environ.get("ASSER_USER_ID", "1378684355148386355").strip()
-        discord_delivery.send_report([pdf_path], message=msg, user_ids=[asser])
-        print(f"DISCORD: delivered to Asser DM ({asser}).")
+        discord_delivery.send_report([pdf_path], message=msg, user_ids=recipients)
+        print(f"DISCORD: delivered to {recipients}.")
         return True
     except Exception as e:
         print(f"DISCORD: delivery failed (non-fatal): {e}", file=sys.stderr)
@@ -503,6 +504,7 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="don't DM; just build")
     ap.add_argument("--no-discord", action="store_true", help="build but skip delivery")
     ap.add_argument("--no-llm", action="store_true", help="skip LLM; rule-based assessment only")
+    ap.add_argument("--to", help="Discord user id(s) to DM, comma-separated (default: ASSER_USER_ID)")
     args = ap.parse_args()
 
     end_day = args.date or (cairo_today() - dt.timedelta(days=1)).isoformat()
@@ -519,7 +521,7 @@ def main():
     print(f"  orders={data['week']['orders']} revenue={data['week']['revenue']:.0f} "
           f"dau={data['dau']} payfail={data['payfail']} errors={data['e_tot']}")
     if not args.no_discord:
-        deliver(out, f"{data['week_start']}–{data['week_end']}", dry_run=args.dry_run)
+        deliver(out, f"{data['week_start']}–{data['week_end']}", dry_run=args.dry_run, to=args.to)
 
 if __name__ == "__main__":
     main()
