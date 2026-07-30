@@ -926,7 +926,7 @@ def build_html(d):
 
 <div class="section">
   <div class="section-hdr"><span class="sec-num">02</span><span class="sec-title">مؤشرات صحة المنتج</span></div>
-  <div class="note"><strong>السياق:</strong> يوم العمل يُحسب من 8 صباحًا حتى 2 صباحًا اليوم التالي (نافذة 18 ساعة، توقيت القاهرة) — وليس اليوم التقويمي. كل المقارنات مقابل يوم العمل السابق ({dt.date.fromisoformat(prev).day} {AR_MONTHS[dt.date.fromisoformat(prev).month]}). الخط الأساسي للتحويل = متوسط 3 أيام عمل سابقة.</div>
+  <div class="note"><strong>السياق:</strong> يوم العمل يُحسب من 8 صباحًا حتى 4 صباحًا اليوم التالي (نافذة 20 ساعة، توقيت القاهرة) — وليس اليوم التقويمي. كل المقارنات مقابل يوم العمل السابق ({dt.date.fromisoformat(prev).day} {AR_MONTHS[dt.date.fromisoformat(prev).month]}). الخط الأساسي للتحويل = متوسط 3 أيام عمل سابقة.</div>
   <table class="kpi-grid">
     <tr>
       <td class="kc"><div class="kc-lbl">المستخدمون اليوميون (DAU)</div><div class="kc-val">{fmt(d["dau"])}</div>
@@ -1244,7 +1244,7 @@ def build_html_tech(d):
 <div class="section">
   <div class="section-hdr"><span class="sec-num">01</span><span class="sec-title">مؤشرات الجودة التقنية</span></div>
   <div class="verify-note">✓ <strong>كل الأرقام مسحوبة ومتحقَّق منها آليًا من PostHog عند التوليد ({gen_ar}).</strong></div>
-  <div class="note"><strong>السياق:</strong> يوم العمل من 8 صباحًا حتى 2 صباحًا اليوم التالي (نافذة 18 ساعة، توقيت القاهرة). كل المقارنات مقابل يوم العمل السابق ({dt.date.fromisoformat(prev).day} {AR_MONTHS[dt.date.fromisoformat(prev).month]}).</div>
+  <div class="note"><strong>السياق:</strong> يوم العمل من 8 صباحًا حتى 4 صباحًا اليوم التالي (نافذة 20 ساعة، توقيت القاهرة). كل المقارنات مقابل يوم العمل السابق ({dt.date.fromisoformat(prev).day} {AR_MONTHS[dt.date.fromisoformat(prev).month]}).</div>
   <table class="kpi-grid">
     <tr>
       <td class="kc"><div class="kc-lbl">المستخدمون اليوميون (DAU)</div><div class="kc-val">{fmt(d["dau"])}</div>
@@ -1523,7 +1523,13 @@ def main():
     ap.add_argument("--ado-dry-run", action="store_true",
                     help="with --push-ado: print what would be created without calling ADO")
     ap.add_argument("--ado-max", type=int, default=5,
-                    help="max number of flagged sessions to file as ADO tickets per run (default 5)")
+                    help="size of the candidate pool of flagged sessions fetched for ADO "
+                         "(default 5). Only --ado-file-limit of these are actually filed; the "
+                         "rest are fallbacks if a higher-ranked one is a false positive.")
+    ap.add_argument("--ado-file-limit", type=int, default=1,
+                    help="max tickets ACTUALLY filed on the Support board per run (default 1). "
+                         "The single worst GENUINE session is filed; if it is classified a false "
+                         "positive, the next genuine candidate is used instead. Report still shows top-5.")
     ap.add_argument("--no-discord", action="store_true",
                     help="skip sending the generated PDF(s) as a Discord DM")
     args = ap.parse_args()
@@ -1578,7 +1584,8 @@ def main():
                 print(f"  {s['sid']}: fetched, success={outcome.get('success')} — "
                       f"{str(outcome.get('description'))[:90]}")
         print("==============================================================\n")
-        ado_client.push_sessions(ado_sessions, day, dry_run=args.ado_dry_run)
+        ado_client.push_sessions(ado_sessions, day, dry_run=args.ado_dry_run,
+                                  max_created=args.ado_file_limit)
 
     if not args.no_discord:
         # Best-effort: delivery failure here must never fail the routine run —

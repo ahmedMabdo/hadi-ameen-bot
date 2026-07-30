@@ -350,14 +350,35 @@ def create_ticket(s, day, headers, dry_run=False, index=0):
     return "created"
 
 
-def push_sessions(sessions, day, dry_run=False):
+def push_sessions(sessions, day, dry_run=False, max_created=None):
+    """File the day's flagged sessions as Support-board tickets.
+
+    `max_created` caps how many tickets are ACTUALLY created this run (None = no
+    cap, the historical behaviour). Sessions arrive most-critical first; we walk
+    them in order and stop once `max_created` genuine tickets have been filed.
+    Crucially, SKIPS (already-filed) and false-positives (AI summary shows the
+    session actually succeeded) do NOT count against the cap — so with
+    max_created=1 we file the single worst GENUINE session, falling through to
+    the next candidate whenever a higher-ranked one turns out to be a false
+    positive. (dry-run counts as a fill so the simulation stops at the same point.)
+    """
     headers = _auth_headers()
     print(f"\n================ ADO PUSH ({'DRY-RUN' if dry_run else 'LIVE'}) ================")
+    if max_created is not None:
+        print(f"  file limit: {max_created} ticket(s) this run "
+              f"(candidate pool: {len(sessions)}) — false positives fall through to the next.")
     tally = {}
+    created = 0
     # sessions arrive most-critical first; index keeps that order at the top of New.
     for index, s in enumerate(sessions):
+        if max_created is not None and created >= max_created:
+            print(f"  STOP: {created} ticket(s) filed (limit {max_created}); "
+                  f"skipping remaining {len(sessions) - index} candidate(s).")
+            break
         result = create_ticket(s, day, headers, dry_run=dry_run, index=index)
         tally[result] = tally.get(result, 0) + 1
+        if result in ("created", "dry-run"):
+            created += 1
     print(f"ADO push done: {tally}")
     print("====================================================================\n")
     return tally
