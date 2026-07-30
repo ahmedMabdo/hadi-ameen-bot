@@ -54,6 +54,7 @@ EV = dict(
     voucher="voucher_applied", reorder="reorder_initiated", search_no="search_no_results",
     support="customer_service", cancel="Cancel_Unpaid_Online_Order",
     rating="rate_order_event", install="Application Installed", account="account_created",
+    checkout="checkout_started", payfail="payment_failed",
 )
 FUNNEL_EVENTS = (EV["product"], EV["cart"], EV["order"])   # used for junk detection
 # App-lifecycle events that fire without any real user interaction. A user whose
@@ -173,6 +174,19 @@ def payment_breakdown(day):
             aov_txt = f"{int(round(sum(aovs)/len(aovs)))} ج" if aovs else "—"
         out.append(dict(label=labels[k], count=cnt, pct=f"{cnt/total*100:.1f}%", aov=aov_txt))
     return out, total
+
+def payment_fail_breakdown(day):
+    """payment_failed grouped by method + reason (both verified present on the
+    event, 2026-07). Defensive: returns [] on any error so the report never
+    fails just because this optional breakdown is unavailable."""
+    try:
+        rows = hogql(f"""SELECT properties.payment_method, properties.failure_reason, count()
+            FROM events WHERE event='{EV['payfail']}' AND {D(day)}
+            GROUP BY properties.payment_method, properties.failure_reason
+            ORDER BY count() DESC LIMIT 10""")
+        return [((m or '—'), (r or '—'), int(c)) for m, r, c in rows]
+    except Exception:
+        return []
 
 def conversion_series(days):
     out = {}
@@ -713,9 +727,12 @@ def build_html(d):
         actions.append(('p0', 'فحص DNS وCDN لـ ids.8orders.com وإضافة fallback',
             f'{fmt(d["dns"])} فشل اتصال عبر عدة شاشات. خدمة الهوية غير متاحة قد تسبب فشلًا صامتًا في تسجيل الدخول وإتمام الطلب.',
             '<span class="tag t-bk">Backend</span>'))
-    actions.append(('p0', 'إضافة حدثَي checkout_started و payment_failed',
-        'التحويل من السلة لا يمكن تشخيصه بدون checkout_started. فشل الدفع نقطة عمياء تامة حاليًا.',
-        '<span class="tag t-mob">Mobile</span><span class="tag t-dt">Data</span>'))
+    _missing_ev = ([] if d["has_checkout"] else ["checkout_started"]) + \
+                  ([] if d["has_payfail"] else ["payment_failed"])
+    if _missing_ev:
+        actions.append(('p0', 'إضافة حدثَي ' + ' و'.join(_missing_ev),
+            'التحويل من السلة لا يمكن تشخيصه بدون checkout_started. فشل الدفع نقطة عمياء تامة حاليًا.',
+            '<span class="tag t-mob">Mobile</span><span class="tag t-dt">Data</span>'))
     if err_total and top_scr_c / err_total > 0.35:
         actions.append(('p1', f'إصلاح الأخطاء في {top_scr}',
             f'{fmt(top_scr_c)} خطأ/يوم = {top_scr_c/err_total*100:.0f}% من كل الأخطاء. يغمر PostHog ويخفي المشاكل الحقيقية.',
@@ -810,7 +827,7 @@ def build_html(d):
         <tr class="cr"><td><strong>طلبات مفقودة/يوم</strong></td><td class="n down"><strong>~{d["lost_orders"]}</strong></td></tr>
         <tr class="cr"><td><strong>خسارة (× AOV {fmt(rev["aov"])})</strong></td><td class="n down"><strong>~{fmt(d["lost_rev"])} ج/يوم</strong></td></tr>
       </tbody></table>
-      <div style="font-size:7.5pt; color:#991b1b; margin-top:6px;">لا يوجد checkout_started ← لا يمكن تحديد نقطة التسرب بدقة.</div></div>'''
+      {d["funnel_note"]}</div>'''
     else:
         _conv_word = "ارتفع" if conv_drop < -0.5 else "ظل مستقرًا"
         loss_box = f'''<div class="box" style="background:#f0fdf4; border-color:rgba(22,163,74,0.3);">
@@ -876,7 +893,7 @@ def build_html(d):
       {_top_err_line}
     </div></td>
   </tr></table>
-  <div class="data-note">مقاسة آليًا من PostHog (بدون GeoIP). أعمق خطوة شراء متتبَّعة بثقة هي add_to_cart (لا يوجد checkout_started). «لم يطلب قَط» محسوب على order_placed وPurchase معًا. لقياس التغطية مباشرةً: على التطبيق إرسال المنطقة/المدينة المختارة كخاصية على account_created وaddress_created.</div>
+  <div class="data-note">مقاسة آليًا من PostHog (بدون GeoIP). أعمق خطوة شراء متتبَّعة بثقة هي {d["deepest_step_label"]}. «لم يطلب قَط» محسوب على order_placed وPurchase معًا. لقياس التغطية مباشرةً: على التطبيق إرسال المنطقة/المدينة المختارة كخاصية على account_created وaddress_created.</div>
 </div>
 '''
 
@@ -991,7 +1008,7 @@ def build_html(d):
     <td style="width:52%;"><div class="box-t">توزيع طرق الدفع · {ar_date} ({fmt(d["pay_total"])} طلب)</div>
       <table class="dt"><thead><tr><th>طريقة الدفع</th><th class="n">الطلبات</th><th class="n">النسبة</th><th class="n">متوسط الطلب</th></tr></thead>
       <tbody>{pay_rows}</tbody></table>
-      <div style="margin-top:7px; font-size:7.5pt; color:#334155; line-height:1.6;">⚠ لا يوجد حدث payment_failed ← فشل الدفع نقطة عمياء داخل PostHog (التوزيع أعلاه للطلبات الناجحة فقط).</div>
+      {d["pay_fail_div"]}
       <div style="margin-top:6px; background:#eff6ff; border:1px solid rgba(37,99,235,0.25); border-radius:6px; padding:7px 9px; font-size:7.5pt; color:#1e3a8a; line-height:1.65;">{PAYMENT_CONTEXT_NOTE}</div></td>
   </tr></table>
 </div>
@@ -1034,9 +1051,9 @@ def build_html(d):
 <div class="section avoid">
   <div class="section-hdr"><span class="sec-num">10</span><span class="sec-title">ثغرات البيانات والتتبع</span></div>
   <div class="data-note" style="margin-top:0; margin-bottom:10px;">✓ <strong>متاح فعليًا:</strong> الإيرادات (total_amount)، طريقة الدفع، رسوم التوصيل، الخصم، إصدار التطبيق — خصائص على order_placed. لذلك الإيرادات والـAOV مقاسة بدقة.</div>
-  <div class="gap"><div class="gap-title"><span class="p0-t">P0</span> &nbsp; checkout_started غير مسجَّل</div><div class="gap-body">لا يمكن تحديد نقطة تسرب التحويل. أضف: cart_value، delivery_fee، vertical، city.</div></div>
+  {d["gap_checkout_biz"]}
   <div class="gap"><div class="gap-title"><span class="p1-t">P1</span> &nbsp; منطقة التوصيل غير مُرسَلة كخاصية</div><div class="gap-body">التغطية تُقاس حاليًا تقديريًا بالـGeoIP. أضف area_id/area_name وwithin_coverage على account_created وSelect Area وaddress_created لقياسها مباشرةً.</div></div>
-  <div class="gap"><div class="gap-title"><span class="p0-t">P0</span> &nbsp; payment_failed غير مسجَّل</div><div class="gap-body">لا معدل فشل حسب طريقة الدفع. أضف: payment_method، failure_reason، error_code.</div></div>
+  {d["gap_payfail_biz"]}
   <div class="gap"><div class="gap-title"><span class="p1-t">P1</span> &nbsp; المدينة/المنطقة غير موجودة على order_placed</div><div class="gap-body">store_id فارغ غالبًا ولا city/zone. أضف: city، zone_id، store_id.</div></div>
   <div class="gap"><div class="gap-title"><span class="p1-t">P1</span> &nbsp; سبب الإلغاء وكلمة البحث غير مسجَّلين</div><div class="gap-body">أضف reason على الإلغاء، وsearch_query وresult_count على البحث.</div></div>
   <div class="gap"><div class="gap-title"><span class="p1-t">P1</span> &nbsp; النقرات الغاضبة (Rage) تُلتقَط على iOS فقط</div><div class="gap-body">أندرويد يُصدِّر صفر rageclick، فترتيب "الجلسات الأكثر احتكاكًا" منحاز هيكليًا لـiOS (لا يعني أن iOS أسوأ). فعِّل التقاط rageclick على أندرويد، وأرسِل اسم الشاشة/العنصر مع الحدث (حاليًا screen=Flutter بلا تفاصيل).</div></div>
@@ -1199,7 +1216,7 @@ def build_html_tech(d):
     <td style="width:42%;"><div class="box-t">أكثر الشاشات تعثّرًا</div>
       <table class="dt"><thead><tr><th>الشاشة</th><th class="n">عدد</th></tr></thead><tbody>{_scr_rows}</tbody></table></td>
   </tr></table>
-  <div class="data-note" style="margin-top:10px;">العيّنة = مستخدمو هذا اليوم الذين سجّلوا add_to_cart بلا order_placed. أعمق خطوة شراء متتبَّعة هي add_to_cart (لا يوجد checkout_started).</div>
+  <div class="data-note" style="margin-top:10px;">العيّنة = مستخدمو هذا اليوم الذين سجّلوا add_to_cart بلا order_placed. أعمق خطوة شراء متتبَّعة هي {d["deepest_step_label"]}.</div>
 </div>
 '''
 
@@ -1306,8 +1323,8 @@ def build_html_tech(d):
 {code_noise_section}
 <div class="section avoid">
   <div class="section-hdr"><span class="sec-num">08</span><span class="sec-title">ثغرات التتبع التقنية</span></div>
-  <div class="gap"><div class="gap-title"><span class="p0-t">P0</span> &nbsp; checkout_started غير مسجَّل</div><div class="gap-body">لا يمكن تتبّع خطوات الـCheckout تقنيًا. أضف الحدث مع cart_value، delivery_fee، vertical.</div></div>
-  <div class="gap"><div class="gap-title"><span class="p0-t">P0</span> &nbsp; payment_failed غير مسجَّل</div><div class="gap-body">لا يمكن رصد فشل الدفع تقنيًا. أضف: payment_method، failure_reason، error_code.</div></div>
+  {d["gap_checkout_tech"]}
+  {d["gap_payfail_tech"]}
   <div class="gap"><div class="gap-title"><span class="p1-t">P1</span> &nbsp; منطقة التوصيل غير مُرسَلة كخاصية</div><div class="gap-body">أضف area_id/area_name وwithin_coverage على account_created وSelect Area وaddress_created لقياس التغطية مباشرةً بدل تقدير الـGeoIP.</div></div>
   <div class="gap"><div class="gap-title"><span class="p1-t">P1</span> &nbsp; المدينة/المنطقة غير موجودة على order_placed</div><div class="gap-body">store_id فارغ غالبًا ولا city/zone. أضف: city، zone_id، store_id.</div></div>
   <div class="gap"><div class="gap-title"><span class="p1-t">P1</span> &nbsp; سبب الإلغاء وكلمة البحث غير مسجَّلين</div><div class="gap-body">أضف reason على الإلغاء، وsearch_query وresult_count على البحث.</div></div>
@@ -1332,7 +1349,7 @@ def t_dau_cart(d):
 # "Purchase" to "order_placed" around 2026-06-15. "order_placed" is the current
 # source of truth for orders; for a correct *lifetime* "has this person ever
 # ordered" signal we must consider BOTH events (Purchase carries the older
-# history). checkout_started is still not instrumented, so the deepest reliably
+# history). checkout_started is now instrumented (2026-07) and used in section 03;
 # tracked purchase-intent step is add_to_cart.
 def _ever_ordered_subq(end_ts):
     return (f"(SELECT person_id FROM events WHERE event IN ('order_placed','Purchase') "
@@ -1442,6 +1459,63 @@ def collect(day):
     prev_dau_all, prev_dau_real = dau(prev)
     sessions = featured_sessions(day)
 
+    # ── checkout_started / payment_failed: data-driven (shipped 2026-07). The
+    # report must reflect what the data actually shows, never a static claim. ──
+    checkout = ec.get(EV["checkout"], 0); prev_checkout = pc.get(EV["checkout"], 0)
+    payfail = ec.get(EV["payfail"], 0); prev_payfail = pc.get(EV["payfail"], 0)
+    has_checkout = checkout > 0; has_payfail = payfail > 0
+    cart_ev = ec.get(EV["cart"], 0); orders_n = rev["orders"]
+
+    if has_checkout and cart_ev:
+        c2co = checkout / cart_ev * 100
+        co2o = (orders_n / checkout * 100) if checkout else 0.0
+        leak = ("checkout ← الطلب (احتكاك في إتمام الدفع/الطلب)"
+                if co2o < c2co else "السلة ← checkout (لم يبدأوا الدفع)")
+        funnel_note = (f'<div style="font-size:7.5pt; color:#065f46; margin-top:6px;">'
+                       f'✓ القمع اليوم (أحداث): سلة {fmt(cart_ev)} ← checkout_started {fmt(checkout)} '
+                       f'({c2co:.0f}%) ← طلب {fmt(orders_n)} ({co2o:.0f}% من الـcheckout). '
+                       f'أكبر تسرب: {leak}.</div>')
+    else:
+        funnel_note = ('<div style="font-size:7.5pt; color:#991b1b; margin-top:6px;">'
+                       'لا يوجد checkout_started ← لا يمكن تحديد نقطة التسرب بدقة.</div>')
+
+    if has_payfail:
+        denom = orders_n + payfail
+        fail_rate = (payfail / denom * 100) if denom else 0.0
+        br = payment_fail_breakdown(day)
+        br_txt = "، ".join(f"{m}: {c}" for m, r, c in br[:4]) if br else ""
+        pay_fail_div = (f'<div style="margin-top:7px; font-size:7.5pt; color:#991b1b; line-height:1.6;">'
+                        f'⚠ فشل الدفع (payment_failed): <strong>{fmt(payfail)}</strong> محاولة فاشلة = '
+                        f'<strong>{fail_rate:.1f}%</strong> من محاولات الدفع (نجاح+فشل)'
+                        + (f' · الأعلى: {br_txt}' if br_txt else '') + '.</div>')
+    else:
+        pay_fail_div = ('<div style="margin-top:7px; font-size:7.5pt; color:#334155; line-height:1.6;">'
+                        '⚠ لا يوجد حدث payment_failed ← فشل الدفع نقطة عمياء داخل PostHog '
+                        '(التوزيع أعلاه للطلبات الناجحة فقط).</div>')
+
+    _done_pill = ('<span style="background:#16a34a;color:#fff;font-size:6.5pt;font-weight:800;'
+                  'padding:1px 6px;border-radius:20px;">تم</span>')
+    def _gap(pill, title, body):
+        return (f'<div class="gap"><div class="gap-title">{pill} &nbsp; {title}</div>'
+                f'<div class="gap-body">{body}</div></div>')
+    def _done(title, body):
+        return (f'<div class="gap" style="border-right-color:#16a34a;background:#f0fdf4;">'
+                f'<div class="gap-title">{_done_pill} &nbsp; {title}</div>'
+                f'<div class="gap-body">{body}</div></div>')
+    gap_checkout_biz = (_done("checkout_started مُفعّل", "أصبح متاحًا ويُستخدم في تحليل القمع (قسم 03).")
+        if has_checkout else _gap('<span class="p0-t">P0</span>', 'checkout_started غير مسجَّل',
+            'لا يمكن تحديد نقطة تسرب التحويل. أضف: cart_value، delivery_fee، vertical، city.'))
+    gap_payfail_biz = (_done("payment_failed مُفعّل", "أصبح متاحًا ويُقاس معدّل الفشل حسب طريقة الدفع (قسم 04).")
+        if has_payfail else _gap('<span class="p0-t">P0</span>', 'payment_failed غير مسجَّل',
+            'لا معدل فشل حسب طريقة الدفع. أضف: payment_method، failure_reason، error_code.'))
+    gap_checkout_tech = (_done("checkout_started مُفعّل", "يُستخدم الآن في تتبّع خطوات الـCheckout.")
+        if has_checkout else _gap('<span class="p0-t">P0</span>', 'checkout_started غير مسجَّل',
+            'لا يمكن تتبّع خطوات الـCheckout تقنيًا. أضف الحدث مع cart_value، delivery_fee، vertical.'))
+    gap_payfail_tech = (_done("payment_failed مُفعّل", "يُرصد الآن فشل الدفع حسب الطريقة والسبب.")
+        if has_payfail else _gap('<span class="p0-t">P0</span>', 'payment_failed غير مسجَّل',
+            'لا يمكن رصد فشل الدفع تقنيًا. أضف: payment_method، failure_reason، error_code.'))
+    deepest_step_label = 'checkout_started' if has_checkout else 'add_to_cart (لا يوجد checkout_started)'
+
     conv_today = series[day]["conv"]
     conv_base = sum(series[b]["conv"] for b in base_days) / len(base_days)
     cart_today = series[day]["cart"]
@@ -1471,6 +1545,12 @@ def collect(day):
         sessions=sessions, session=(sessions[0] if sessions else None),
         acq=acquisition(day), coverage=coverage(day), cart_problems=cart_problems(day),
         code_noise=code_noise(day),
+        checkout=checkout, prev_checkout=prev_checkout, has_checkout=has_checkout,
+        payfail=payfail, prev_payfail=prev_payfail, has_payfail=has_payfail,
+        funnel_note=funnel_note, pay_fail_div=pay_fail_div,
+        gap_checkout_biz=gap_checkout_biz, gap_payfail_biz=gap_payfail_biz,
+        gap_checkout_tech=gap_checkout_tech, gap_payfail_tech=gap_payfail_tech,
+        deepest_step_label=deepest_step_label,
     )
 
 def sanity_print(d):
