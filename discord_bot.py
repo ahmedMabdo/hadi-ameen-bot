@@ -1364,6 +1364,11 @@ async def on_message(message: discord.Message):
         ):
             return
 
+        # أي رسالة في القناة المصرح بها تجدّد الـ TTL — هادي ممكن يكون مراقب
+        # بصمت (ambient) ومحتاج جلسته تفضل حية حتى لو ما ردّش.
+        _ch_key = f"ch:{message.channel.id}"
+        hadi_engine.touch_session(_ch_key)
+
         mentioned = client.user in message.mentions
         named = NAME_TRIGGER and is_addressed_to_hadi(message.clean_content)
         replying_to_hadi = bool(

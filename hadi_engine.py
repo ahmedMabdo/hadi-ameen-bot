@@ -277,6 +277,26 @@ def reset_session(conv_key: str) -> None:
             print("HADI ENGINE WARN: قفل sessions.json مشغول — الجلسة مااتصفرتش")
 
 
+def touch_session(conv_key: str) -> None:
+    """يجدّد الـ TTL بناءً على أي نشاط في القناة (مش رد هادي بس).
+    السبب: هادي ممكن يكون صاحي ومراقب المحادثة من غير ما يرد،
+    وما يلزمش الجلسة تنتهي طالما في حركة في القناة.
+    بيحدّث ts بس — الـ session_id والـ last_msg_id مش بيتلمسوا.
+    """
+    if not conv_key:
+        return
+    with _sessions_mutex:
+        try:
+            with state_lock.write_lock("hadi-sessions", timeout=5):
+                data = _load_sessions()
+                entry = data.get(conv_key)
+                if entry and "session_id" in entry:
+                    entry["ts"] = time.time()
+                    _save_sessions(data)
+        except TimeoutError:
+            pass  # فقدان تجديد TTL مش كارثة
+
+
 # --- سجل الاستخدام (بند 3.1/F5) ----------------------------------------
 def _log_usage(conv_key: str, resumed, final: dict) -> None:
     """سطر JSONL لكل تفاعل: توكنز الكاش والتكلفة والزمن — الأساس الرقمي لأي قرار.
