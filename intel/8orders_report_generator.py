@@ -80,6 +80,12 @@ PAYMENT_CONTEXT_NOTE = (
 )
 
 # ───────────────────────── PostHog query helper ─────────────────────────
+_RETRYABLE_SQL_ERRORS = ("max execution time", "too busy", "try again later", "timeout", "503", "504")
+
+def _is_retryable_sql(msg):
+    m = (msg or "").lower()
+    return any(t in m for t in _RETRYABLE_SQL_ERRORS)
+
 def hogql(q, retries=3):
     """2026-07-26: اتضاف backoff بـ jitter. كانت 3 محاولات **فورية** ورا بعض
     من غير أي انتظار — يعني وقت الـ rate limit بنضرب الخدمة 3 مرات في نفس
@@ -89,14 +95,21 @@ def hogql(q, retries=3):
     for i in range(retries):
         try:
             r = requests.post(f"{API}/query/", headers=HEADERS,
-                              json={"query": {"kind": "HogQLQuery", "query": q}}, timeout=90)
+                              json={"query": {"kind": "HogQLQuery", "query": q}}, timeout=240)
             if r.status_code == 200:
                 return r.json().get("results", [])
             last = f"HTTP {r.status_code}: {r.text[:200]}"
+            # A malformed query fails identically on every attempt — retrying it
+            # just burns 3x the time. Only capacity/time errors deserve a retry.
+            if 400 <= r.status_code < 500 and not _is_retryable_sql(last):
+                break
         except Exception as e:
             last = str(e)
         if i < retries - 1:
-            _t.sleep(min(2.0 ** (i + 1), 30.0) * (0.5 + random.random()))
+            # capacity errors need a longer breather than a transient network blip
+            cap = 90.0 if _is_retryable_sql(last) else 30.0
+            _t.sleep(min(2.0 ** (i + 1) * (3.0 if _is_retryable_sql(last) else 1.0), cap)
+                     * (0.5 + random.random()))
     raise RuntimeError(f"HogQL failed after {retries} tries: {last}\nQuery: {q[:200]}")
 
 def D(day):
@@ -1351,6 +1364,36 @@ def t_dau_cart(d):
 # ordered" signal we must consider BOTH events (Purchase carries the older
 # history). checkout_started is now instrumented (2026-07) and used in section 03;
 # tracked purchase-intent step is add_to_cart.
+# ─────────── fast person-set helpers (single pass, no nested re-scans) ───────────
+# PostHog rejects `person_id IN (SELECT ... FROM events ...)` once volume grows:
+# each subquery re-scans the whole events table, so a query carrying three of them
+# costs four full scans and trips the max-execution-time limit. One GROUP BY
+# person_id pass produces the same person flags, and callers filter on a cheap
+# literal IN list (or plain Python set math for lifetime comparisons).
+MAX_INLINE_PERSONS = 20000
+
+def _flag(event_expr):
+    """Per-person boolean: did this person emit an event matching `event_expr`?"""
+    return f"maxIf(1, {event_expr})"
+
+def _person_set(pred, having="1=1"):
+    """One scan -> list of person_ids inside `pred` satisfying `having`."""
+    rows = hogql(f"SELECT person_id FROM events WHERE {pred} "
+                 f"GROUP BY person_id HAVING {having}")
+    return [str(r[0]) for r in rows if r and r[0]]
+
+def _in_list(ids, fallback_sql=None):
+    """Literal `person_id IN (...)`. An empty set yields a never-true predicate so
+    the caller's query stays valid and honestly returns zero rather than raising."""
+    if not ids:
+        return "1=0"
+    if len(ids) <= MAX_INLINE_PERSONS:
+        quoted = ",".join("'" + str(i).replace("'", "") + "'" for i in ids)
+        return f"person_id IN ({quoted})"
+    if fallback_sql:
+        return fallback_sql
+    raise RuntimeError(f"person set too large to inline ({len(ids)}) and no fallback given")
+
 def _ever_ordered_subq(end_ts):
     return (f"(SELECT person_id FROM events WHERE event IN ('order_placed','Purchase') "
             f"AND timestamp < '{end_ts}')")
@@ -1361,35 +1404,44 @@ def _scalar(q):
 
 def acquisition(day):
     """New-user funnel + non-conversion counts for the business `day`.
-    - cart_no       : reached add_to_cart but placed NO order that day (tried to order, didn't).
-    - new_browse_no : users who NEVER ordered (lifetime) who browsed but didn't order that day.
-    - new_cart_no   : subset of the above that reached add_to_cart (highest-intent lost new users).
-    - acc_*         : same-day activation of accounts created that day."""
+    - cart_no       : reached add_to_cart but placed NO order that day.
+    - new_browse_no : users who NEVER ordered (lifetime) who browsed but didn't order.
+    - new_cart_no   : subset of the above that reached add_to_cart.
+    - acc_*         : same-day activation of accounts created that day.
+
+    One aggregation pass covers every same-day flag. The lifetime "ever ordered"
+    comparison is done as Python set arithmetic so no nested subquery is needed."""
     end = f"{(dt.date.fromisoformat(day) + dt.timedelta(days=1)).isoformat()} {BIZ_END}"
-    ever = _ever_ordered_subq(end)
-    base = hogql(f"""SELECT
-        uniqIf(person_id, event IN ('product_viewed','store_opened','add_to_cart')),
-        uniqIf(person_id, event='add_to_cart'),
-        uniqIf(person_id, event='order_placed')
-        FROM events WHERE {D(day)}""")[0]
-    browsers, cart, ordered = (int(x or 0) for x in base)
-    cart_no = _scalar(f"""SELECT uniq(person_id) FROM events WHERE {D(day)} AND event='add_to_cart'
-        AND person_id NOT IN (SELECT person_id FROM events WHERE {D(day)} AND event='order_placed')""")
-    new_browse_no = _scalar(f"""SELECT uniq(person_id) FROM events WHERE {D(day)}
-        AND event IN ('product_viewed','store_opened','add_to_cart') AND person_id NOT IN {ever}""")
-    new_cart_no = _scalar(f"""SELECT uniq(person_id) FROM events WHERE {D(day)} AND event='add_to_cart'
-        AND person_id NOT IN {ever}""")
-    act = hogql(f"""WITH reg AS (SELECT DISTINCT person_id FROM events WHERE {D(day)} AND event='account_created')
-        SELECT (SELECT count() FROM reg),
-          uniqIf(person_id, event IN ('product_viewed','store_opened','add_to_cart')),
-          uniqIf(person_id, event='add_to_cart'),
-          uniqIf(person_id, event='order_placed'),
-          uniqIf(person_id, event='address_created')
-        FROM events WHERE {D(day)} AND person_id IN (SELECT person_id FROM reg)""")[0]
-    acc, a_browse, a_cart, a_order, a_addr = (int(x or 0) for x in act)
+    P = D(day)
+    row = hogql(f"""SELECT
+        countIf(f_browse=1), countIf(f_cart=1), countIf(f_order=1),
+        countIf(f_cart=1 AND f_order=0),
+        countIf(f_acc=1), countIf(f_acc=1 AND f_browse=1),
+        countIf(f_acc=1 AND f_cart=1), countIf(f_acc=1 AND f_order=1),
+        countIf(f_acc=1 AND f_addr=1)
+      FROM (SELECT person_id,
+              {_flag("event IN ('product_viewed','store_opened','add_to_cart')")} AS f_browse,
+              {_flag("event='add_to_cart'")} AS f_cart,
+              {_flag("event='order_placed'")} AS f_order,
+              {_flag("event='account_created'")} AS f_acc,
+              {_flag("event='address_created'")} AS f_addr
+            FROM events WHERE {P} GROUP BY person_id)""")[0]
+    (browsers, cart, ordered, cart_no,
+     acc, a_browse, a_cart, a_order, a_addr) = (int(x or 0) for x in row)
+
+    # lifetime buyers (both the legacy "Purchase" and current "order_placed"),
+    # fetched once as a set instead of being re-scanned inside every query
+    ever = set(_person_set(f"event IN ('order_placed','Purchase') AND timestamp < '{end}'"))
+    _browse_ev = "event IN ('product_viewed','store_opened','add_to_cart')"
+    day_browsers = set(_person_set(P, _flag(_browse_ev) + "=1"))
+    day_carts = set(_person_set(P, _flag("event='add_to_cart'") + "=1"))
+    new_browse_no = len(day_browsers - ever)
+    new_cart_no = len(day_carts - ever)
+
     return dict(browsers=browsers, cart=cart, ordered=ordered, cart_no=cart_no,
                 new_browse_no=new_browse_no, new_cart_no=new_cart_no,
-                acc=acc, acc_browse=a_browse, acc_cart=a_cart, acc_order=a_order, acc_addr=a_addr)
+                acc=acc, acc_browse=a_browse, acc_cart=a_cart, acc_order=a_order,
+                acc_addr=a_addr)
 
 def coverage(day, days=7):
     """Delivery-coverage proxy over a trailing `days` window, WITHOUT GeoIP.
@@ -1399,50 +1451,61 @@ def coverage(day, days=7):
     Since the app does not send the selected delivery area as an event property,
     we use a behavioural proxy: a new user who creates a delivery address but
     never sees a store (no store_opened / add_to_cart) is very likely OUTSIDE the
-    delivery footprint (the store list came back empty for their address)."""
+    delivery footprint (the store list came back empty for their address).
+
+    All nine figures now come from ONE aggregation pass. The previous version ran
+    three queries carrying ten nested subqueries between them, which is what
+    exceeded PostHog's execution limit once live traffic resumed."""
     start = (dt.date.fromisoformat(day) - dt.timedelta(days=days - 1)).isoformat()
     nxt = (dt.date.fromisoformat(day) + dt.timedelta(days=1)).isoformat()
     # Project tz is Africa/Cairo: express the trailing window in Cairo wall-clock
     # (start 08:00 of the first day -> 04:00 after the last business day).
     w = f"timestamp >= '{start} {BIZ_START}' AND timestamp < '{nxt} {BIZ_END}'"
-    inst = hogql(f"""WITH inst AS (SELECT DISTINCT person_id FROM events WHERE {w} AND event='{EV['install']}')
-        SELECT (SELECT count() FROM inst),
-          uniqIf(person_id, event='account_created'),
-          uniqIf(person_id, event IN ('store_opened','add_to_cart')),
-          uniqIf(person_id, event='order_placed')
-        FROM events WHERE {w} AND person_id IN (SELECT person_id FROM inst)""")[0]
-    installed, i_reg, i_saw, i_ord = (int(x or 0) for x in inst)
-    acc = hogql(f"""WITH reg AS (SELECT DISTINCT person_id FROM events WHERE {w} AND event='account_created')
-        SELECT (SELECT count() FROM reg),
-          uniqIf(person_id, event='address_created'),
-          uniqIf(person_id, event IN ('store_opened','add_to_cart')),
-          uniqIf(person_id, event='order_placed')
-        FROM events WHERE {w} AND person_id IN (SELECT person_id FROM reg)""")[0]
-    a_acc, a_addr, a_saw, a_ord = (int(x or 0) for x in acc)
-    addr_no_store = _scalar(f"""SELECT uniq(person_id) FROM events WHERE {w} AND event='address_created'
-        AND person_id IN (SELECT person_id FROM events WHERE {w} AND event='account_created')
-        AND person_id NOT IN (SELECT person_id FROM events WHERE {w} AND event IN ('store_opened','add_to_cart'))""")
+    row = hogql(f"""SELECT
+        countIf(f_inst=1), countIf(f_inst=1 AND f_acc=1),
+        countIf(f_inst=1 AND f_saw=1), countIf(f_inst=1 AND f_ord=1),
+        countIf(f_acc=1), countIf(f_acc=1 AND f_addr=1),
+        countIf(f_acc=1 AND f_saw=1), countIf(f_acc=1 AND f_ord=1),
+        countIf(f_acc=1 AND f_addr=1 AND f_saw=0)
+      FROM (SELECT person_id,
+              {_flag(f"event='{EV['install']}'")} AS f_inst,
+              {_flag("event='account_created'")} AS f_acc,
+              {_flag("event='address_created'")} AS f_addr,
+              {_flag("event IN ('store_opened','add_to_cart')")} AS f_saw,
+              {_flag("event='order_placed'")} AS f_ord
+            FROM events WHERE {w} GROUP BY person_id)""")[0]
+    (installed, i_reg, i_saw, i_ord,
+     a_acc, a_addr, a_saw, a_ord, addr_no_store) = (int(x or 0) for x in row)
     return dict(window_days=days, served="الغردقة وأسيوط",
                 installed=installed, inst_reg=i_reg, inst_saw=i_saw, inst_ord=i_ord,
                 acc=a_acc, made_address=a_addr, saw_store=a_saw, ordered=a_ord,
                 addr_no_store=addr_no_store)
 
 def cart_problems(day):
-    """Errors / friction for users who added to cart but did NOT order (business day)."""
-    inn = f"person_id IN (SELECT person_id FROM events WHERE {D(day)} AND event='add_to_cart')"
-    notord = f"person_id NOT IN (SELECT person_id FROM events WHERE {D(day)} AND event='order_placed')"
-    tot = hogql(f"""SELECT count(), uniq(person_id) FROM events
-        WHERE {D(day)} AND event='{EV['error']}' AND {inn} AND {notord}""")[0]
+    """Errors / friction for users who added to cart but did NOT order (business day).
+
+    The target person set is resolved once in a single aggregation pass, then reused
+    as a cheap literal IN filter — instead of re-scanning the events table twice
+    inside every one of the four queries."""
+    P = D(day)
+    ids = _person_set(P, _flag("event='add_to_cart'") + "=1 AND "
+                         + _flag("event='order_placed'") + "=0")
+    if not ids:
+        return dict(err_events=0, err_users=0, messages=[], screens=[], rage=0)
+    inn = _in_list(ids)
+    tot = hogql(f"""SELECT countIf(event='{EV['error']}'),
+        uniqIf(person_id, event='{EV['error']}'), countIf(event='{EV['rage']}')
+        FROM events WHERE {P} AND {inn}""")[0]
     msgs = hogql(f"""SELECT properties.error_message, count() FROM events
-        WHERE {D(day)} AND event='{EV['error']}' AND {inn} AND {notord}
+        WHERE {P} AND event='{EV['error']}' AND {inn}
         GROUP BY 1 ORDER BY 2 DESC LIMIT 5""")
     screens = hogql(f"""SELECT properties.$screen_name, count() FROM events
-        WHERE {D(day)} AND event='{EV['error']}' AND {inn} AND {notord}
+        WHERE {P} AND event='{EV['error']}' AND {inn}
         GROUP BY 1 ORDER BY 2 DESC LIMIT 5""")
-    rage = _scalar(f"""SELECT count() FROM events WHERE {D(day)} AND event='{EV['rage']}' AND {inn} AND {notord}""")
     return dict(err_events=int(tot[0] or 0), err_users=int(tot[1] or 0),
                 messages=[(m or "—", int(c)) for m, c in msgs],
-                screens=[(s or "—", int(c)) for s, c in screens], rage=rage)
+                screens=[(s or "—", int(c)) for s, c in screens],
+                rage=int(tot[2] or 0))
 
 # ───────────────────────── orchestration ─────────────────────────
 def collect(day):
