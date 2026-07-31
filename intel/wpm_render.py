@@ -169,15 +169,20 @@ def daybars(series, active, w=190, h=56):
 
 
 def CSS(week_start, week_end):
+    # Font stack is deliberately identical to intel/8orders_report_generator.py so the
+    # weekly and daily reports look like one family: Google-Fonts Cairo at the same four
+    # weights, falling back to Arial. Naming the family "Cairo" also means the locally
+    # installed Cairo still matches if the webfont fetch fails at render time.
     return r"""
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap');
 @page { size:A4; margin:15mm 13mm 16mm 13mm;
-  @bottom-right { content:"صفحة " counter(page) " / " counter(pages); font-family:"Cairo"; font-size:7.5pt; color:#94a3b8; }
-  @bottom-left { content:"8Orders · تقرير مؤشرات المنتج الأسبوعي · """ + f"{ar_date(week_start)} – {ar_date(week_end)}" + r""""; font-family:"Cairo"; font-size:7.5pt; color:#94a3b8; }
+  @bottom-right { content:"صفحة " counter(page) " / " counter(pages); font-family:'Cairo',Arial,sans-serif; font-size:7.5pt; color:#94a3b8; }
+  @bottom-left { content:"8Orders · تقرير مؤشرات المنتج الأسبوعي · """ + f"{ar_date(week_start)} – {ar_date(week_end)}" + r""""; font-family:'Cairo',Arial,sans-serif; font-size:7.5pt; color:#94a3b8; }
 }
 * { box-sizing:border-box; }
-body { font-family:"Cairo","Tajawal",sans-serif; direction:rtl; text-align:right; color:#1e293b; font-size:9pt; line-height:1.6; margin:0; }
+body { font-family:'Cairo',Arial,sans-serif; direction:rtl; text-align:right; color:#1e293b; font-size:9pt; line-height:1.6; margin:0; }
 h1,h2,h3 { margin:0; }
-.en { font-family:"Cairo"; direction:ltr; unicode-bidi:isolate; font-weight:600; }
+.en { font-family:'Cairo',Arial,sans-serif; direction:ltr; unicode-bidi:isolate; font-weight:600; }
 .gloss { font-size:7pt; color:#94a3b8; font-weight:500; }
 .cover { background:linear-gradient(135deg,#1e3a5f 0%,#2b4a70 100%); color:#fff; padding:26px 24px; border-radius:14px; margin-bottom:14px; }
 .cover .logo { direction:ltr; font-weight:900; font-size:26pt; letter-spacing:-1px; }
