@@ -4,11 +4,12 @@ services:
   hadi-ameen-bot:
     image: ghcr.io/assergameel-soul/hadi-ameen-bot:latest
     restart: unless-stopped
-    environment:
-      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
-      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID}
-      AZURE_DEVOPS_PAT: ${AZURE_DEVOPS_PAT}
-
-volumes:
-  hadi-bot:
-    driver: local
+    # بيحمّل كل الـ 58 متغير من ملف .env اللي جنب الملف ده
+    # (قبل كده كان بيمرّر 3 متغيرات بس)
+    env_file:
+      - .env
+    # حفظ الذاكرة اللي هادي بيتعلّمها وقت التشغيل + اللوجات بعد أي تحديث/restart.
+    # مهم: شغّل compose من داخل مجلد الريبو عشان ./knowledge يبقى متسيّد بملفات الذاكرة.
+    volumes:
+      - ./knowledge:/app/knowledge
+      - ./logs:/app/logs
