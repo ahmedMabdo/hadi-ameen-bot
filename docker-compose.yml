@@ -8,3 +8,7 @@ services:
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID}
       AZURE_DEVOPS_PAT: ${AZURE_DEVOPS_PAT}
+
+volumes:
+  hadi-bot:
+    driver: local
