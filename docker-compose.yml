@@ -3,7 +3,12 @@
 
 services:
   hadi-ameen-bot:
-    image: ghcr.io/assergameel-soul/hadi-ameen-bot:latest
+    # build من المصدر بدل سحب صورة GHCR الخاصة —
+    # Dokploy بيعمل git clone للريبو أصلاً، فبيبني الصورة محليًا من Dockerfile.
+    # كده مفيش حاجة تتسحب من GHCR ومفيش صلاحيات registry مطلوبة.
+    build:
+      context: .
+      dockerfile: Dockerfile
     restart: unless-stopped
 
     # الـ 58 متغير بتتحط في تبويب "Environment" بتاع السيرفس في Dokploy،
