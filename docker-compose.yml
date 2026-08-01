@@ -1,15 +1,23 @@
-version: "3.9"
+# متوافق مع Dokploy — نوع الـ Compose: "Docker Compose"
+# البوت مالوش port وارد (بيتصل بـ Discord/ADO/PostHog خارجًا) → مش محتاج domain ولا Traefik.
 
 services:
   hadi-ameen-bot:
     image: ghcr.io/assergameel-soul/hadi-ameen-bot:latest
     restart: unless-stopped
-    # بيحمّل كل الـ 58 متغير من ملف .env اللي جنب الملف ده
-    # (قبل كده كان بيمرّر 3 متغيرات بس)
+
+    # الـ 58 متغير بتتحط في تبويب "Environment" بتاع السيرفس في Dokploy،
+    # وDokploy بيكتبهم في ملف .env جنب الـ compose، فبيتقروا من هنا داخل الكونتينر.
     env_file:
       - .env
-    # حفظ الذاكرة اللي هادي بيتعلّمها وقت التشغيل + اللوجات بعد أي تحديث/restart.
-    # مهم: شغّل compose من داخل مجلد الريبو عشان ./knowledge يبقى متسيّد بملفات الذاكرة.
+
+    # named volumes (مش bind mounts بـ ./) — لأن Dokploy بيعمل git clone نضيف كل deploy
+    # وبيمسح مجلد الريبو، فأي mount بـ ./knowledge بيتفضّى. الـ named volume بيتسيّد
+    # من الصورة أول مرة (الصورة فيها knowledge/ أصلاً) وبيفضل ثابت بعد كل نشر.
     volumes:
-      - ./knowledge:/app/knowledge
-      - ./logs:/app/logs
+      - hadi-knowledge:/app/knowledge   # ذاكرة هادي اللي بيتعلّمها وقت التشغيل
+      - hadi-logs:/app/logs             # اللوجات
+
+volumes:
+  hadi-knowledge:
+  hadi-logs:
