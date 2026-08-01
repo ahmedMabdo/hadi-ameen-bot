@@ -24,6 +24,10 @@ RUN pip install -r /app/requirements.txt
 # Copy the rest of the code
 COPY . /app
 
+# صلاحيات هادي لتشغيل السكربتات (allow-list). الملف الحقيقي gitignored،
+# فبننسخه من قالب setup/ وقت البناء عشان الأدوات (Bash) تشتغل داخل الكونتينر.
+RUN mkdir -p /app/.claude && cp /app/setup/settings.local.json /app/.claude/settings.local.json
+
 # Environment variables (these will be set at runtime / in compose)
 # Example: Discord & ADO tokens mentioned in README/setup
 ENV DISCORD_BOT_TOKEN="" \

@@ -17,7 +17,6 @@ services:
     # القيم دي مش أسرار، ومتوافقة للخلف: من غيرها الكود بيرجع لمساراته القديمة.
     environment:
       HADI_REMINDERS_FILE: /app/data/reminders.json
-      HADI_SESSIONS_FILE: /app/data/sessions.json
       HADI_TRIAGE_STATE: /app/data/triage_state.json
       HADI_PENDING_STORE: /app/data/pending_points.json
       ADO_INTAKE_STATE: /app/data/sprint_intake_state.json
