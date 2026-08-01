@@ -473,6 +473,7 @@ python3 posthog_cli.py orders --date 2026-07-18
 python3 posthog_cli.py errors --limit 5
 python3 posthog_cli.py since --hours 2        # لأسئلة «في آخر ساعة/ساعتين»
 python3 posthog_cli.py sql --query "SELECT ..."   # SELECT فقط
+python3 posthog_cli.py sessions --date yesterday --top 3 --summary  # أخطر جلسات اليوم + تحليل AI + لينك replay
 ```
 
 **قاعدة إلزامية — حالة البيانات قبل أي رقم:**

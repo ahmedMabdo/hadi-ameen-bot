@@ -35,6 +35,7 @@ PostHog بيرمي الأحداث **بصمت** لما الكوتا تتعدى: �
     posthog_cli.py errors  [--date ...] [--limit 5]
     posthog_cli.py since --hours 2        # آخر N ساعة (لأسئلة «في آخر ساعة»)
     posthog_cli.py sql --query "SELECT ..."   # SELECT فقط
+    posthog_cli.py sessions [--date yesterday] [--top 3] [--summary]  # أخطر الجلسات + تحليل AI
     posthog_cli.py selftest               # من غير شبكة
 """
 import argparse
@@ -358,6 +359,61 @@ def selftest():
     print("SELFTEST PASS — الحارس ونافذة يوم العمل وقفل الكتابة كلهم سليمين")
 
 
+def _resolve_day(val):
+    """today/yesterday/امبارح -> تاريخ يوم عمل، أو يرجّع YYYY-MM-DD كما هو."""
+    if not val:
+        return business_day()
+    v = str(val).strip().lower()
+    if v in ("today", "النهاردة", "النهارده", "اليوم"):
+        return business_day()
+    if v in ("yesterday", "امبارح", "إمبارح", "امبارحه", "أمس"):
+        return business_day(now_cairo() - dt.timedelta(days=1))
+    return val
+
+
+def cmd_sessions(args):
+    """أخطر جلسات يوم العمل (نقرات غاضبة×3 + أخطاء حقيقية×2) + لينك replay + تحليل AI اختياري.
+
+    نفس منطق التقرير اليومي (featured_sessions / fetch_session_summaries) لكن تفاعلي."""
+    day = _resolve_day(args.date)
+    banner, _ = guard_banner()
+    print(banner)
+    g = gen()
+    top = max(1, int(args.top or 3))
+    print(f"\n\U0001F534 أخطر الجلسات — يوم {day} (أعلى {top})")
+    sessions = g.featured_sessions(day, n=top)
+    if not sessions:
+        print("  مفيش جلسات حرجة في النافذة دي "
+              "(مفيش نقرات غاضبة أو أخطاء مؤثّرة على مستخدم من غير أوردر).")
+        return
+    summaries = {}
+    if getattr(args, "summary", False):
+        try:
+            to = int(os.environ.get("HADI_PH_SUMMARY_TIMEOUT", "120") or "120")
+            summaries = g.fetch_session_summaries([s["sid"] for s in sessions], timeout=to)
+        except Exception as exc:
+            print(f"  (تعذّر جلب تحليل AI: {type(exc).__name__} — بعرض الأرقام بس)")
+    for i, s in enumerate(sessions, 1):
+        print(f"\n  #{i}  score={s.get('score')}  "
+              f"(نقرات غاضبة={s.get('rage')}، أخطاء حقيقية={s.get('err')})")
+        bits = []
+        if s.get("net_err"):
+            bits.append(f"أخطاء شبكة={s['net_err']}")
+        if s.get("noise_err"):
+            bits.append(f"noise={s['noise_err']}")
+        if s.get("active_min") is not None:
+            bits.append(f"مدة نشطة={s['active_min']}د")
+        bits.append(f"{s.get('os', '—')} {s.get('version', '—')}")
+        print(f"     {' · '.join(bits)}")
+        print(f"     \U0001F3AC {s.get('url')}")
+        summ = summaries.get(s["sid"]) if summaries else None
+        if summ:
+            text = summ if isinstance(summ, str) else (
+                summ.get("summary") or summ.get("content") or summ.get("text") or str(summ))
+            text = " ".join(str(text).split())
+            print(f"     \U0001F9E0 تحليل: {text[:900]}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="PostHog تفاعلي لهادي (بند 9.2) — قراءة فقط")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -377,6 +433,11 @@ def main():
     p.add_argument("--query", required=True)
     p.add_argument("--limit", type=int, default=30)
     p.set_defaults(func=cmd_sql)
+    p = sub.add_parser("sessions")
+    p.add_argument("--date", help="YYYY-MM-DD أو yesterday/today (افتراضي: يوم العمل الحالي)")
+    p.add_argument("--top", type=int, default=3)
+    p.add_argument("--summary", action="store_true", help="جيب تحليل PostHog AI لكل جلسة (أبطأ)")
+    p.set_defaults(func=cmd_sessions)
     sub.add_parser("selftest").set_defaults(func=lambda a: selftest())
 
     args = parser.parse_args()
