@@ -62,7 +62,7 @@ SESSION_TTL_HOURS = float(os.getenv("HADI_SESSION_TTL_HOURS", "6") or "6")
 MAX_TURNS = int(os.getenv("HADI_MAX_TURNS", "22") or "22")
 # المهام الخلفية (pending flush) والتقارير محتاجة مساحة أوسع من الرد التفاعلي.
 HEAVY_MAX_TURNS = int(os.getenv("HADI_HEAVY_MAX_TURNS", "50") or "50")
-SESSIONS_FILE = BASE_DIR / "sessions.json"
+SESSIONS_FILE = Path(os.environ.get("HADI_SESSIONS_FILE", str(BASE_DIR / "sessions.json")))
 LOGS_DIR = BASE_DIR / "logs"
 USAGE_LOG = LOGS_DIR / "usage.jsonl"
 

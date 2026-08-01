@@ -60,7 +60,7 @@ HISTORY_LIMIT = int(os.getenv("HISTORY_LIMIT", "80") or "80")
 
 # ذاكرة هادي الدائمة + مخزن التذكيرات
 MEMORY_FILE = BASE_DIR / "knowledge" / "memory.md"
-REMINDERS_FILE = BASE_DIR / "reminders.json"
+REMINDERS_FILE = Path(os.environ.get("HADI_REMINDERS_FILE", str(BASE_DIR / "reminders.json")))
 IMAGES_DIR = BASE_DIR / "tmp_images"
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")
 VIDEO_EXTS = (".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v")

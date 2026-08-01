@@ -33,7 +33,7 @@ from zoneinfo import ZoneInfo
 import state_lock  # بند 3.3 — تسلسل الكتابات المشتركة مع باقي أدوات الحالة
 
 BASE = Path(__file__).resolve().parent
-STORE = BASE / "reminders.json"
+STORE = Path(os.environ.get("HADI_REMINDERS_FILE", str(BASE / "reminders.json")))
 TZ = ZoneInfo("Africa/Cairo")
 
 CHANNEL_ALIASES = {

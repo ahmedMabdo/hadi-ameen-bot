@@ -36,7 +36,7 @@ import urllib.request
 from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-STATE_PATH = os.path.join(HERE, "triage_state.json")
+STATE_PATH = os.environ.get("HADI_TRIAGE_STATE", os.path.join(HERE, "triage_state.json"))
 IMAGES_DIR = Path(HERE) / "tmp_triage_images"
 
 # --- القنوات (بالـ ID دايمًا) -------------------------------------------------

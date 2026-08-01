@@ -3,26 +3,33 @@
 
 services:
   hadi-ameen-bot:
-    # build من المصدر بدل سحب صورة GHCR الخاصة —
-    # Dokploy بيعمل git clone للريبو أصلاً، فبيبني الصورة محليًا من Dockerfile.
-    # كده مفيش حاجة تتسحب من GHCR ومفيش صلاحيات registry مطلوبة.
+    # build من المصدر بدل سحب صورة GHCR الخاصة (Dokploy بيعمل git clone ويبني محليًا)
     build:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
 
-    # الـ 58 متغير بتتحط في تبويب "Environment" بتاع السيرفس في Dokploy،
-    # وDokploy بيكتبهم في ملف .env جنب الـ compose، فبيتقروا من هنا داخل الكونتينر.
+    # كل الـ58 متغير من تبويب Environment (Dokploy بيكتبهم في .env)
     env_file:
       - .env
 
-    # named volumes (مش bind mounts بـ ./) — لأن Dokploy بيعمل git clone نضيف كل deploy
-    # وبيمسح مجلد الريبو، فأي mount بـ ./knowledge بيتفضّى. الـ named volume بيتسيّد
-    # من الصورة أول مرة (الصورة فيها knowledge/ أصلاً) وبيفضل ثابت بعد كل نشر.
+    # توجيه كل ملفات حالة التشغيل لمجلد ثابت /app/data (volume) عشان تفضل بعد أي redeploy.
+    # القيم دي مش أسرار، ومتوافقة للخلف: من غيرها الكود بيرجع لمساراته القديمة.
+    environment:
+      HADI_REMINDERS_FILE: /app/data/reminders.json
+      HADI_SESSIONS_FILE: /app/data/sessions.json
+      HADI_TRIAGE_STATE: /app/data/triage_state.json
+      HADI_PENDING_STORE: /app/data/pending_points.json
+      ADO_INTAKE_STATE: /app/data/sprint_intake_state.json
+      ADO_CEREMONIES_JSON: /app/data/sprint_ceremonies.json
+      ADO_SNAPSHOT_DB: /app/data/ado_snapshot.db
+
     volumes:
-      - hadi-knowledge:/app/knowledge   # ذاكرة هادي اللي بيتعلّمها وقت التشغيل
-      - hadi-logs:/app/logs             # اللوجات
+      - hadi-knowledge:/app/knowledge   # ذاكرة هادي (متسيّدة من الصورة + git auto-push)
+      - hadi-logs:/app/logs             # اللوجات + heartbeat/birthday state
+      - hadi-data:/app/data             # حالة التشغيل: reminders/sessions/sprint/triage/snapshot
 
 volumes:
   hadi-knowledge:
   hadi-logs:
+  hadi-data:
