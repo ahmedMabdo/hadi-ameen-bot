@@ -20,4 +20,4 @@ weasyprint>=69.0
 
 # تقرير صوت الفيديو محليًا (اختياري)
 # يحتاج ffmpeg مثبتًا على السيرفر
-# faster-whisper>=1.0.0
+faster-whisper>=1.0.0
