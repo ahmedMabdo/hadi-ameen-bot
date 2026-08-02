@@ -61,11 +61,10 @@ MASTER_DEF_ID = int(os.environ.get("MARS_MASTER_DEF_ID", "603"))
 MARS_CHANNEL_ID = os.environ.get("MARS_CHANNEL_ID", "1136668686044909761")
 
 # مسؤول كل بايبلاين — بيتعمله tag في التقرير اليومي طول ما فيه مشاكل (طلب غادة).
-# develop: عصام غادر (layoff 30 يوليو 2026) — فاضي لحد ما يتعيّن مسؤول جديد بـ
-#          MARS_DEVELOP_OWNER_ID. master: مصطفى سلامة.
+# بعد رحيل عصام (layoff 30 يوليو 2026): مصطفى سلامة بقى مسؤول develop + master.
 # الكود بيتخطّى المسؤول الفاضي (tag = "" ومفيش mention) فمفيش tag مكسور.
 PIPELINE_OWNERS = {
-    "develop": os.environ.get("MARS_DEVELOP_OWNER_ID", ""),                      # فاضي بعد رحيل عصام — عيّن الجديد
+    "develop": os.environ.get("MARS_DEVELOP_OWNER_ID", "1017367801033400380"),  # مصطفى سلامة (بعد رحيل عصام)
     "master": os.environ.get("MARS_MASTER_OWNER_ID", "1017367801033400380"),    # مصطفى سلامة
 }
 

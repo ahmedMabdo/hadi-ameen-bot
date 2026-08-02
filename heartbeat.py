@@ -309,11 +309,23 @@ def check_memory_index(state):
     except Exception:
         return []
     out = []
-    if not st.get("in_sync") and not recently_sent(state, "memidx"):
-        out.append({"key": "memidx",
-                    "text": (f"🧠 فهرس الذاكرة مش متزامن "
-                             f"(md={st.get('md_notes')} db={st.get('db_notes')}) — "
-                             "شغّل: `python3 memory_store.py rebuild`")})
+    if not st.get("in_sync"):
+        # قرار آسر: ماتطلبش منه يشغّل rebuild يدوي — دي صيانة داخلية مش شغلته.
+        # هادي بيصلّحها بنفسه (rebuild آمن وidempotent)، ويتنبّه **بس** لو فشلت
+        # أو فضلت مش متزامنة بعد المحاولة (وقتها بقت مشكلة حقيقية تستاهل نظرة).
+        try:
+            memory_store.rebuild()
+            st = memory_store.status()
+        except Exception as _e:
+            if not recently_sent(state, "memidx"):
+                out.append({"key": "memidx",
+                            "text": ("🧠 فهرس الذاكرة مش متزامن وفشلت أصلّحه تلقائيًا "
+                                     f"({type(_e).__name__}) — محتاج تدخل: `python3 memory_store.py rebuild`")})
+        else:
+            if not st.get("in_sync") and not recently_sent(state, "memidx"):
+                out.append({"key": "memidx",
+                            "text": (f"🧠 فهرس الذاكرة لسه مش متزامن بعد إعادة بناء تلقائية "
+                                     f"(md={st.get('md_notes')} db={st.get('db_notes')}) — محتاج فحص.")})
     tot, inj = st.get("procedural_total", 0), st.get("procedural_injected", 0)
     if tot > inj and not recently_sent(state, "proccut"):
         out.append({"key": "proccut",
