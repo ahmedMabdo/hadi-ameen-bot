@@ -46,7 +46,8 @@ except Exception:
 import followup_store  # المتابعة عبر الأيام + المنشن
 import honorifics  # نقطة 1 — حارس الألقاب (باشمهندس للأونرز)
 
-CLAUDE_BIN = os.getenv("CLAUDE_BIN", "/home/ubuntu/.local/bin/claude").strip()
+import claude_bin  # حل مسار claude CLI عبر البيئات (سيرفر/Docker) — حادثة 2026-08
+CLAUDE_BIN = claude_bin.resolve()
 DIGEST_MODEL = os.getenv("HADI_DIGEST_MODEL", "sonnet").strip() or "sonnet"
 MIN_HUMAN_MSGS = int(os.getenv("HADI_DIGEST_MIN_MSGS", "5") or "5")
 MAX_CHARS = int(os.getenv("HADI_DIGEST_MAX_CHARS", "1800") or "1800")

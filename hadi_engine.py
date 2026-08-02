@@ -41,7 +41,8 @@ except Exception:
 
 ENGINE_MODE = os.getenv("HADI_ENGINE", "sdk").strip().lower() or "sdk"
 MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-5").strip() or "claude-sonnet-5"
-CLAUDE_BIN = os.getenv("CLAUDE_BIN", "/home/ubuntu/.local/bin/claude").strip()
+import claude_bin  # حل مسار claude CLI عبر البيئات (سيرفر/Docker) — حادثة 2026-08
+CLAUDE_BIN = claude_bin.resolve()
 import contextvars
 
 # هوية طالب الطلب. ContextVar مش os.environ: الأخير عام على العملية كلها،
