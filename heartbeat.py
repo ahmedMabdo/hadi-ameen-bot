@@ -356,7 +356,18 @@ def run_checks(state=None, dry_run=True):
     if not dry_run:
         touch_alive()
     alerts = []
+    # نقطة 3 (كانبان): وقّف فحوصات السبرنت طالما الاسبرنت متوقف — دي اللي كانت
+    # بتبعت «نبضة هادي» بتفكّر آسر بإيفنتات سبرنت احنا وقفناه.
+    _skip = set()
+    try:
+        import process_state
+        if not process_state.sprint_watch_enabled():
+            _skip = {"sprint_tomorrow", "new_sprint", "release_day"}
+    except Exception:
+        pass
     for name, func in CHECKS:
+        if name in _skip:
+            continue
         try:
             alerts.extend(func(state))
         except Exception as error:

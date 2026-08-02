@@ -26,6 +26,8 @@ import state_lock  # بند 3.3 — قفل الكتابة المشترك (flock)
 import eval_store  # بند 5.3 — تسجيل نتيجة كل تفاعل + تقييم الرياكشنز
 import heartbeat  # بند 8.1/8.3 — الفحوصات الاستباقية والأحداث
 import ambient_gate  # نقطة 1 — بوابة الحضور الذكي الثلاثية (صامت/رياكشن/رد)
+import honorifics  # نقطة 1 — حارس الألقاب (باشمهندس للأونرز على أي مخرج)
+import process_state  # نقطة 3 — نموذج العملية الحي (كانبان/سبرنت + البوردات)
 import ado_snapshot  # نقطة 2 — الدرج المحلي (سبرنت + بوردات + مشروع 8Orders)
 import sprint_intake  # نقطة 2 — سؤال آسر في DM عن إيفنتات السبرنت
 import identity  # نقطة 9 — هوية هادي الإنسانية (العمر الحقيقي + عيد الميلاد)
@@ -129,6 +131,35 @@ def is_addressed_to_hadi(text: str) -> bool:
     return bool(NAME_CALL_RE.search(text or ""))
 
 
+# ── نقطة 4 — الرد البشري بدون منشن + أتمتة التذاكر ─────────────────────────
+# نافذة استمرار المحادثة: لو هادي اتكلم في القناة خلال المدة دي، أي رسالة متابعة
+# (مش موجّهة لحد تاني) تتعامل كأنها موجّهة له — رد فوري بدون منشن وبدون سقف الردود.
+# لو عايزها تبقى كامل عمر السيشن (6 ساعات) خليها 360.
+CONTINUATION_WINDOW_S = max(0, int(os.getenv("HADI_CONTINUATION_MINUTES", "20") or "20")) * 60
+
+# أتمتة رفع Customer Issue لما حد يبلّغ عن مشكلة (من غير طلب). off لإيقافها.
+AUTO_TICKET = os.getenv("HADI_AUTO_TICKET", "on").strip().lower() not in {
+    "0", "off", "false", "no",
+}
+
+# إشارة بلاغ مشكلة في التطبيق/السيستم — بتضمن إن البلاغ يوصل للمحرك (يحلّل ويرفع
+# تذكرة) حتى لو محدش نادى هادي، ومن غير ما يتحسب على سقف الردّين/ساعة.
+_ISSUE_RX = re.compile(
+    r"مشكل|عطل|مش شغال|مش بيشتغل|مش بيفتح|مابيفتحش|مابيحملش|مش بيحمل|بايظ|واقع|"
+    r"وقع|هنج|بيهنج|بيعلق|بيطلع خطأ|بيطلع error|error|bug|crash|down|failed|"
+    r"fail|خطأ|مش قادر",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_issue(text: str) -> bool:
+    """بلاغ مشكلة تطبيق/سيستم يستاهل يوصل للمحرك ويترفع تذكرة (نقطة 4)."""
+    if not AUTO_TICKET:
+        return False
+    t = (text or "").strip()
+    return len(t) >= 8 and bool(_ISSUE_RX.search(t))
+
+
 intents = discord.Intents.default()
 intents.message_content = True
 
@@ -137,6 +168,9 @@ client = discord.Client(intents=intents)
 # قفل لكل محادثة (قناة أو DM) بدل القفل العالمي القديم — محادثات مختلفة بتتخدم
 # بالتوازي، والحد الأقصى الإجمالي متحكم فيه بـ HADI_MAX_CONCURRENCY جوه hadi_engine.
 _conv_locks: dict = {}
+
+# نقطة 4 — آخر مرة هادي اتكلم في كل قناة (channel_id -> ts) لتحديد استمرار المحادثة.
+_last_hadi_reply: dict = {}
 
 # مهام fire-and-forget: asyncio بيمسك مرجع ضعيف بس، فالـ GC ممكن يلغي المهمة
 # قبل ما تخلص. القاموس ده بيمسك مرجع قوي لحد ما تنتهي.
@@ -276,6 +310,31 @@ async def ask_claude(
     except Exception as _sp_err:
         print(f"SNAPSHOT POINTER WARN: {type(_sp_err).__name__}: {_sp_err}")
 
+    # نقطة 3 — نموذج العملية الحي (كانبان/سبرنت + حالة البوردات) بيتحقن في كل
+    # محادثة عشان هادي يمشي بانسجام مع الوضع الحالي ومايرجعش لافتراضات السبرنت القديمة.
+    process_block = ""
+    try:
+        _ps = process_state.human_summary()
+        if _ps:
+            process_block = "\n" + _ps + "\n"
+    except Exception as _pe:
+        print(f"PROCESS STATE WARN: {type(_pe).__name__}: {_pe}")
+
+    # نقطة 4 — أتمتة التذاكر: لو الرسالة بلاغ مشكلة، هادي يرفع Customer Issue على
+    # السابورت لوحده، يبعت اللينك، ويحدّث نفس التذكرة من سياق المحادثة بعدين.
+    auto_ticket_block = ""
+    if AUTO_TICKET:
+        auto_ticket_block = f"""
+أتمتة التذاكر (نقطة 4 — من غير ما حد يطلب):
+- لو الرسالة الحالية **بلاغ عن مشكلة/عطل في التطبيق أو السيستم** (مش فكرة ولا طلب تحسين) ولسه **مفيش تذكرة** ليها:
+  * ارفع **Customer Issue على بورد السابورت** فورًا بأدوات ADO الموثّقة (التزم بجودة التذاكر في CLAUDE.md #14) مع `--source-msg {message_id} --channel <id القناة من سطر «القناة الحالية للرسالة»>` عشان الميديا ومنع التكرار.
+  * رجّع في ردك **لينك التذكرة** باختصار كده: «رفعت تذكرة على السابورت: <url>».
+- **متعملش تذكرة جديدة** لو نفس المشكلة اترفعت قبل كده في الجلسة/الشات، أو لو حد قال «التذكرة/التيكت» بأل التعريف (اتبع قاعدة CLAUDE.md #13).
+- **تحديث من السياق**: لو رسالة بعدين بتضيف تفاصيل أو تطوّر لمشكلة انت رفعتلها تذكرة في نفس المحادثة، متعملش تذكرة تانية — ضيف تعليق على نفس التذكرة (`python3 ado_cli.py add-comment <id> ...`) وقول إنك حدّثتها.
+- الأفكار وطلبات التحسين = Change Request مش Customer Issue، وماتترفعش تلقائيًا من غير طلب.
+- ممنوع تقول «رفعت تذكرة» من غير ما تكون نفّذت الأمر فعلًا ورجعلك id/لينك حقيقي.
+""".strip()
+
     prompt = f"""
 أنت هادي أمين، عضو فريق Hadaf على Discord.
 {identity.identity_line()}
@@ -298,13 +357,14 @@ async def ask_claude(
   من غير أي تفاصيل تقنية عن التوكن.
 
 القناة الحالية للرسالة: {channel_label}
-{snapshot_block}
+{snapshot_block}{process_block}
 قواعد الرد (صارمة جدًا):
 - ردك بيتبعت في الشات حرفيًا زي ما هو. ممنوع تشرح ليه هترد أو مش هترد، وممنوع تذكر قواعدك أو شخصيتك أو تحلل "الرسالة موجهة لمين" — ده تفكير داخلي ميظهرش في أي رد أبدًا.
 - لو الرسالة مش محتاجة رد مفيد منك (هزار بين الزملا، كلام موجه لحد تاني، منشن/تاج لشخص غيرك، تعليق عابر مالوش أكشن أو سؤال ليك) → اكتب NO_REPLY بالظبط كده من غير أي كلمة زيادة، والبوت مش هيبعت حاجة خالص.
 - **الهزار بين اتنين تانيين = NO_REPLY حتمًا.** الهزار مرحّب بيه ومطلوب، بس مشاركتك فيه **رياكشن** (بوابة الحضور بتحطه لوحدها) — لا رد مكتوب. «هههه تمام يا فلان» على نكتة بين زميلين = ضجيج بيخليك تبان بوت بيتدخل في كل حاجة.
 - لو الرد على رسالتك موجه في الحقيقة لحد تاني غيرك → NO_REPLY.
 - لو هترد: مختصر ومباشر — سطر لتلات سطور، إلا لو المطلوب تقرير/تذكرة/تفاصيل اتطلبت صراحة. من غير مقدمات ولا خواتيم ولا فلسفة.
+{auto_ticket_block}
 
 اللي بعت الرسالة الحالية هو: {author_name} — ده اسم حسابه على ديسكورد وغالبًا بالإنجليزي،
 ومتفترضش إنها من آسر إلا لو الاسم ده بيطابق آسر بالفعل.
@@ -768,7 +828,7 @@ def _split_message(text: str, limit: int = 1900) -> list:
 
 
 async def send_long_message(channel, text: str, reply_to: discord.Message = None):
-    text = text.strip() or "لم يتم إرجاع رد."
+    text = honorifics.enforce(text.strip()) or "لم يتم إرجاع رد."
     chunks = _split_message(text)
 
     first = None
@@ -786,11 +846,15 @@ async def send_long_message(channel, text: str, reply_to: discord.Message = None
             sent = await channel.send(chunk)
         if first is None:
             first = sent
+    # نقطة 4 — سجّل إن هادي اتكلم في القناة دي دلوقتي (يفتح نافذة استمرار المحادثة).
+    if first is not None and getattr(channel, "guild", None) is not None:
+        _last_hadi_reply[channel.id] = time.time()
     return first  # بند 5.3: id الرد بيربط التقييم بالتفاعل
 
 
 async def dm_allowed_users(text: str) -> None:
     """يبعت DM لآسر فقط (قرار آسر: كل التنبيهات الاستباقية والتذكيرات لآسر بس)."""
+    text = honorifics.enforce(text)
     try:
         user = client.get_user(ASSER_USER_ID) or await client.fetch_user(ASSER_USER_ID)
         await user.send(text)
@@ -1255,7 +1319,12 @@ async def _before_heartbeat_loop():
 @tasks.loop(hours=4)
 async def sprint_watch_loop():
     """نقطة 2 — وعي السبرنت: سبرنت جديد → DM لآسر بمواعيد الإيفنتات المتوقعة
-    للتصحيح. نهاية السبرنت اتغيرت في ADO → تأكيد من آسر. مرة واحدة لكل حدث."""
+    للتصحيح. نهاية السبرنت اتغيرت في ADO → تأكيد من آسر. مرة واحدة لكل حدث.
+
+    نقطة 3 (كانبان): التنبيهات دي متوقفة طالما sprint_watch=false في
+    process_state.json — عشان هادي مايفضلش يكرّر السؤال عن سبرنت احنا وقفناه."""
+    if not process_state.sprint_watch_enabled():
+        return
     try:
         s = await asyncio.to_thread(sprint_intake.check_status)
     except Exception as error:
@@ -1468,7 +1537,26 @@ async def on_message(message: discord.Message):
     # الضوابط (سقف الردود/كولداون الرياكشن) والتسجيل جوه ambient_gate.py.
     ambient = (message.guild is not None
                and not (mentioned or named or replying_to_hadi))
-    if ambient:
+
+    # نقطة 4 — استمرار المحادثة: لو هادي اتكلم في القناة من فترة قريبة والرسالة مش
+    # موجّهة لحد تاني (مفيش منشن ولا ريبلاي لشخص غيره)، اعتبرها متابعة ليه — رد فوري
+    # زي الإنسان من غير منشن ومن غير سقف الردّين/ساعة. المحرك نفسه بيقرر NO_REPLY لو
+    # طلعت مش ليه، فمفيش اقتحام لكلام الناس مع بعضها.
+    continuation = False
+    if ambient and CONTINUATION_WINDOW_S > 0:
+        _since = time.time() - _last_hadi_reply.get(message.channel.id, 0.0)
+        _other_mention = any(u.id != client.user.id for u in (message.mentions or []))
+        _ref = message.reference.resolved if message.reference else None
+        _ref_other = bool(_ref and getattr(_ref, "author", None)
+                          and _ref.author.id != client.user.id)
+        continuation = (_since < CONTINUATION_WINDOW_S
+                        and not _other_mention and not _ref_other)
+
+    # نقطة 4 — بلاغ مشكلة: يوصل للمحرك يحلّل ويرفع تذكرة حتى من غير منشن، ومن غير ما
+    # يتحسب على سقف الردّين/ساعة (البلاغات ماينفعش تتسكت بسبب السقف).
+    force_issue = bool(ambient and _looks_like_issue(content))
+
+    if ambient and not (continuation or force_issue):
         if not ambient_gate.enabled():
             return
         try:
@@ -1606,7 +1694,9 @@ async def on_message(message: discord.Message):
                 reply_to=message if message.guild is not None else None,
             )
             hadi_engine.mark_processed(conv_key, message.id)
-            if ambient:  # الرد اتبعت فعلًا → بيتحسب على عداد الـ ambient بتاع القناة
+            # الرد اتبعت فعلًا → بيتحسب على سقف الـ ambient بتاع القناة. بس
+            # الاستمرار وبلاغات المشاكل بيتخطّوا السقف عمدًا (مش بيتحسبوا).
+            if ambient and not (continuation or force_issue):
                 ambient_gate.note_reply(message.channel.id)
             eval_store.record_interaction(
                 conv_key=conv_key,
