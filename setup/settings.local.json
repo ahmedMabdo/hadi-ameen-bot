@@ -18,6 +18,7 @@
       "Bash(python3 ado_features.py:*)",
       "Bash(python3 sprints_sync.py:*)",
       "Bash(python3 sprint_intake.py:*)",
+      "Bash(python3 process_state.py:*)",
       "Bash(python3 memory.py:*)",
       "Bash(python3 schedule.py:*)",
       "Bash(python3 notify.py:*)",

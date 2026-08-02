@@ -1,0 +1,29 @@
+{
+  "mode": "kanban",
+  "sprint_watch": false,
+  "boards": {
+    "sprint": {
+      "status": "paused",
+      "note": "وقفنا الشغل على بورد الاسبرنت مؤقتًا"
+    },
+    "support": {
+      "status": "active",
+      "flow": "kanban",
+      "note": "البورد الرئيسي دلوقتي — تدفق كانبان مستمر، والبروسيس بتتطوّر حبة حبة"
+    },
+    "cr": {
+      "status": "active",
+      "note": "بورد الـ Change Requests شغّال عادي"
+    }
+  },
+  "updated": "2026-08-02",
+  "updated_by": "آسر",
+  "history": [
+    {
+      "ts": "2026-08-02T00:00:00",
+      "by": "آسر",
+      "changed": ["mode=kanban", "sprint_watch=False", "board:sprint=paused"],
+      "note": "وقفنا بورد الاسبرنت؛ الشغل الأساسي بقى على السابورت بمفهوم كانبان، والبروسيس بتتطور تدريجيًا"
+    }
+  ]
+}

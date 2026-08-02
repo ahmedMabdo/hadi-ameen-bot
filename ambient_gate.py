@@ -12,7 +12,10 @@
       3) REPLY بس هو اللي بيوصل للموديل الكامل (المسار الحالي زي ما هو).
 
 ضوابط التكرار (قرار آسر — "مش ديما"):
-  - حد أقصى HADI_AMBIENT_REPLY_PER_HOUR ردود ambient لكل قناة في الساعة (افتراضي 2).
+  - حد أقصى HADI_AMBIENT_REPLY_PER_HOUR ردود ambient لكل قناة في الساعة (افتراضي 4).
+  - ملاحظة (نقطة 4): السقف ده بيتطبّق على الردود الـ ambient الباردة بس. ردود
+    **استمرار المحادثة** (هادي اتكلم للتو) و**بلاغات المشاكل** بتتخطّاه عمدًا —
+    البوت بيوجّهها للمحرك مباشرة من غير ما تعدّي هنا.
   - كولداون HADI_AMBIENT_REACT_COOLDOWN_S ثانية بين رياكشنين لنفس الشخص في نفس
     القناة (افتراضي 600 = 10 دقايق).
   - الافتراضي الدائم هو الصمت — البوابة بتتعامل fail-closed: أي خطأ/غموض = SILENT.
@@ -34,7 +37,7 @@ BASE_DIR = Path(__file__).resolve().parent
 LOG_FILE = BASE_DIR / "logs" / "ambient_gate.jsonl"
 
 MODE = (os.getenv("HADI_AMBIENT", "on").strip().lower() or "on")
-REPLY_PER_HOUR = max(0, int(os.getenv("HADI_AMBIENT_REPLY_PER_HOUR", "2") or "2"))
+REPLY_PER_HOUR = max(0, int(os.getenv("HADI_AMBIENT_REPLY_PER_HOUR", "4") or "4"))
 REACT_COOLDOWN_S = max(0, int(os.getenv("HADI_AMBIENT_REACT_COOLDOWN_S", "600") or "600"))
 HISTORY_N = max(3, int(os.getenv("HADI_AMBIENT_HISTORY", "8") or "8"))
 GATE_TIMEOUT_S = max(10, int(os.getenv("HADI_AMBIENT_GATE_TIMEOUT", "25") or "25"))

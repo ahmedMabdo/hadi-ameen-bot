@@ -161,7 +161,17 @@ def next_event(sprint, start_iso, finish_iso, today=None):
 
 # --------------------- rollover / التغيير وسط السبرنت ---------------------
 def check_status():
-    """JSON للبوت: هل في سبرنت جديد لسه ماتسألش عنه؟ هل نهاية السبرنت اتغيرت؟"""
+    """JSON للبوت: هل في سبرنت جديد لسه ماتسألش عنه؟ هل نهاية السبرنت اتغيرت؟
+
+    نقطة 3 (كانبان): لو تنبيهات السبرنت متوقفة في process_state، بنرجّع حالة صامتة
+    (مفيش سبرنت) — دفاع إضافي فوق حارس اللوب عشان مايتبعتش أي DM عن سبرنت متوقف."""
+    try:
+        import process_state
+        if not process_state.sprint_watch_enabled():
+            return {"sprint": "", "start": "", "finish": "",
+                    "new_sprint": False, "finish_changed": False, "old_finish": ""}
+    except Exception:
+        pass
     m = _snapshot_meta()
     name = m.get("sprint_name") or ""
     finish = (m.get("sprint_finish") or "")[:10]
