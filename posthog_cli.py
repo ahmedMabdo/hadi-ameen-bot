@@ -62,6 +62,12 @@ STALE_HOURS = float(os.environ.get("HADI_PH_STALE_HOURS", "2") or "2")
 DOWN_HOURS = float(os.environ.get("HADI_PH_DOWN_HOURS", "24") or "24")
 # نسبة حجم آخر 24 ساعة للمعتاد اللي تحتها نعتبر الأنبوب مقطوع (افتراضي 5%)
 DOWN_RATIO = float(os.environ.get("HADI_PH_DOWN_RATIO", "0.05") or "0.05")
+# مهلة كل query في الأوامر التفاعلية — الـ Bash tool عنده 90 ثانية إجمالية،
+# فـ 3 queries × 25 ثانية = 75 ثانية < 90 ثانية. (للتقرير الليلي الـ hogql
+# مش بيمر هنا فبيستخدم الافتراضي 240 ثانية كما هو.)
+QUERY_TIMEOUT = int(os.environ.get("HADI_PH_QUERY_TIMEOUT", "25") or "25")
+# kwargs ثابتة لكل نداء hogql تفاعلي: محاولة واحدة + timeout قصير
+_QKW: dict = {"retries": 1, "timeout": QUERY_TIMEOUT}
 
 _gen = None
 
@@ -133,7 +139,8 @@ def baseline_daily():
     """المعتاد اليومي = وسيط أعلى 7 أيام في آخر 30 — بيتجاهل أيام الانقطاع نفسها."""
     rows = gen().hogql(
         "SELECT count() AS c FROM events WHERE timestamp >= now() - INTERVAL 30 DAY "
-        "GROUP BY toDate(timestamp) ORDER BY c DESC LIMIT 7")
+        "GROUP BY toDate(timestamp) ORDER BY c DESC LIMIT 7",
+        **_QKW)
     counts = sorted(int(r[0]) for r in rows if r and r[0])
     return counts[len(counts) // 2] if counts else 0
 
@@ -141,7 +148,8 @@ def baseline_daily():
 def freshness():
     """(الحالة, الشرح, آخر توقيت, عدد أحداث آخر 24 ساعة)."""
     rows = gen().hogql(
-        "SELECT max(timestamp), countIf(timestamp >= now() - INTERVAL 24 HOUR) FROM events")
+        "SELECT max(timestamp), countIf(timestamp >= now() - INTERVAL 24 HOUR) FROM events",
+        **_QKW)
     last, last24 = (rows[0][0], rows[0][1]) if rows and rows[0] else (None, 0)
     hours = None
     if last:
@@ -176,7 +184,7 @@ def guard_banner():
 
 # ───────────────────────── الاستعلامات ─────────────────────────
 def q_scalar(query, default=0):
-    rows = gen().hogql(query)
+    rows = gen().hogql(query, **_QKW)
     return rows[0][0] if rows and rows[0] and rows[0][0] is not None else default
 
 
@@ -186,7 +194,8 @@ def cmd_health(args):
     print("\nأحداث آخر 10 أيام (تقويمي):")
     rows = gen().hogql(
         "SELECT toDate(timestamp) AS d, count() FROM events "
-        "WHERE timestamp >= now() - INTERVAL 10 DAY GROUP BY d ORDER BY d DESC")
+        "WHERE timestamp >= now() - INTERVAL 10 DAY GROUP BY d ORDER BY d DESC",
+        **_QKW)
     if not rows:
         print("  مفيش بيانات خالص.")
     for day, count in rows:
@@ -259,7 +268,8 @@ def cmd_orders(args):
     print(f"\n🧾 أوردرات يوم {day}")
     rows = gen().hogql(
         f"SELECT properties.payment_method, count(), round(sum(toFloat(properties.total_amount)),0) "
-        f"FROM events WHERE event='{EV['order']}' AND {D(day)} GROUP BY 1 ORDER BY 2 DESC")
+        f"FROM events WHERE event='{EV['order']}' AND {D(day)} GROUP BY 1 ORDER BY 2 DESC",
+        **_QKW)
     if not rows:
         print("  مفيش أوردرات مسجّلة في النافذة دي.")
         return
@@ -280,7 +290,8 @@ def cmd_errors(args):
     print(f"\n🐞 أخطاء يوم {day} (أعلى {args.limit})")
     rows = gen().hogql(
         f"SELECT properties.$screen_name, count() FROM events "
-        f"WHERE event='{EV['error']}' AND {D(day)} GROUP BY 1 ORDER BY 2 DESC LIMIT {args.limit}")
+        f"WHERE event='{EV['error']}' AND {D(day)} GROUP BY 1 ORDER BY 2 DESC LIMIT {args.limit}",
+        **_QKW)
     if not rows:
         print("  مفيش أخطاء مسجّلة.")
     for screen, count in rows:
@@ -301,7 +312,8 @@ def cmd_since(args):
         count = q_scalar(f"SELECT count() FROM events WHERE event='{event}' AND {window}")
         print(f"  {label:14} {int(count):>6,}")
     rows = gen().hogql(
-        f"SELECT event, count() FROM events WHERE {window} GROUP BY event ORDER BY 2 DESC LIMIT 5")
+        f"SELECT event, count() FROM events WHERE {window} GROUP BY event ORDER BY 2 DESC LIMIT 5",
+        **_QKW)
     if rows:
         print("  أكتر الأحداث:")
         for event, count in rows:
@@ -319,7 +331,7 @@ def cmd_sql(args):
         sys.exit("مسموح SELECT بس — الأداة قراءة فقط.")
     banner, _ = guard_banner()
     print(banner)
-    rows = gen().hogql(query)
+    rows = gen().hogql(query, **_QKW)
     print()
     for row in rows[: args.limit]:
         print("  " + " | ".join(str(value) for value in row))

@@ -86,16 +86,20 @@ def _is_retryable_sql(msg):
     m = (msg or "").lower()
     return any(t in m for t in _RETRYABLE_SQL_ERRORS)
 
-def hogql(q, retries=3):
+def hogql(q, retries=3, timeout=240):
     """2026-07-26: اتضاف backoff بـ jitter. كانت 3 محاولات **فورية** ورا بعض
     من غير أي انتظار — يعني وقت الـ rate limit بنضرب الخدمة 3 مرات في نفس
-    اللحظة بدل ما ننسحب."""
+    اللحظة بدل ما ننسحب.
+
+    timeout: مهلة HTTP لكل محاولة بالثانية (افتراضي 240 للتقرير الليلي،
+             بيتقلص لـ HADI_PH_QUERY_TIMEOUT=25 في الأوامر التفاعلية عشان
+             الـ Bash tool للـ claude-agent-sdk عنده 90 ثانية إجمالية)."""
     import random, time as _t
     last = None
     for i in range(retries):
         try:
             r = requests.post(f"{API}/query/", headers=HEADERS,
-                              json={"query": {"kind": "HogQLQuery", "query": q}}, timeout=240)
+                              json={"query": {"kind": "HogQLQuery", "query": q}}, timeout=timeout)
             if r.status_code == 200:
                 return r.json().get("results", [])
             last = f"HTTP {r.status_code}: {r.text[:200]}"
