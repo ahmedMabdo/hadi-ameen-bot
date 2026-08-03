@@ -17,6 +17,8 @@ openpyxl>=3.1.0
 # إنشاء تقارير PDF الخاصة بـ PostHog
 Pillow>=10.0.0
 weasyprint>=69.0
+# تحويل PDF → PNG لـ issues_table_png.py (WeasyPrint 53+ شال write_png)
+PyMuPDF>=1.23.0
 
 # تقرير صوت الفيديو محليًا (اختياري)
 # يحتاج ffmpeg مثبتًا على السيرفر

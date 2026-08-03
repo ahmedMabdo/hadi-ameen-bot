@@ -173,11 +173,27 @@ tr:last-child td {{ border-bottom: none; }}
 </html>"""
 
 
-# ───────────────────────── WeasyPrint ──────────────────────────────
+# ───────────────────────── WeasyPrint → PNG ──────────────────────────
 def render_png(html_str: str) -> bytes:
-    """يرندر HTML لـ PNG bytes باستخدام WeasyPrint (مثبّت مع التقرير اليومي)."""
+    """يرندر HTML لـ PNG bytes.
+
+    WeasyPrint 53+ شال write_png() وسايبة write_pdf() بس.
+    الحل: write_pdf() → PyMuPDF (fitz) → PNG.
+    PyMuPDF مضاف في requirements.txt (PyMuPDF>=1.23.0).
+    """
     from weasyprint import HTML
-    return HTML(string=html_str, base_url=str(BASE)).write_png(resolution=144)
+
+    # ① ولّد PDF في الذاكرة
+    pdf_bytes: bytes = HTML(string=html_str, base_url=str(BASE)).write_pdf()
+
+    # ② حوّل الصفحة الأولى لـ PNG عبر PyMuPDF
+    import fitz  # PyMuPDF
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    page = doc[0]
+    # zoom=2 → 144 DPI (72 * 2) — واضح على الشاشات العالية الدقة
+    mat = fitz.Matrix(2, 2)
+    pix = page.get_pixmap(matrix=mat, alpha=False)
+    return pix.tobytes("png")
 
 
 # ───────────────────────── إرسال Discord ────────────────────────────
@@ -199,18 +215,27 @@ def post_to_channel(channel_id: str, png_bytes: bytes, caption: str, token: str)
 
 # ─────────────────────────── selftest ───────────────────────────────
 def selftest():
-    """يتأكد إن WeasyPrint مثبّت ويرندر HTML بسيط — من غير شبكة أو Discord."""
-    from weasyprint import HTML
-    png = HTML(string="<html><body><p style='color:green'>OK</p></body></html>").write_png()
-    assert png and len(png) > 500, f"write_png فاضي ({len(png)} bytes)"
-    # اختبار _state_span
-    assert "border-radius" in _state_span("New")
-    # اختبار build_html بدون crash
+    """يتأكد إن WeasyPrint + PyMuPDF مثبّتَين ويرندروا HTML بسيط — من غير شبكة أو Discord."""
+    # ① اختبار HTML builder
     sample = [{"id": 1, "state": "New", "severity": "2 - High", "priority": "1",
                "owner": "غادة فودة", "created": "2026-08-01", "title": "مشكلة اختبار", "url": "#"}]
     html = build_html(sample)
-    assert "<table" in html
-    print("SELFTEST PASS — WeasyPrint render + HTML builder سليمين")
+    assert "<table" in html, "build_html: مفيش <table>"
+    assert "border-radius" in _state_span("New"), "_state_span broken"
+
+    # ② اختبار WeasyPrint: write_pdf (مش write_png — اتشال من v53)
+    from weasyprint import HTML as WP
+    pdf = WP(string="<html><body><p>OK</p></body></html>").write_pdf()
+    assert pdf and len(pdf) > 100, f"write_pdf فاضي ({len(pdf)} bytes)"
+
+    # ③ اختبار PyMuPDF: PDF → PNG
+    import fitz
+    doc = fitz.open(stream=pdf, filetype="pdf")
+    pix = doc[0].get_pixmap(matrix=fitz.Matrix(1, 1), alpha=False)
+    png = pix.tobytes("png")
+    assert png and len(png) > 500, f"PyMuPDF PNG فاضي ({len(png)} bytes)"
+
+    print("SELFTEST PASS — WeasyPrint write_pdf + PyMuPDF PNG render سليمين")
 
 
 # ─────────────────────────── main ───────────────────────────────────
