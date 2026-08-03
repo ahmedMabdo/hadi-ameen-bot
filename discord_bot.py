@@ -1768,10 +1768,11 @@ async def on_message(message: discord.Message):
                 error_msg=str(error)[:300],
             )
             print(f"ERROR: {type(error).__name__}: {error}")
-            if (message.guild is None or mentioned or named or replying_to_hadi): await message.reply(
-                f"حصل خطأ أثناء تشغيل هادي: {type(error).__name__}",
-                mention_author=False,
-            )
+            if (message.guild is None or mentioned or named or replying_to_hadi):
+                _err_detail = str(error)[:200].strip()
+                _err_msg = (f"حصل خطأ أثناء تشغيل هادي: {type(error).__name__}"
+                            + (f" — {_err_detail}" if _err_detail else ""))
+                await message.reply(_err_msg, mention_author=False)
 
 
         finally:

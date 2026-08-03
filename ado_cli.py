@@ -343,6 +343,8 @@ def _build_create_ops(args):
         ops.insert(3, {"op": "add", "path": "/fields/Custom.Application", "value": ADO_APPLICATION})
     if args.description:
         ops.append({"op": "add", "path": "/fields/System.Description", "value": args.description})
+    if getattr(args, "assigned_to", None):
+        ops.append({"op": "add", "path": "/fields/System.AssignedTo", "value": args.assigned_to})
     if args.tags:
         ops.append({"op": "add", "path": "/fields/System.Tags", "value": args.tags})
     for extra in args.field or []:
@@ -597,6 +599,8 @@ def main():
         sp.add_argument("--description", help="HTML description")
         sp.add_argument("--tags", help="semicolon-separated tags")
         sp.add_argument("--state", default="New")
+        sp.add_argument("--assigned-to", dest="assigned_to",
+                         help='اسم المسؤول كما يظهر في ADO (displayName) أو email — مثال: "Mostafa Saad"')
         sp.add_argument("--field", action="append",
                          help="extra field as path=value, repeatable, e.g. --field Microsoft.VSTS.Common.Priority=1")
         sp.add_argument("--source-msg", help="Discord message id to auto-attach its image/video")
