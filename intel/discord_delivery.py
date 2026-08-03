@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Send the day's PostHog PDF report as a Discord DM to one or more recipients
-(e.g. Mahmoud Abdou + the user, for confirmation that delivery worked).
+Send the day's PostHog PDF report as a Discord DM to one or more recipients.
 
 Runs as the last step of the daily routine (see ROUTINE_INSTRUCTIONS.md step 4)
 so the report reaches them even if no one is watching the routine's chat
@@ -12,15 +11,19 @@ one-shot REST call, no persistent connection needed.
 
 Env (read from a `.env` file alongside this script if present, else the
 process environment):
-  DISCORD_BOT_TOKEN        bot token (the same bot used for interactive access)
-  MAHMOUD_DISCORD_USER_ID  recipient Discord user id(s) — preferred, set once
-                           and reused every day. Accepts ONE id, or several
-                           separated by commas and/or whitespace, e.g.
-                           "111111111111111111,222222222222222222". Each id
-                           gets its own independent DM.
-  DISCORD_GUILD_ID         optional fallback — if MAHMOUD_DISCORD_USER_ID isn't
-                           set, resolve a single recipient by searching this
-                           guild's members for RECIPIENT_NAME
+  DISCORD_BOT_TOKEN     bot token (the same bot used for interactive access)
+  REPORT_DM_USER_IDS    recipient Discord user id(s) — overrides the default
+                        list. Accepts ONE id, or several separated by commas
+                        and/or whitespace, e.g. "111,222". Each id gets its
+                        own independent DM.
+                        Backward compat: MAHMOUD_DISCORD_USER_ID still works
+                        when REPORT_DM_USER_IDS is not set.
+  DISCORD_GUILD_ID      optional fallback — if neither env var is set, resolve
+                        a single recipient by searching the guild for
+                        RECIPIENT_NAME (legacy behaviour).
+
+Default recipients (used when no env var is set):
+  باشمهندس محمود عبده (1016738618267664485) + آسر جميل (1378684355148386355)
 
 Delivery failure here must never break the routine: every public function
 catches its own errors, logs them, and returns False rather than raising.
@@ -41,6 +44,13 @@ except Exception:  # قراءة الإعدادات مالهاش لازمة تو�
 
 API_BASE = "https://discord.com/api/v10"
 RECIPIENT_NAME = "Mahmoud Abdou"
+
+# المستقبلون الافتراضيون لتقرير PostHog اليومي — بيتجاوَز بـ REPORT_DM_USER_IDS.
+# آسر جميل + باشمهندس محمود عبده (من posthog_guard.ADMIN_IDS).
+DEFAULT_REPORT_RECIPIENTS = [
+    "1016738618267664485",  # باشمهندس محمود عبده
+    "1378684355148386355",  # آسر جميل
+]
 
 
 def _headers(token):
@@ -112,7 +122,10 @@ def send_report(pdf_paths, message=None, token=None, user_ids=None, guild_id=Non
     pdf_paths = [p for p in pdf_paths if p and os.path.isfile(p)]
 
     if user_ids is None:
-        ids = parse_user_ids(os.environ.get("MAHMOUD_DISCORD_USER_ID", ""))
+        # الأولوية: REPORT_DM_USER_IDS → MAHMOUD_DISCORD_USER_ID (backward compat) → defaults
+        raw = (os.environ.get("REPORT_DM_USER_IDS", "").strip()
+               or os.environ.get("MAHMOUD_DISCORD_USER_ID", "").strip())
+        ids = parse_user_ids(raw) if raw else list(DEFAULT_REPORT_RECIPIENTS)
     elif isinstance(user_ids, str):
         ids = parse_user_ids(user_ids)
     else:
@@ -127,7 +140,7 @@ def send_report(pdf_paths, message=None, token=None, user_ids=None, guild_id=Non
 
     if not ids:
         if not guild_id:
-            print("DISCORD: skipped — set MAHMOUD_DISCORD_USER_ID "
+            print("DISCORD: skipped — set REPORT_DM_USER_IDS "
                   "(one id, or several comma/space-separated) "
                   "or DISCORD_GUILD_ID to resolve one by name")
             return False
