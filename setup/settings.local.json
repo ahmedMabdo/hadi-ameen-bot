@@ -8,7 +8,7 @@
   ],
   "_READ_GROUP": "knowledge_store, posthog_cli, ado_snapshot, sprints_sync, sprint_intake, memory, schedule, notify, WebSearch, WebFetch",
   "_WRITE_GROUP": "ado_cli, po_channel_cr, ado_alerts, discord_followup, discord_mars_results",
-  "_DENY_WHY": "التقارير المجدولة شغل التايمرات — لو هادي نداها بنفسه يتبعت تقرير مكرر للقناة.",
+  "_DENY_WHY": "التقارير المجدولة شغل التايمرات — لو هادي نداها بنفسه يتبعت تقرير مكرر للقناة. استثناء: 8orders_report_generator.py مسموح عند طلب صريح لإعادة الإرسال بعد فشل مجدول.",
   "permissions": {
     "allow": [
       "mcp__plugin_discord_discord__reply",
@@ -29,7 +29,8 @@
       "Bash(python3 ado_alerts.py:*)",
       "Bash(python3 discord_followup.py:*)",
       "Bash(python3 discord_mars_results.py:*)",
-      "Bash(.venv/bin/python discord_mars_results.py:*)"
+      "Bash(.venv/bin/python discord_mars_results.py:*)",
+      "Bash(python3 intel/8orders_report_generator.py:*)"
     ],
     "deny": [
       "Bash(python3 daily_digests.py:*)",

@@ -57,6 +57,12 @@ from ado_client import ADO_ORG_BASE, ADO_PROJECT, ADO_API_VERSION, ADO_CUSTOMER,
 DEFAULT_FIELDS = ("System.Id,System.Title,System.State,System.WorkItemType,"
                   "System.AreaPath,System.Tags,System.ChangedDate,System.AssignedTo")
 
+ISSUES_TABLE_FIELDS = (
+    "System.Id,System.Title,System.State,System.WorkItemType,"
+    "System.AssignedTo,System.CreatedDate,"
+    "Microsoft.VSTS.Common.Severity,Microsoft.VSTS.Common.Priority"
+)
+
 
 def _call(method, url, headers, **kwargs):
     r = requests.request(method, url, headers=headers, timeout=30, **kwargs)
@@ -118,6 +124,76 @@ def _fetch_fields(ids, project, fields):
             "url": f"{ADO_ORG_BASE}/{quote(project)}/_workitems/edit/{item.get('id')}",
         })
     return rows
+
+
+def _fetch_issues_fields(ids, project):
+    """جلب حقول issues-table: ID, Title, State, Type, Owner, Severity, Priority, CreatedDate."""
+    if not ids:
+        return []
+    # batch بـ 200 كحد أقصى لـ ADO
+    rows = []
+    for i in range(0, len(ids), 200):
+        chunk = ids[i:i+200]
+        url = (f"{_project_base(project)}/wit/workitems"
+               f"?ids={','.join(str(x) for x in chunk)}"
+               f"&fields={ISSUES_TABLE_FIELDS}&api-version={ADO_API_VERSION}")
+        r = _call("GET", url, _headers())
+        for item in r.json().get("value", []):
+            f = item.get("fields", {})
+            assigned = f.get("System.AssignedTo")
+            owner = (assigned.get("displayName") if isinstance(assigned, dict) else assigned) or "—"
+            # Severity بيرجع "1 - Critical" أو "2 - High" إلخ — نقصّر للرقم + الكلمة
+            sev_raw = f.get("Microsoft.VSTS.Common.Severity") or "—"
+            pri_raw = f.get("Microsoft.VSTS.Common.Priority")
+            pri = str(pri_raw) if pri_raw is not None else "—"
+            created = (f.get("System.CreatedDate") or "")[:10]  # YYYY-MM-DD
+            rows.append({
+                "id": item.get("id"),
+                "title": f.get("System.Title") or "",
+                "state": f.get("System.State") or "—",
+                "type": f.get("System.WorkItemType") or "—",
+                "owner": owner,
+                "severity": sev_raw,
+                "priority": pri,
+                "created": created,
+                "url": f"{ADO_ORG_BASE}/{quote(project)}/_workitems/edit/{item.get('id')}",
+            })
+    return rows
+
+
+def _print_issues_table(rows, limit):
+    """يطبع جدول نصي Discord-friendly داخل code block."""
+    if not rows:
+        print("مفيش إيشوز بالحالات المطلوبة.")
+        return
+    rows = rows[:limit]
+    # عناوين الأعمدة
+    COL = {
+        "id":       ("ID",       6),
+        "state":    ("الحالة",   12),
+        "severity": ("Severity", 14),
+        "priority": ("P",        3),
+        "owner":    ("المسؤول",  22),
+        "created":  ("Created",  10),
+        "title":    ("العنوان",  48),
+    }
+    header = "  ".join(h.ljust(w) for _, (h, w) in COL.items())
+    sep    = "  ".join("-" * w      for _, (_, w) in COL.items())
+    lines  = ["```", header, sep]
+    for r in rows:
+        row = "  ".join([
+            str(r["id"]).ljust(COL["id"][1]),
+            r["state"][:COL["state"][1]].ljust(COL["state"][1]),
+            r["severity"][:COL["severity"][1]].ljust(COL["severity"][1]),
+            r["priority"][:COL["priority"][1]].ljust(COL["priority"][1]),
+            r["owner"][:COL["owner"][1]].ljust(COL["owner"][1]),
+            r["created"].ljust(COL["created"][1]),
+            r["title"][:COL["title"][1]],
+        ])
+        lines.append(row)
+    lines.append("```")
+    lines.append(f"الإجمالي: {len(rows)} إيشو")
+    print("\n".join(lines))
 
 
 def _run_wiql(query, project, top):
@@ -381,6 +457,47 @@ def cmd_add_child(args):
 # CLI
 # --------------------------------------------------------------------------
 
+def cmd_issues_table(args):
+    """جدول الإيشوز المفتوحة — New/Reviewed/Active مرتبة بالـ Created Date (طلب غادة).
+
+    الحقول: ID · العنوان · الحالة · Severity · Priority · المسؤول · تاريخ الإنشاء.
+    بيبعت كـ code block واحدة تقدر تنسخها على Discord.
+
+    مثال:
+        ado_cli.py issues-table
+        ado_cli.py issues-table --states "New,Active" --top 50
+        ado_cli.py issues-table --area-path "Support"
+    """
+    project = args.project
+    states = [s.strip() for s in (args.states or "New,Reviewed,Active").split(",") if s.strip()]
+    state_conds = " OR ".join(f"[System.State] = '{_wiql_escape(s)}'" for s in states)
+
+    query = (
+        "SELECT [System.Id] FROM WorkItems "
+        f"WHERE [System.TeamProject] = '{_wiql_escape(project)}' "
+        f"AND [System.WorkItemType] IN ('Issue', 'Customer Issue') "
+        f"AND ({state_conds})"
+    )
+    if args.area_path:
+        query += f" AND [System.AreaPath] UNDER '{_wiql_escape(args.area_path)}'"
+    query += " ORDER BY [System.CreatedDate] ASC"
+
+    url = f"{_project_base(project)}/wit/wiql?api-version={ADO_API_VERSION}&$top={args.top}"
+    r = _call("POST", url, {**_headers(), "Content-Type": "application/json"}, json={"query": query})
+    ids = [item["id"] for item in r.json().get("workItems", [])]
+
+    if not ids:
+        print(f"مفيش إيشوز مفتوحة بالحالات: {', '.join(states)}")
+        return
+
+    rows = _fetch_issues_fields(ids, project)
+
+    if args.json:
+        _print_json(rows)
+    else:
+        _print_issues_table(rows, args.top)
+
+
 def cmd_attach_media(args):
     """Attach Discord media / URLs to an EXISTING work item.
 
@@ -463,6 +580,15 @@ def main():
     s = sub.add_parser("team-settings", help="a team's sprint/board settings")
     s.add_argument("--team", required=True)
     s.set_defaults(func=cmd_team_settings)
+
+    s = sub.add_parser("issues-table",
+                       help="جدول الإيشوز المفتوحة: ID/Title/State/Sev/Pri/Owner مرتبة بالـ Created Date")
+    s.add_argument("--states", default="New,Reviewed,Active",
+                   help='الحالات مفصولة بفاصلة (default: "New,Reviewed,Active")')
+    s.add_argument("--area-path", help="فلتر على Area Path (UNDER)")
+    s.add_argument("--top", type=int, default=200, help="حد أقصى للنتائج (default 200)")
+    s.add_argument("--json", action="store_true", help="طباعة JSON بدل الجدول النصي")
+    s.set_defaults(func=cmd_issues_table)
 
     def add_create_args(sp):
         sp.add_argument("--type", required=True, help='work item type, e.g. "Change Request" / "Issue"')

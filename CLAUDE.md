@@ -506,6 +506,48 @@ PostHog بيرد `200 OK` وهو بيرمي الأحداث لما الكوتا �
 
 ---
 
+## جدول الإيشوز المفتوحة على بورد السابورت (`ado_cli.py issues-table`)
+
+عند طلب «جدول الإيشوز» أو «هات الإيشوز بالجدول» أو قائمة المشاكل المفتوحة مرتبة بالتاريخ:
+
+```bash
+# كل الإيشوز المفتوحة (New/Reviewed/Active) مرتبة بالـ Created Date:
+python3 ado_cli.py issues-table
+
+# تصفية بالحالة:
+python3 ado_cli.py issues-table --states "New,Active"
+
+# تصفية بالـ Area Path:
+python3 ado_cli.py issues-table --area-path "Support"
+
+# حد أقصى للنتائج:
+python3 ado_cli.py issues-table --top 50
+```
+
+الأداة بتطبع code block واحدة فيها: **ID · العنوان · الحالة · Severity · Priority · المسؤول · تاريخ الإنشاء**.
+انشر الـ code block مباشرة في القناة من غير إعادة تنسيق — تبان جدول في Discord.
+
+---
+
+## إعادة إرسال تقرير PostHog يدويًا (`intel/8orders_report_generator.py`)
+
+التقرير بيتبعت تلقائيًا كل صبح لآسر + باشمهندس محمود. لو التقرير فشل (حادثة `FileNotFoundError` أو أي سبب) وطُلب منك إعادة الإرسال:
+
+```bash
+# يولّد التقرير ويبعثه DM لآسر + باشمهندس محمود:
+python3 intel/8orders_report_generator.py
+
+# لو عايز تاريخ محدد:
+python3 intel/8orders_report_generator.py --date 2026-08-03
+```
+
+**قواعد:**
+- **فقط عند طلب صريح** («ابعت التقرير دلوقتي» / «التقرير فشل، ابعته») — لو ما اتطلبش منك، متشغّلهوش.
+- التقرير المجدول شغل التايمر الخاص، مش شغلك — عشان تتجنب التكرار.
+- الأداة بتبعت البيزنس edition بس (PDF) بدون `-—no-discord`.
+
+---
+
 ## نتائج أوتوميشن مارس — عند الطلب (`discord_mars_results.py`)
 
 أداة CLI في جذر المشروع بتجيب نتائج الـ Automation Tests (بايبلاين `TalabatkAPI.Test` على ADO: Develop=604، Master=603) وتنشرها في قناة مارس. بتشتغل مجدولة كل يوم 10:00 القاهرة (systemd timer `hadi-mars-results.timer`) — وكمان **عند الطلب**.
