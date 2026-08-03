@@ -30,7 +30,8 @@
       "Bash(python3 discord_followup.py:*)",
       "Bash(python3 discord_mars_results.py:*)",
       "Bash(.venv/bin/python discord_mars_results.py:*)",
-      "Bash(python3 intel/8orders_report_generator.py:*)"
+      "Bash(python3 intel/8orders_report_generator.py:*)",
+      "Bash(python3 issues_table_png.py:*)"
     ],
     "deny": [
       "Bash(python3 daily_digests.py:*)",

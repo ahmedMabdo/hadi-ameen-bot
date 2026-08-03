@@ -506,7 +506,32 @@ PostHog بيرد `200 OK` وهو بيرمي الأحداث لما الكوتا �
 
 ---
 
-## جدول الإيشوز المفتوحة على بورد السابورت (`ado_cli.py issues-table`)
+## جدول الإيشوز كصورة PNG (`issues_table_png.py`) — الطريقة المفضّلة
+
+لما حد يطلب «جدول الإيشوز» أو «هات الإيشوز صورة» **استخدم الـ PNG أولًا** — المحاذاة بتتكسر في Discord مع الـ code block العربي+الإنجليزي.
+
+```bash
+# أرسل PNG للقناة الحالية (بدّل CHANNEL_ID بـ channel id من السياق):
+python3 issues_table_png.py --channel CHANNEL_ID
+
+# فلتر بالحالات:
+python3 issues_table_png.py --channel CHANNEL_ID --states "New,Active"
+
+# حد أقصى:
+python3 issues_table_png.py --channel CHANNEL_ID --top 50
+
+# أضف كابشن:
+python3 issues_table_png.py --channel CHANNEL_ID --caption "طلب غادة — بورد السابورت"
+
+# dry-run (يحفظ الصورة محليًا بدل الإرسال):
+python3 issues_table_png.py --dry-run
+```
+
+**ملاحظة:** channel id بتلاقيه في السياق من `message.channel.id` أو من `.env` (`ISSUES_CHANNEL_ID`). لو مش عندك الـ ID، استخدم `ado_cli.py issues-table` كـ fallback.
+
+---
+
+## جدول الإيشوز نصي Fallback (`ado_cli.py issues-table`)
 
 عند طلب «جدول الإيشوز» أو «هات الإيشوز بالجدول» أو قائمة المشاكل المفتوحة مرتبة بالتاريخ:
 
