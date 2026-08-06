@@ -76,7 +76,7 @@ FIELDS = [
     "System.Tags", "System.BoardColumn", "System.BoardLane", "System.AssignedTo",
     "System.IterationPath", "System.Parent", "System.CreatedDate",
     "System.ChangedDate", "Microsoft.VSTS.Scheduling.RemainingWork",
-    "Microsoft.VSTS.Common.Priority",
+    "Microsoft.VSTS.Common.Priority", "Microsoft.VSTS.Common.Severity",
 ]
 
 
@@ -214,6 +214,20 @@ def _assigned(v):
     return v or ""
 
 
+def _record_lifecycle(source, items, now):
+    """Best-effort feed of the fresh batch into the durable lifecycle store
+    (workitems.py) so state/assignment/priority/severity transitions get logged.
+    Behind HADI_LIFECYCLE_TRACKING; wrapped so it can NEVER break the snapshot."""
+    try:
+        import hadi_config
+        if not hadi_config.LIFECYCLE_TRACKING_ENABLED:
+            return
+        import workitems
+        workitems.record_transitions(source, items, now=now.isoformat())
+    except Exception as e:  # noqa — lifecycle logging must never break refresh
+        print(f"WARN: lifecycle tracking ({source}) failed: {e}")
+
+
 def _refresh_sprint(con, now):
     it = fetch_current_iteration()
     if not it:
@@ -222,6 +236,8 @@ def _refresh_sprint(con, now):
     ids, top = fetch_iteration_workitem_ids(it["id"])
     items = fetch_fields(ids) if ids else []
     caps = fetch_capacity(it["id"])
+
+    _record_lifecycle("sprint", items, now)
 
     con.execute("DELETE FROM work_items")
     con.execute("DELETE FROM capacity")
@@ -290,6 +306,7 @@ def _refresh_board(con, board, now):
     )
     ids = wiql_ids(q)
     items = fetch_fields(ids) if ids else []
+    _record_lifecycle(board, items, now)
     con.execute("DELETE FROM board_items WHERE board=?", (board,))
     for w in items:
         f = w.get("fields", {})
