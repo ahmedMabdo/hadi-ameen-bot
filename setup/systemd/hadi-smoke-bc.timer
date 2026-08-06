@@ -1,0 +1,9 @@
+[Unit]
+Description=Timer: Smoke + BC report (Wed 11:00 Cairo)
+
+[Timer]
+OnCalendar=Wed *-*-* 11:00:00 Africa/Cairo
+Persistent=true
+
+[Install]
+WantedBy=timers.target

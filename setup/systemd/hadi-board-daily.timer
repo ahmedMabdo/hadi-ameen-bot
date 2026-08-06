@@ -1,0 +1,9 @@
+[Unit]
+Description=Timer: Daily board summary (19:30 Cairo)
+
+[Timer]
+OnCalendar=*-*-* 19:30:00 Africa/Cairo
+Persistent=true
+
+[Install]
+WantedBy=timers.target

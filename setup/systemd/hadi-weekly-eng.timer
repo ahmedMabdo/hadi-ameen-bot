@@ -1,0 +1,9 @@
+[Unit]
+Description=Timer: Weekly engineering report (Thu 13:00 Cairo)
+
+[Timer]
+OnCalendar=Thu *-*-* 13:00:00 Africa/Cairo
+Persistent=true
+
+[Install]
+WantedBy=timers.target
