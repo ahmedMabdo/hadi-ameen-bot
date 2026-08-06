@@ -599,6 +599,18 @@ async def run_triage(channel, client, hadi_engine, since_dt=None, dry_run=None):
             return "راجعت القناة والصور، ومفيش إيشيوز واضحة محتاجة تيكت دلوقتي."
         ready, review = evaluate(issues)
         ready, dups = filter_already_filed(channel.id, ready)
+        # evidence-based identity/dedup gate (behind HADI_ISSUE_ENGINE; default OFF).
+        # Wrapped so a fault here can NEVER break the existing triage path.
+        try:
+            import issue_engine
+            if issue_engine.enabled() and ready:
+                routed = issue_engine.route_issues(channel.id, ready)
+                ready = routed["create"]
+                await issue_engine.apply_updates(routed["update"], HERE, dry_run=dry_run)
+                review = review + [it for it, _d in routed["review"]]
+                dups = dups + [it for it, _d in routed["duplicate"]]
+        except Exception as _e:  # noqa — engine must never break triage
+            print(f"TRIAGE issue_engine skipped: {_e}")
         links = await create_tickets(channel.id, ready, dry_run=dry_run) if ready else []
         return format_result(links, review, dups, dry_run=dry_run)
     finally:

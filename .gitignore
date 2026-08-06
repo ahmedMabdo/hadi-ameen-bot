@@ -80,3 +80,7 @@ triage_state.json
 logs/alive
 reminders.json.corrupt-*
 tests/__pycache__/
+
+# Phase 2/3 lifecycle store (local, like ado_snapshot.db)
+workitems.db
+workitems.db-*
