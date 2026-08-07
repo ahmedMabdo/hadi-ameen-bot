@@ -110,18 +110,23 @@ CATEGORY_ORDER = [
 # NOT authoritative — confirm with `ado_cli.py get-work-item-type Issue` and
 # override via HADI_STATE_CATEGORIES / state_categories.json.
 DEFAULT_STATE_CATEGORIES = {
+    # --- Verified from ADO get-work-item-type (0_Projects_Team / Issue) ---
     "new": "new", "proposed": "new",
-    "acknowledged": "triage", "approved": "triage", "feedback": "triage",
-    "reviewed": "qa",  # post-dev review (unconfirmed — verify with get-work-item-type)
-    "active": "active", "in progress": "active", "committed": "active", "doing": "active",
-    "resolved": "dev_done",
+    "feedback": "triage",
+    "active": "active", "blocked": "active",
+    "reviewed": "qa", "po reviewed": "qa",
+    "pending deployment": "ready_release",
+    "deployed": "released",
+    "solved": "closed", "closed": "closed", "canceled": "rejected", "rejected": "rejected",
+    # --- Generic fallbacks for other project types ---
+    "acknowledged": "triage", "approved": "triage",
+    "in progress": "active", "committed": "active", "doing": "active",
     "testing": "qa", "in test": "qa", "qa": "qa", "bc": "qa", "smoke": "qa",
     "ready for qa": "qa",
-    "pending deployment": "ready_release", "ready for release": "ready_release",
-    "ready to deploy": "ready_release",
-    "deployed": "released", "released": "released", "done": "released",
-    "closed": "closed", "solved": "closed", "completed": "closed", "accepted": "closed",
-    "rejected": "rejected", "removed": "rejected",
+    "ready for release": "ready_release", "ready to deploy": "ready_release",
+    "released": "released", "done": "released",
+    "completed": "closed", "accepted": "closed", "solved": "closed",
+    "removed": "rejected",
 }
 
 
