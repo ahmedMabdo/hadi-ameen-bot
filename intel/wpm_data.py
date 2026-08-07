@@ -398,17 +398,29 @@ def _call_model(prompt, timeout=180):
         if r.status_code == 200:
             return "".join(b.get("text", "") for b in r.json().get("content", []))
         raise RuntimeError(f"anthropic HTTP {r.status_code}: {r.text[:200]}")
-    # 2) claude CLI — uses CLAUDE_CODE_OAUTH_TOKEN automatically (bundled in SDK)
+    # 2) claude-agent-sdk — uses CLAUDE_CODE_OAUTH_TOKEN automatically
     try:
-        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-        import claude_bin
-        exe = claude_bin.resolve()
-    except Exception:
-        exe = shutil.which("claude") or "claude"
-    p = subprocess.run([exe, "-p", prompt], capture_output=True, text=True, timeout=timeout)
-    if p.returncode == 0 and p.stdout.strip():
-        return p.stdout
-    raise RuntimeError(f"claude CLI rc={p.returncode}: {(p.stderr or '')[:200]}")
+        import asyncio
+        from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, TextBlock
+
+        async def _ask():
+            model = os.environ.get("HADI_MODEL", "claude-sonnet-5")
+            opts = ClaudeAgentOptions(model=model, max_turns=1)
+            parts = []
+            async for msg in query(prompt=prompt, options=opts):
+                if isinstance(msg, AssistantMessage):
+                    for block in msg.content:
+                        if isinstance(block, TextBlock):
+                            parts.append(block.text)
+            return "".join(parts)
+
+        result = asyncio.run(_ask())
+        if result.strip():
+            return result
+        raise RuntimeError("SDK returned empty response")
+    except ImportError:
+        pass
+    raise RuntimeError("no model backend (set ANTHROPIC_API_KEY, or install claude-agent-sdk)")
     raise RuntimeError("no model backend (set ANTHROPIC_API_KEY, or install the claude CLI)")
 
 
