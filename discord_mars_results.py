@@ -496,8 +496,7 @@ def build_run_content(pipelines: list):
         if owner:
             mention_ids.append(owner)
     lines.append("(التذكير هيتكرر كل يوم لحد ما المشاكل تتحل ✅)")
-    return "\n".join(lines), mention_ids
-
+    return "\n".join(lines), list(dict.fromkeys(mention_ids))  # dedupe: same owner may own multiple pipelines
 
 def main() -> None:
     load_env_file(str(BASE / ".env"))
