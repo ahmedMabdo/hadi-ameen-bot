@@ -648,18 +648,30 @@ ALLOWED_REACTIONS = {
     "\U0001F525", "\u2764\uFE0F", "\U0001F622", "\U0001F44D",
 }
 
-REACT_RX = re.compile(r"^\s*REACT:\s*(\S{1,8})\s*(?:\n+|$)", re.IGNORECASE)
+REACT_RX = re.compile(r"^\s*REACT:\s*(\S{1,8})\s*$", re.IGNORECASE)
+# matches any stray REACT: line anywhere in the text (safety strip)
+REACT_STRIP_RX = re.compile(r"^\s*REACT:\s*\S{0,8}\s*\n?", re.IGNORECASE | re.MULTILINE)
 
 
 def split_react_directive(text):
-    """يفصل سطر REACT: <إيموجي> من أول رد الموديل — بيرجع (emoji|None, باقي الرد)."""
-    m = REACT_RX.match(text or "")
-    if not m:
-        return None, (text or "")
-    emoji = m.group(1).strip()
-    rest = (text[m.end():] or "").strip()
-    if emoji not in ALLOWED_REACTIONS:
-        emoji = None
+    """يفصل سطر REACT: من أول 5 سطور مش بس السطر الأول."""
+    lines = (text or "").splitlines()
+    emoji = None
+    found_idx = None
+    for i, line in enumerate(lines[:5]):
+        m = REACT_RX.match(line.strip())
+        if m:
+            candidate = m.group(1).strip()
+            if candidate in ALLOWED_REACTIONS:
+                emoji = candidate
+            found_idx = i
+            break
+    if found_idx is not None:
+        rest_lines = lines[:found_idx] + lines[found_idx + 1:]
+        rest = "\n".join(rest_lines).strip()
+    else:
+        rest = (text or "").strip()
+    rest = REACT_STRIP_RX.sub("", rest).strip()
     return emoji, rest
 
 
