@@ -384,35 +384,31 @@ def rule_based_assessment(d):
 
 
 def _call_model(prompt, timeout=180):
-    if requests is not None:
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        oauth_token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
-        if api_key:
-            headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01",
-                       "content-type": "application/json"}
-        elif oauth_token:
-            headers = {"Authorization": f"Bearer {oauth_token}",
-                       "anthropic-version": "2023-06-01",
-                       "content-type": "application/json"}
-        else:
-            headers = None
-        if headers:
-            r = requests.post(
-                "https://api.anthropic.com/v1/messages",
-                headers=headers,
-                json={"model": os.environ.get("HADI_MODEL", "claude-sonnet-5"),
-                      "max_tokens": 1500,
-                      "messages": [{"role": "user", "content": prompt}]},
-                timeout=timeout)
-            if r.status_code == 200:
-                return "".join(b.get("text", "") for b in r.json().get("content", []))
-            raise RuntimeError(f"anthropic HTTP {r.status_code}: {r.text[:200]}")
-    exe = shutil.which("claude")
-    if exe:
-        p = subprocess.run([exe, "-p", prompt], capture_output=True, text=True, timeout=timeout)
-        if p.returncode == 0 and p.stdout.strip():
-            return p.stdout
-        raise RuntimeError(f"claude CLI rc={p.returncode}: {(p.stderr or '')[:200]}")
+    # 1) ANTHROPIC_API_KEY — direct API
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if api_key and requests is not None:
+        r = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={"x-api-key": api_key, "anthropic-version": "2023-06-01",
+                     "content-type": "application/json"},
+            json={"model": os.environ.get("HADI_MODEL", "claude-sonnet-5"),
+                  "max_tokens": 1500,
+                  "messages": [{"role": "user", "content": prompt}]},
+            timeout=timeout)
+        if r.status_code == 200:
+            return "".join(b.get("text", "") for b in r.json().get("content", []))
+        raise RuntimeError(f"anthropic HTTP {r.status_code}: {r.text[:200]}")
+    # 2) claude CLI — uses CLAUDE_CODE_OAUTH_TOKEN automatically (bundled in SDK)
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        import claude_bin
+        exe = claude_bin.resolve()
+    except Exception:
+        exe = shutil.which("claude") or "claude"
+    p = subprocess.run([exe, "-p", prompt], capture_output=True, text=True, timeout=timeout)
+    if p.returncode == 0 and p.stdout.strip():
+        return p.stdout
+    raise RuntimeError(f"claude CLI rc={p.returncode}: {(p.stderr or '')[:200]}")
     raise RuntimeError("no model backend (set ANTHROPIC_API_KEY, or install the claude CLI)")
 
 
