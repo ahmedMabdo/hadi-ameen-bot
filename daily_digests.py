@@ -212,6 +212,34 @@ DIGESTS = {
     },
 }
 
+
+def _dm_asser(text: str) -> bool:
+    """بيبعت DM لآسر مباشرةً على Discord.
+
+    بيرجع True لو الرسالة اتبعتت، False لو في مشكلة.
+    مستخدم في eval_report.py عشان يوصّل التقرير الأسبوعي.
+    """
+    token = os.getenv("DISCORD_BOT_TOKEN", "").strip()
+    if not token:
+        print("_dm_asser: DISCORD_BOT_TOKEN مش موجود", file=sys.stderr)
+        return False
+    try:
+        ch = _discord_post(
+            "/users/@me/channels",
+            {"recipient_id": ASSER_USER_ID},
+            token,
+        )
+        _discord_post(
+            f"/channels/{ch['id']}/messages",
+            {"content": text[:1900]},
+            token,
+        )
+        return True
+    except Exception as error:
+        print(f"_dm_asser FAIL: {_reason(error)}", file=sys.stderr)
+        return False
+
+
 def _persona_core() -> str:
     """نواة الشخصية المشتركة (نقطة 8) — نفس صوت هادي في الملخصات زي القنوات."""
     try:
