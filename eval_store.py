@@ -75,7 +75,7 @@ def connect():
     global _conn
     if _conn is None:
         DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _conn = sqlite3.connect(str(DB_PATH), timeout=10)
+        _conn = sqlite3.connect(str(DB_PATH), timeout=10, check_same_thread=False)
         _conn.row_factory = sqlite3.Row
         _conn.execute("PRAGMA journal_mode=WAL")
         _conn.executescript(_SCHEMA)
