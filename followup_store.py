@@ -112,9 +112,13 @@ def all_open() -> list:
 
 # ------------------------------------------------------------------ العمليات
 def add(digest: str, content: str, owner: str = "", owner_id: str = "",
-        source_msg: str = "") -> dict | None:
+        source_msg: str = "", channel_id: str = "", message_id: str = "") -> dict | None:
     """يسجّل نقطة جديدة. بيرجّع None لو نفس النقطة متسجلة أصلًا (dedup في الكود
-    مش بالاعتماد على الموديل)."""
+    مش بالاعتماد على الموديل).
+
+    channel_id + message_id بيتخزّنوا عشان النبض يقدر يرجع يبص على المحادثة
+    ويعرف لو النقطة اتردّ عليها (رد مباشر أو منشن المسؤول) — نقطة آسر.
+    """
     content = (content or "").strip()
     if len(content) < 8:
         return None
@@ -122,13 +126,16 @@ def add(digest: str, content: str, owner: str = "", owner_id: str = "",
     key = _norm(content)
     if any(_norm(i.get("content", "")) == key for i in items):
         return None
+    msg_id = str(message_id or source_msg or "").strip()
     item = {
         "id": uuid.uuid4().hex[:8],
         "content": content[:500],
         "owner": (owner or "").strip()[:60],
         "owner_id": str(owner_id or "").strip(),
         "first_seen": _today().isoformat(),
-        "source_msg": str(source_msg or ""),
+        "source_msg": msg_id,          # توافق قديم
+        "message_id": msg_id,          # رسالة النقطة الأصلية (مرساة كشف الرد)
+        "channel_id": str(channel_id or "").strip(),
         "reminders": 0,
     }
     items.append(item)

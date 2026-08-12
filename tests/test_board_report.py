@@ -70,6 +70,29 @@ def test_weekly_has_health_and_counts():
     assert "التقرير الأسبوعي" in board_report.format_weekly(s)
 
 
+def test_weekly_lists_completed_items_with_details():
+    """طلب آسر: التقرير الأسبوعي يسرد الـ work items بـ title/assignee/priority/severity."""
+    con = _fresh()
+    workitems.record_transitions("sprint", [
+        _item(1, "Active", assignee="Ghada", pri=1, sev="1 - Critical"),
+        _item(2, "Active", assignee="Marco", pri=3, sev="3 - Medium")], con=con)
+    D = "2026-08-06"
+    workitems.record_transitions("sprint", [
+        _item(1, "Closed", assignee="Ghada", pri=1, sev="1 - Critical", changed=D + "T09:00:00Z"),
+        _item(2, "Closed", assignee="Marco", pri=3, sev="3 - Medium", changed=D + "T09:05:00Z")], con=con)
+    s = board_report.weekly_engineering(end_date=D, con=con)
+    ci = s["completed_items"]
+    assert len(ci) == 2, ci
+    # الفرز: الأولوية الأعلى (P1) الأول
+    assert ci[0]["id"] == 1 and ci[0]["priority"] == 1, ci
+    assert ci[0]["assignee"] == "Ghada" and ci[0]["severity"] == "1 - Critical", ci
+    txt = board_report.format_weekly(s)
+    assert "الشغل اللي اتقفل الأسبوع" in txt
+    assert "Ghada" in txt and "Marco" in txt          # assignee
+    assert "item 1" in txt and "item 2" in txt        # title
+    assert "P1" in txt and "1 - Critical" in txt       # priority + severity
+
+
 def _run_all():
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for fn in fns:

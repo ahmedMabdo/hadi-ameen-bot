@@ -86,6 +86,7 @@ def fetch_last_24h_messages() -> list[dict]:
             )
             messages.append(
                 {
+                    "id": msg.get("id"),
                     "author": display_name,
                     "author_id": author.get("id"),
                     "bot": bool(author.get("bot")),

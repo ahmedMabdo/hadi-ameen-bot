@@ -35,6 +35,14 @@ def _sev(v):
     return issue_matrix.normalize_severity(v)
 
 
+_SEV_ORDER = {"Urgent": 0, "High": 1, "Medium": 2, "Low": 3}
+
+
+def _sev_rank(v):
+    """ترتيب الخطورة للفرز (الأعلى الأول)؛ غير المعروف في الآخر."""
+    return _SEV_ORDER.get(_sev(v), 9)
+
+
 def _day_bounds(date):
     return f"{date}T00:00:00", f"{date}T23:59:59.999999Z"
 
@@ -188,12 +196,34 @@ def weekly_engineering(end_date=None, con=None):
     high = len([w for w in open_items if _sev(w["severity"]) in HIGH_SEV or w["priority"] in (0, 1)])
     releases = len([e for e in evs if e["event_type"] == "RELEASE"])
 
+    # #7: سرد الشغل اللي اتقفل الأسبوع بالتفاصيل (title/assignee/priority/severity)
+    # — طلب آسر: التقرير يسرد الـ work items مش أرقام مجمّعة بس.
+    items_by_id = {w["id"]: w for w in items}
+    completed_items, seen = [], set()
+    for e in status_evs:
+        wid = e["work_item_id"]
+        if e["new_category"] != "closed" or wid in seen:
+            continue
+        seen.add(wid)
+        w = items_by_id.get(wid)
+        if w:
+            completed_items.append({"id": w["id"], "title": (w["title"] or "")[:70],
+                                    "assignee": w.get("assignee") or "—",
+                                    "priority": w["priority"], "severity": w["severity"],
+                                    "type": w.get("type")})
+        else:  # اتقفل بس مش في المير الحالي — نبيّنه من غير ما نخترع تفاصيل
+            completed_items.append({"id": wid, "title": "(اتقفل — مش في المير الحالي)",
+                                    "assignee": "—", "priority": None,
+                                    "severity": None, "type": None})
+    completed_items.sort(key=lambda w: (w["priority"] if w["priority"] is not None else 99,
+                                        _sev_rank(w["severity"])))
+
     health = _health(open_items, evs, con)
     return {"start": start, "end": end, "completed": completed, "new": new_items,
             "reopened": reopened, "blocked": blocked, "high_sev_pri": high,
             "releases": releases, "in_progress": len([w for w in open_items
                                                       if hadi_config.state_category(w["state"]) == "active"]),
-            "health": health}
+            "completed_items": completed_items, "health": health}
 
 
 def _status(color, evidence):
@@ -228,8 +258,17 @@ def format_weekly(s):
     L = [f"🗓️ **التقرير الأسبوعي — {s['start']} → {s['end']}**",
          f"• مكتمل: {s['completed']} · شغّال: {s['in_progress']} · جديد: {s['new']} · "
          f"blocked: {s['blocked']} · reopened: {s['reopened']} · إصدارات: {s['releases']}",
-         f"• عالي الخطورة/الأولوية مفتوح: {s['high_sev_pri']}",
-         "**صحة الهندسة:**"]
+         f"• عالي الخطورة/الأولوية مفتوح: {s['high_sev_pri']}"]
+    ci = s.get("completed_items") or []
+    if ci:
+        L.append(f"**الشغل اللي اتقفل الأسبوع ({len(ci)}):**")
+        for w in ci[:40]:
+            pri = "—" if w["priority"] is None else f"P{w['priority']}"
+            sev = w.get("severity") or "—"
+            L.append(f"   • #{w['id']} [{pri}·{sev}] {w['title']} — 👤 {w['assignee']}")
+        if len(ci) > 40:
+            L.append(f"   _(+{len(ci) - 40} عنصر تاني)_")
+    L.append("**صحة الهندسة:**")
     for k, v in s["health"].items():
         dot = {"GREEN": "🟢", "YELLOW": "🟡", "RED": "🔴", "UNKNOWN": "⚪"}.get(v["status"], "⚪")
         L.append(f"   {dot} {k}: {v['status']} — {v['evidence']}")
