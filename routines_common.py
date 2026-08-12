@@ -15,7 +15,10 @@
 """
 
 import os
+import re
 import sys
+from datetime import datetime, timezone
+
 import requests
 
 
@@ -214,3 +217,100 @@ def post_to_channel(channel_id: str, content: str, mention_ids=None) -> bool:
     log(f"تم إرسال الملخص لقناة {channel_id} ({len(chunks)} رسالة، "
         f"{len(ids)} منشن)")
     return True
+
+
+# ---------------------------------------------------------------------------
+# كشف الرد على نقطة متابعة (نقطة آسر: النبض ما يفضلش يفكّر بنقطة اتردّ عليها)
+# ---------------------------------------------------------------------------
+# قناة كل ملخص — نفس مفاتيح env اللي السكربتات بتقراها، والافتراضي نفس ثوابت
+# discord_*.py. لو غيّرت القناة من .env، الكشف بيمشي وراها تلقائيًا.
+DISCORD_EPOCH_MS = 1420070400000
+
+DIGEST_CHANNEL_ENV = {
+    "followup": ("SUPPORT_CHANNEL_ID", "ISSUES_CHANNEL_ID"),
+    "podaily": ("PODAILY_CHANNEL_ID", "PO_CHANNEL_ID"),
+    "marsteam": ("MARSTEAM_CHANNEL_ID", "MARS_CHANNEL_ID"),
+}
+DIGEST_CHANNEL_DEFAULT = {
+    "followup": "1179369466279235584",
+    "podaily": "1358833733699899704",
+    "marsteam": "1136668686044909761",
+}
+
+
+def channel_id_for_digest(digest: str) -> str | None:
+    """قناة الملخص (followup/podaily/marsteam) — env override وإلا الافتراضي."""
+    for env in DIGEST_CHANNEL_ENV.get(digest, ()):
+        val = (os.environ.get(env) or "").strip()
+        if val:
+            return val
+    return DIGEST_CHANNEL_DEFAULT.get(digest)
+
+
+def snowflake_after(when) -> int:
+    """أصغر Discord snowflake لرسالة اتبعتت بعد اللحظة دي — للاستخدام مع `after`.
+    `when` ممكن يكون datetime أو نص ISO (تاريخ، أو تاريخ+وقت)."""
+    if isinstance(when, str):
+        raw = when.strip()
+        parsed = None
+        for candidate in (raw, raw[:10]):
+            try:
+                parsed = datetime.fromisoformat(candidate)
+                break
+            except ValueError:
+                continue
+        if parsed is None:
+            return 0
+        when = parsed
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    ms = int(when.timestamp() * 1000) - DISCORD_EPOCH_MS
+    return (ms if ms > 0 else 0) << 22
+
+
+def _mentions_user(msg: dict, owner_id: str) -> bool:
+    if not owner_id:
+        return False
+    for user in msg.get("mentions") or []:
+        if str(user.get("id")) == str(owner_id):
+            return True
+    return bool(re.search(rf"<@!?{re.escape(str(owner_id))}>", msg.get("content") or ""))
+
+
+def _is_reply_to(msg: dict, source_msg_id: str) -> bool:
+    if not source_msg_id:
+        return False
+    ref = msg.get("message_reference") or {}
+    return str(ref.get("message_id") or "") == str(source_msg_id)
+
+
+def find_reply_since(channel_id: str, after_snowflake, owner_id: str = "",
+                     source_msg_id: str = "", max_pages: int = 5) -> dict | None:
+    """أول رسالة **بشرية** بعد `after_snowflake` بتعتبر ردًا على النقطة:
+    رد مباشر على رسالة النقطة، أو رسالة بتمنشن المسؤول. None لو مفيش.
+
+    القاعدة دي اختيار آسر: «رد في الثريد أو منشن المسؤول». بتتجاهل رسايل البوتات
+    (منها هادي نفسه) عشان منشن هادي للمسؤول في الملخص ما يقفلش النقطة بالغلط.
+    """
+    if not channel_id or (not owner_id and not source_msg_id):
+        return None
+    # المرساة الأدق: الرسايل اللي **بعد رسالة النقطة نفسها** (لو عندنا id) —
+    # ده بيمنع إننا نحسب منشن حصل قبل ما النقطة تتفتح كأنه رد. وإلا (نقطة قديمة
+    # من غير message_id) بنرجع لوقت أول ظهور.
+    after = str(source_msg_id).strip() if source_msg_id else str(int(after_snowflake or 0))
+    for _ in range(max(1, max_pages)):
+        batch = api_get(f"/channels/{channel_id}/messages",
+                        params={"limit": 100, "after": after})
+        if not batch:
+            break
+        # نرتّب تصاعدي بالـ id عشان نتقدّم للأمام بثبات مهما كان ترتيب رد Discord
+        batch = sorted(batch, key=lambda m: int(m.get("id", 0)))
+        for msg in batch:
+            if (msg.get("author") or {}).get("bot"):
+                continue
+            if _is_reply_to(msg, source_msg_id) or _mentions_user(msg, owner_id):
+                return msg
+        after = str(batch[-1].get("id"))
+        if len(batch) < 100:
+            break
+    return None

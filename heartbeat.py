@@ -53,6 +53,10 @@ COOLDOWN_H = float(os.environ.get("HADI_HB_COOLDOWN_HOURS", "24") or "24")
 QUIET_START = int(os.environ.get("HADI_HB_QUIET_START", "22") or "22")  # 10 مساءً
 QUIET_END = int(os.environ.get("HADI_HB_QUIET_END", "9") or "9")        # 9 صباحًا
 MAX_ALERTS = int(os.environ.get("HADI_HB_MAX_ALERTS", "3") or "3")      # لكل نبضة
+# نقطة آسر: قبل ما النبض يفكّر بنقطة، يبص القناة — لو اتردّ عليها (رد مباشر أو
+# منشن المسؤول) يقفلها بدل ما يفضل يبعتها. off بيرجّع السلوك القديم (بالعمر بس).
+AUTO_RESOLVE = (os.environ.get("HADI_HB_FOLLOWUP_AUTORESOLVE", "on").strip().lower() != "off")
+FOLLOWUP_CHECK_MAX = int(os.environ.get("HADI_HB_FOLLOWUP_CHECK_MAX", "15") or "15")  # سقف فحص/نبضة
 
 
 # --- الحالة ----------------------------------------------------------------
@@ -178,6 +182,35 @@ def check_sprint_tomorrow(state, today=None):
     return alerts[:MAX_ALERTS]
 
 
+def _point_answered(item):
+    """هل النقطة اتردّ عليها في قناتها بعد أول ظهور؟ (رد مباشر أو منشن المسؤول).
+
+    بيرجّع (answered, checked): checked=False يعني ماقدرناش نفحص (مفيش قناة/إشارة
+    أو فشل شبكة) → النبض يرجع لسلوكه القديم بالعمر. أي استثناء بيتبلع هنا عشان
+    فحص الرد عمره ما يكسر النبضة.
+    """
+    try:
+        import routines_common
+    except Exception:
+        return False, False
+    if not (os.environ.get("DISCORD_BOT_TOKEN") or "").strip():
+        return False, False   # من غير توكن مفيش فحص — النبض بالعمر زي الأول
+    digest = item.get("digest", "")
+    channel_id = (str(item.get("channel_id") or "").strip()
+                  or routines_common.channel_id_for_digest(digest))
+    owner_id = str(item.get("owner_id") or "").strip()
+    source_msg_id = str(item.get("message_id") or item.get("source_msg") or "").strip()
+    if not channel_id or (not owner_id and not source_msg_id):
+        return False, False
+    try:
+        after = routines_common.snowflake_after(item.get("first_seen") or "")
+        hit = routines_common.find_reply_since(channel_id, after, owner_id, source_msg_id)
+        return (hit is not None), True
+    except Exception as error:
+        print(f"HEARTBEAT WARN: فحص الرد على النقطة فشل ({type(error).__name__}: {error})")
+        return False, False
+
+
 def check_support_48h(state, now=None):
     """نقطة مفتوحة عدّى عليها الحد من غير رد — من مخزن المتابعة الموحّد.
 
@@ -185,6 +218,10 @@ def check_support_48h(state, now=None):
     اللي بيشتغل (daily_digests) ماكانش موصول بأداة الـ pending أصلًا — فالفحص
     ده عمره ما اشتغل على داتا حقيقية. دلوقتي بيقرا نفس المخزن اللي الملخصات
     بتكتب فيه، وبيغطي التلات قنوات مش الدعم بس.
+
+    نقطة آسر (سياق): قبل ما نفكّر بنقطة، بنبص على قناتها — لو حد ردّ عليها
+    (رد مباشر على رسالتها أو منشن للمسؤول) بنقفلها ونعدّي، فالنبض ما يفضلش
+    يبعت نقطة اترد عليها فعلًا. الفحص بيتبلع أي خطأ ويرجع للعمر لو فشل.
     """
     try:
         import followup_store
@@ -196,6 +233,7 @@ def check_support_48h(state, now=None):
     today = dt.datetime.now(TZ).date()
     min_days = max(1, SUPPORT_HOURS // 24)
     alerts = []
+    checks_left = FOLLOWUP_CHECK_MAX
     for item in rows:
         try:
             days = followup_store.age_days(item, today)
@@ -203,6 +241,21 @@ def check_support_48h(state, now=None):
             continue
         if days < min_days:
             continue
+
+        # لو اتردّ عليها في القناة — اقفلها وعدّي (حتى لو إحنا في cooldown).
+        if AUTO_RESOLVE and checks_left > 0:
+            checks_left -= 1
+            answered, checked = _point_answered(item)
+            if checked and answered:
+                digest = item.get("digest", "")
+                try:
+                    followup_store.resolve(digest, [item.get("id")])
+                except Exception as error:
+                    print(f"HEARTBEAT WARN: قفل النقطة فشل ({type(error).__name__}: {error})")
+                print(f"HEARTBEAT: نقطة {digest}:{item.get('id')} اتقفلت تلقائيًا "
+                      "(اتردّ عليها في القناة)")
+                continue
+
         key = f"support:{item.get('digest', '?')}:{item.get('id', '')}"
         if recently_sent(state, key):
             continue
@@ -429,12 +482,42 @@ def selftest():
         state = {"sent": {}, "seen_iterations": []}
         assert len(check_sprint_tomorrow(state, today)) == 1, "حدث بكرة مااتمسكش"
         assert len(check_release_day(state, today)) == 1, "يوم الريليز مااتمسكش"
-        sup = check_support_48h(state)
-        assert len(sup) == 1 and "شكوى" in sup[0]["text"], f"فحص الـ 48 ساعة: {sup}"
-        assert "3 يوم" in sup[0]["text"], f"العمر مش ظاهر: {sup}"
 
-        mark_sent(state, sup[0]["key"])
-        assert check_support_48h(state) == [], "التكرار مااتمنعش (cooldown)"
+        # فحص العمر/الـ cooldown: بنطفّي الكشف التلقائي عشان مايلمسش الشبكة
+        global AUTO_RESOLVE, _point_answered
+        saved_auto, saved_fn = AUTO_RESOLVE, _point_answered
+        AUTO_RESOLVE = False
+        try:
+            sup = check_support_48h(state)
+            assert len(sup) == 1 and "شكوى" in sup[0]["text"], f"فحص الـ 48 ساعة: {sup}"
+            assert "3 يوم" in sup[0]["text"], f"العمر مش ظاهر: {sup}"
+            mark_sent(state, sup[0]["key"])
+            assert check_support_48h(state) == [], "التكرار مااتمنعش (cooldown)"
+
+            # الكشف التلقائي: نقطة اترد عليها في القناة لازم تتقفل وتختفي من النبض
+            AUTO_RESOLVE = True
+            followup_store._save_all({"followup": [
+                {"id": "r1", "content": "نقطة اترد عليها في القناة", "owner": "غادة",
+                 "owner_id": "1093636555362533498", "channel_id": "123",
+                 "message_id": "999", "first_seen": old_day},
+            ]})
+            _point_answered = lambda item: (True, True)   # مثّلنا إن فيه رد
+            res = check_support_48h({"sent": {}, "seen_iterations": []})
+            assert res == [], f"النقطة المردود عليها لسه بتظهر: {res}"
+            assert followup_store.load("followup") == [], "النقطة المردود عليها ماتقفلتش"
+
+            # نقطة اتفحصت ومفيش رد → تفضل تظهر بالعمر زي الأول
+            followup_store._save_all({"followup": [
+                {"id": "r2", "content": "نقطة لسه من غير رد", "owner": "غادة",
+                 "owner_id": "1093636555362533498", "channel_id": "123",
+                 "message_id": "999", "first_seen": old_day},
+            ]})
+            _point_answered = lambda item: (False, True)
+            res = check_support_48h({"sent": {}, "seen_iterations": []})
+            assert len(res) == 1 and "لسه من غير رد" in res[0]["text"], f"المفتوحة اختفت: {res}"
+            assert len(followup_store.load("followup")) == 1, "المفتوحة اتقفلت بالغلط"
+        finally:
+            AUTO_RESOLVE, _point_answered = saved_auto, saved_fn
 
         assert in_quiet_hours(dt.datetime(2026, 7, 19, 3, tzinfo=TZ)) is True, "الليل مش هادي"
         assert in_quiet_hours(dt.datetime(2026, 7, 19, 14, tzinfo=TZ)) is False, "الضهر اتحسب هادي"
