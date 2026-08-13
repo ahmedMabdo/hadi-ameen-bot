@@ -129,7 +129,7 @@ def board_snapshot():
         return {}
     con = _sq3.connect(db)
     try:
-        rows = con.execute("SELECT state FROM board_items").fetchall()
+        rows = con.execute("SELECT state FROM board_items WHERE board='support'").fetchall()
     except Exception:
         return {}
     finally:
@@ -181,20 +181,20 @@ def _weekly_board_stats(start_iso, end_iso):
         def _q(sql, p): return con.execute(sql, p).fetchone()[0]
         s, e = start_iso, end_iso
         resolved = _q(
-            "SELECT COUNT(*) FROM board_items WHERE state IN ('Resolved','Deployed') "
+            "SELECT COUNT(*) FROM board_items WHERE state IN ('Resolved','Deployed') AND board='support' "
             "AND substr(changed_date,1,10)>=? AND substr(changed_date,1,10)<=?", (s, e))
         created = _q(
             "SELECT COUNT(*) FROM board_items "
-            "WHERE substr(created_date,1,10)>=? AND substr(created_date,1,10)<=?", (s, e))
+            "WHERE board='support' AND substr(created_date,1,10)>=? AND substr(created_date,1,10)<=?", (s, e))
         newly_blocked = _q(
-            "SELECT COUNT(*) FROM board_items WHERE state='Blocked' "
+            "SELECT COUNT(*) FROM board_items WHERE state='Blocked' AND board='support' "
             "AND substr(changed_date,1,10)>=? AND substr(changed_date,1,10)<=?", (s, e))
         pending = _q(
-            "SELECT COUNT(*) FROM board_items WHERE state='Pending Deployment' "
+            "SELECT COUNT(*) FROM board_items WHERE state='Pending Deployment' AND board='support' "
             "AND substr(changed_date,1,10)>=? AND substr(changed_date,1,10)<=?", (s, e))
         ci = con.execute(
             "SELECT id, title, state, priority FROM board_items "
-            "WHERE state IN ('Resolved','Deployed') "
+            "WHERE state IN ('Resolved','Deployed') AND board='support' "
             "AND substr(changed_date,1,10)>=? AND substr(changed_date,1,10)<=? "
             "ORDER BY changed_date DESC", (s, e)).fetchall()
     except Exception:
