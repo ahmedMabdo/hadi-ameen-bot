@@ -315,7 +315,7 @@ def _refresh_board(con, board, now):
                (board,id,type,title,state,tags,assigned_to,priority,parent,
                 created_date,changed_date) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
             (board, f.get("System.Id"), f.get("System.WorkItemType"),
-             f.get("System.Title"), f.get("System.BoardColumn") or f.get("System.State"), f.get("System.Tags", ""),
+             f.get("System.Title"), f.get("System.BoardColumn")"), f.get("System.Tags", ""),
              _assigned(f.get("System.AssignedTo")),
              f.get("Microsoft.VSTS.Common.Priority"), f.get("System.Parent"),
              f.get("System.CreatedDate"), f.get("System.ChangedDate")),
