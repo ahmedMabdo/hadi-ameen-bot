@@ -129,7 +129,7 @@ def board_snapshot():
         return {}
     con = _sq3.connect(db)
     try:
-        rows = con.execute("SELECT state FROM board_items WHERE board='support'").fetchall()
+        rows = con.execute("SELECT state FROM board_items WHERE board='support' AND state IS NOT NULL").fetchall()
     except Exception:
         return {}
     finally:
