@@ -197,7 +197,7 @@ def _init(con):
         );
         CREATE TABLE IF NOT EXISTS project_items (
             id INTEGER PRIMARY KEY, type TEXT, title TEXT, state TEXT,
-            parent INTEGER, changed_date TEXT
+            parent INTEGER, changed_date TEXT, severity TEXT
         );
         """
     )
@@ -340,8 +340,8 @@ def _refresh_project(con, now):
     for w in items:
         f = w.get("fields", {})
         con.execute(
-            "INSERT OR REPLACE INTO project_items (id,type,title,state,parent,changed_date)"
-            " VALUES (?,?,?,?,?,?)",
+            "INSERT OR REPLACE INTO project_items (id,type,title,state,parent,changed_date,severity)"
+            " VALUES (?,?,?,?,?,?,?)",
             (f.get("System.Id"), f.get("System.WorkItemType"), f.get("System.Title"),
              f.get("System.State"), f.get("System.Parent"), f.get("System.ChangedDate"), f.get("Microsoft.VSTS.Common.Severity")),
         )
