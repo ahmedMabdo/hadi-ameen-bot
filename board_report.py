@@ -132,7 +132,7 @@ def _risks(regressions_count=0):
         "blocked": len(blocked),
         "regressions_today": regressions_count,
         "top": [{"id": w["id"], "title": (w["title"] or "")[:60],
-                 "state": w["state"], "severity": w.get("severity")} for w in high[:8]],
+                 "state": w["state"], "severity": w.get("severity")} for w in sorted(high, key=lambda w: (w["priority"] if w["priority"] is not None else 99, _sev_rank(w.get("severity"))))[:8]],
     }
 
 
