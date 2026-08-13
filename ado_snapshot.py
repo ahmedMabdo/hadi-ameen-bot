@@ -1,4 +1,4 @@
-h#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 ado_snapshot.py - ADO read-model for Hadi (module C1)
 
