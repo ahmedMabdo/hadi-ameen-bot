@@ -134,19 +134,71 @@ def board_snapshot():
         return {}
     finally:
         con.close()
+
+    BOARD_ORDER = [
+        "New", "Planned", "Design",
+        "In Development", "In Progress", "Active", "Confirmed",
+        "Test case ready", "Reviewed",
+        "Pending Deployment", "Pending For Release",
+        "Blocked", "Closed", "Solved",
+    ]
     counts = {}
     for (st,) in rows:
         counts[st or "Unknown"] = counts.get(st or "Unknown", 0) + 1
-    active    = sum(counts.get(s, 0) for s in ["In Development", "In Progress", "Active", "Confirmed"])
-    qa        = sum(counts.get(s, 0) for s in ["Test case ready", "Reviewed"])
-    blocked   = counts.get("Blocked", 0)
-    pending   = sum(counts.get(s, 0) for s in ["Pending Deployment", "Pending For Release"])
-    new_items = sum(counts.get(s, 0) for s in ["New", "Planned", "Design"])
-    done      = sum(counts.get(s, 0) for s in ["Closed", "Solved"])
+
+    by_state = {s: counts[s] for s in BOARD_ORDER if counts.get(s, 0) > 0}
+    for s, c in counts.items():
+        if s not in by_state and c > 0:
+            by_state[s] = c
+
     return {
-        "active": active, "qa": qa, "blocked": blocked,
-        "pending_deploy": pending, "new_planned": new_items,
-        "done_total": done, "total": len(rows), "raw": counts,
+        "by_state": by_state,
+        "total": len(rows),
+        "blocked": counts.get("Blocked", 0),
+        "active": sum(counts.get(s, 0) for s in ["In Development", "In Progress", "Active", "Confirmed"]),
+        "qa": sum(counts.get(s, 0) for s in ["Test case ready", "Reviewed"]),
+        "pending_deploy": sum(counts.get(s, 0) for s in ["Pending Deployment", "Pending For Release"]),
+        "new_planned": sum(counts.get(s, 0) for s in ["New", "Planned", "Design"]),
+        "done_total": sum(counts.get(s, 0) for s in ["Closed", "Solved"]),
+    }
+
+
+def _weekly_board_stats(start_iso, end_iso):
+    """Weekly activity derived from board_items changed_date/created_date."""
+    import sqlite3 as _sq3, os as _os
+    db = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "ado_snapshot.db")
+    if not _os.path.exists(db):
+        return {}
+    con = _sq3.connect(db)
+    try:
+        def _q(sql, p): return con.execute(sql, p).fetchone()[0]
+        s, e = start_iso, end_iso
+        closed = _q(
+            "SELECT COUNT(*) FROM board_items WHERE state IN ('Closed','Solved') "
+            "AND substr(changed_date,1,10)>=? AND substr(changed_date,1,10)<=?", (s, e))
+        created = _q(
+            "SELECT COUNT(*) FROM board_items "
+            "WHERE substr(created_date,1,10)>=? AND substr(created_date,1,10)<=?", (s, e))
+        newly_blocked = _q(
+            "SELECT COUNT(*) FROM board_items WHERE state='Blocked' "
+            "AND substr(changed_date,1,10)>=? AND substr(changed_date,1,10)<=?", (s, e))
+        pending = _q(
+            "SELECT COUNT(*) FROM board_items "
+            "WHERE state IN ('Pending Deployment','Pending For Release') "
+            "AND substr(changed_date,1,10)>=? AND substr(changed_date,1,10)<=?", (s, e))
+        ci = con.execute(
+            "SELECT id, title, state, priority FROM board_items "
+            "WHERE state IN ('Closed','Solved') "
+            "AND substr(changed_date,1,10)>=? AND substr(changed_date,1,10)<=? "
+            "ORDER BY changed_date DESC", (s, e)).fetchall()
+    except Exception:
+        return {}
+    finally:
+        con.close()
+    return {
+        "closed": closed, "created": created,
+        "newly_blocked": newly_blocked, "pending": pending,
+        "closed_items": [{"id": r[0], "title": r[1], "state": r[2], "priority": r[3]} for r in ci],
     }
 
 
@@ -155,15 +207,24 @@ def format_daily(s):
     L = [f"📋 **ملخص البورد — {s['date']}**", ""]
 
     if snap and snap.get("total", 0) > 0:
+        by_state = snap.get("by_state", {})
         L.append("**📊 حالة البورد الآن**")
-        L.append(
-            f"🔨 شغل نشط: **{snap['active']}**  |  "
-            f"🧪 QA: **{snap['qa']}**  |  "
-            f"🚦 Pending Deploy: **{snap['pending_deploy']}**"
-        )
+        PHASES = [
+            ("📥", ["New", "Planned", "Design"]),
+            ("🔨", ["In Development", "In Progress", "Active", "Confirmed"]),
+            ("🧪", ["Test case ready", "Reviewed"]),
+            ("🚦", ["Pending Deployment", "Pending For Release"]),
+        ]
+        for emoji, states in PHASES:
+            parts = [f"{st}: **{by_state[st]}**" for st in states if by_state.get(st)]
+            if parts:
+                L.append(f"{emoji} " + "  |  ".join(parts))
         if snap["blocked"]:
             L.append(f"🔴 Blocked: **{snap['blocked']}**")
-        L.append(f"📌 New/Planned: {snap['new_planned']}  |  ✅ مكتمل اليوم: {s.get('completed', 0)}")
+        done = [(st, by_state[st]) for st in ["Closed", "Solved"] if by_state.get(st)]
+        if done:
+            L.append("✅ " + "  |  ".join(f"{st}: {c}" for st, c in done))
+        L.append(f"_إجمالي البورد: {snap['total']}_")
         L.append("")
 
     created   = s.get("created", 0)
@@ -173,16 +234,16 @@ def format_daily(s):
     if created or updates or completed or qa_in:
         L.append("**📈 نشاط اليوم**")
         parts = []
-        if created:   parts.append(f"➕ جديد: {created}")
+        if created:   parts.append(f"➕ New: {created}")
         if updates:   parts.append(f"🔄 تحديثات: {updates}")
-        if completed: parts.append(f"✅ مكتمل: {completed}")
-        if qa_in:     parts.append(f"🧪 دخل QA: {qa_in}")
+        if completed: parts.append(f"✅ Closed: {completed}")
+        if qa_in:     parts.append(f"🧪 Test case ready: {qa_in}")
         L.append("  ".join(parts))
         L.append("")
 
     if s.get("status_movements"):
         moves = " · ".join(f"{k}: {v}" for k, v in s["status_movements"].items())
-        L.append(f"🔀 حركة الحالات: {moves}")
+        L.append(f"🔀 تغيير الحالات: {moves}")
         L.append("")
 
     if s.get("releases"):
@@ -197,8 +258,8 @@ def format_daily(s):
     risk_parts  = []
     if high:        risk_parts.append(f"🔥 عالي الخطورة: {high}")
     if blocked_r:   risk_parts.append(f"🚧 Blocked: {blocked_r}")
-    if stale:       risk_parts.append(f"😴 راكد: {stale}")
-    if regressions: risk_parts.append(f"⚠️ ريجريشن: {regressions}")
+    if stale:       risk_parts.append(f"😴 Stale: {stale}")
+    if regressions: risk_parts.append(f"⚠️ Regression: {regressions}")
     if risk_parts:
         L.append("**⚠️ مخاطر**")
         L.append("  ".join(risk_parts))
@@ -298,54 +359,57 @@ def _health(open_items, evs, con):
 
 
 def format_weekly(s):
-    snap = board_snapshot()
+    snap   = board_snapshot()
+    weekly = _weekly_board_stats(s["start"], s["end"])
     L = [f"📅 **التقرير الأسبوعي — {s['start']} → {s['end']}**", ""]
 
     if snap and snap.get("total", 0) > 0:
-        L.append("**📊 حالة البورد**")
-        L.append(
-            f"🔨 نشط: **{snap['active']}**  |  "
-            f"🧪 QA: **{snap['qa']}**  |  "
-            f"🚦 Pending Deploy: **{snap['pending_deploy']}**"
-        )
+        by_state = snap.get("by_state", {})
+        L.append("**📊 حالة البورد الآن**")
+        PHASES = [
+            ("🔨", ["In Development", "In Progress", "Active", "Confirmed"]),
+            ("🧪", ["Test case ready", "Reviewed"]),
+            ("🚦", ["Pending Deployment", "Pending For Release"]),
+            ("📥", ["New", "Planned", "Design"]),
+        ]
+        for emoji, states in PHASES:
+            parts = [f"{st}: **{by_state[st]}**" for st in states if by_state.get(st)]
+            if parts:
+                L.append(f"{emoji} " + "  |  ".join(parts))
         if snap["blocked"]:
             L.append(f"🔴 Blocked: **{snap['blocked']}**")
+        L.append(f"_إجمالي: {snap['total']}_")
         L.append("")
 
-    L.append("**📈 إحصائيات الأسبوع**")
-    completed = s.get("completed", 0)
-    in_prog   = s.get("in_progress", 0)
-    new_items = s.get("new", 0)
-    reopened  = s.get("reopened", 0)
-    releases  = s.get("releases", 0)
-    blocked_w = s.get("blocked", 0)
-    L.append(
-        f"✅ مكتمل: **{completed}**  |  "
-        f"🔨 In Progress: **{in_prog}**  |  "
-        f"➕ جديد: **{new_items}**"
-    )
-    if releases:
-        L.append(f"🚀 إصدارات: **{releases}**")
+    closed       = weekly.get("closed", 0) or s.get("completed", 0)
+    created      = weekly.get("created", 0) or s.get("new", 0)
+    pending_new  = weekly.get("pending", 0)
+    blocked_new  = weekly.get("newly_blocked", 0)
+    releases     = s.get("releases", 0)
+    reopened     = s.get("reopened", 0)
+    L.append("**📈 نشاط الأسبوع**")
+    L.append(f"✅ Closed: **{closed}**  |  ➕ New: **{created}**  |  🚀 Releases: **{releases}**")
+    if pending_new:
+        L.append(f"🚦 وصل Pending Deployment: **{pending_new}**")
+    if blocked_new:
+        L.append(f"🔴 Blocked جديد: **{blocked_new}**")
     if reopened:
-        L.append(f"🔁 فُتحت تاني: {reopened}")
-    if blocked_w:
-        L.append(f"🚧 Blocked: {blocked_w}")
+        L.append(f"🔁 Reopened: {reopened}")
     L.append("")
 
-    ci = s.get("completed_items") or []
+    ci = weekly.get("closed_items") or s.get("completed_items") or []
     if ci:
-        L.append(f"**✅ المُغلق الأسبوع ({len(ci)})**")
+        L.append(f"**✅ Closed الأسبوع ({len(ci)})**")
         for w in ci[:40]:
-            pri = "-" if w["priority"] is None else f"P{w['priority']}"
-            sev = w.get("severity") or "-"
-            L.append(f"  · #{w['id']} [{pri}·{sev}] {w['title'][:60]}")
+            pri = "-" if w.get("priority") is None else f"P{w['priority']}"
+            L.append(f"  · #{w['id']} [{pri}] {str(w.get('title',''))[:60]}")
         if len(ci) > 40:
-            L.append(f"  _+{len(ci) - 40} عنصر تاني_")
+            L.append(f"  _+{len(ci) - 40} more_")
         L.append("")
 
     health = s.get("health") or {}
     if health:
-        L.append("**🩺 صحة الهندسة**")
+        L.append("**🩺 Engineering Health**")
         for k, v in health.items():
             dot = {"GREEN": "🟢", "YELLOW": "🟡", "RED": "🔴"}.get(v["status"], "🔵")
             L.append(f"  {dot} {k}: {v['status']} — {v['evidence']}")
