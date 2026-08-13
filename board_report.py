@@ -88,7 +88,7 @@ def daily_board(date, con=None):
     by_priority = Counter(str(w["priority"]) for w in open_items if w["priority"] is not None)
     by_severity = Counter(_sev(w["severity"]) or "—" for w in open_items)
 
-    risks = _risks(open_items, regressions, con)
+    risks = _risks(len(regressions))
     return {
         "date": date,
         "created": len(created),
@@ -107,17 +107,32 @@ def daily_board(date, con=None):
     }
 
 
-def _risks(open_items, regressions, con):
-    high = [w for w in open_items if (_sev(w["severity"]) in HIGH_SEV) or (w["priority"] in (0, 1))]
-    stale = [w for w in open_items if _stale(w, hadi_config.STALE_WORK_ITEM_HOURS)]
-    blocked = [w for w in open_items if "blocked" in (w.get("tags") or "").lower()]
+def _risks(regressions_count=0):
+    import sqlite3 as _sq3, os as _os
+    db = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "ado_snapshot.db")
+    if not _os.path.exists(db):
+        return {"high_sev_or_pri": 0, "stale": 0, "blocked": 0,
+                "regressions_today": regressions_count, "top": []}
+    _con = _sq3.connect(db)
+    try:
+        rows = _con.execute(
+            "SELECT id, title, state, tags, priority, severity, changed_date "
+            "FROM board_items WHERE board='support' AND state IS NOT NULL"
+        ).fetchall()
+    finally:
+        _con.close()
+    items = [{"id": r[0], "title": r[1], "state": r[2], "tags": r[3],
+              "priority": r[4], "severity": r[5], "changed_date": r[6]} for r in rows]
+    high = [w for w in items if (_sev(w.get("severity")) in HIGH_SEV) or (w.get("priority") in (0, 1))]
+    stale = [w for w in items if _stale(w, hadi_config.STALE_WORK_ITEM_HOURS)]
+    blocked = [w for w in items if "blocked" in (w.get("tags") or "").lower()]
     return {
         "high_sev_or_pri": len(high),
         "stale": len(stale),
         "blocked": len(blocked),
-        "regressions_today": len(regressions),
+        "regressions_today": regressions_count,
         "top": [{"id": w["id"], "title": (w["title"] or "")[:60],
-                 "state": w["state"], "severity": w["severity"]} for w in high[:8]],
+                 "state": w["state"], "severity": w.get("severity")} for w in high[:8]],
     }
 
 
