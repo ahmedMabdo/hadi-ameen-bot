@@ -180,7 +180,7 @@ def _init(con):
             id INTEGER PRIMARY KEY, type TEXT, title TEXT, state TEXT,
             tags TEXT, board_column TEXT, board_lane TEXT, assigned_to TEXT,
             iteration_path TEXT, parent INTEGER, remaining_work REAL,
-            created_date TEXT, changed_date TEXT, is_top INTEGER DEFAULT 0
+            created_date TEXT, changed_date TEXT, severity TEXT, is_top INTEGER DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS capacity (
             member TEXT, email TEXT, activity TEXT,
@@ -192,7 +192,7 @@ def _init(con):
         CREATE TABLE IF NOT EXISTS board_items (
             board TEXT, id INTEGER, type TEXT, title TEXT, state TEXT,
             tags TEXT, assigned_to TEXT, priority INTEGER, parent INTEGER,
-            created_date TEXT, changed_date TEXT,
+            created_date TEXT, changed_date TEXT, severity TEXT,
             PRIMARY KEY (board, id)
         );
         CREATE TABLE IF NOT EXISTS project_items (
@@ -313,12 +313,12 @@ def _refresh_board(con, board, now):
         con.execute(
             """INSERT OR REPLACE INTO board_items
                (board,id,type,title,state,tags,assigned_to,priority,parent,
-                created_date,changed_date) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                created_date,changed_date,severity) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
             (board, f.get("System.Id"), f.get("System.WorkItemType"),
-             f.get("System.Title"), f.get("System.BoardColumn")"), f.get("System.Tags", ""),
+             f.get("System.Title"), f.get("System.BoardColumn"), f.get("System.Tags", ""),
              _assigned(f.get("System.AssignedTo")),
              f.get("Microsoft.VSTS.Common.Priority"), f.get("System.Parent"),
-             f.get("System.CreatedDate"), f.get("System.ChangedDate")),
+             f.get("System.CreatedDate"), f.get("System.ChangedDate"), f.get("Microsoft.VSTS.Common.Severity")),
         )
     _set_meta(con, {f"{board}_last_refresh": now.isoformat(), f"{board}_error": "",
                     f"{board}_count": str(len(items))})
@@ -343,7 +343,7 @@ def _refresh_project(con, now):
             "INSERT OR REPLACE INTO project_items (id,type,title,state,parent,changed_date)"
             " VALUES (?,?,?,?,?,?)",
             (f.get("System.Id"), f.get("System.WorkItemType"), f.get("System.Title"),
-             f.get("System.State"), f.get("System.Parent"), f.get("System.ChangedDate")),
+             f.get("System.State"), f.get("System.Parent"), f.get("System.ChangedDate"), f.get("Microsoft.VSTS.Common.Severity")),
         )
     _set_meta(con, {"project_last_refresh": now.isoformat(), "project_error": "",
                     "project_count": str(len(items))})
