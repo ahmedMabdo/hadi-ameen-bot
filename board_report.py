@@ -117,7 +117,7 @@ def _risks(regressions_count=0):
     try:
         rows = _con.execute(
             "SELECT id, title, state, tags, priority, severity, changed_date "
-            "FROM board_items WHERE board='support' AND state IS NOT NULL"
+            "FROM board_items WHERE board='support' AND state IS NOT NULL AND state != 'Closed'"
         ).fetchall()
     finally:
         _con.close()
@@ -144,7 +144,7 @@ def board_snapshot():
         return {}
     con = _sq3.connect(db)
     try:
-        rows = con.execute("SELECT state FROM board_items WHERE board='support' AND state IS NOT NULL").fetchall()
+        rows = con.execute("SELECT state FROM board_items WHERE board='support' AND state IS NOT NULL AND state != 'Closed'").fetchall()
     except Exception:
         return {}
     finally:
