@@ -121,48 +121,91 @@ def _risks(open_items, regressions, con):
     }
 
 
-def format_daily(s):
-    L = [f"📋 **ملخص البورد — {s['date']}**",
-         f"• جديد: {s['created']} · تحديثات مؤثرة: {s['meaningful_updates']} · "
-         f"مكتمل: {s['completed']} · دخل QA: {s['qa_entered']}"]
-    if s["status_movements"]:
-        moves = " · ".join(f"{k}: {v}" for k, v in s["status_movements"].items())
-        L.append(f"• حركة الحالات: {moves}")
-    if s["releases"]:
-        L.append(f"• 🚀 إصدارات النهاردة: {s['releases']}")
-    if s["by_severity"]:
-        L.append("• الخطورة (مفتوح): " + " · ".join(f"{k}: {v}" for k, v in s["by_severity"].items()))
-    r = s["risks"]
-    L.append(f"• ⚠️ مخاطر: عالي الخطورة/الأولوية {r['high_sev_or_pri']} · راكد {r['stale']} · "
-             f"blocked {r['blocked']} · ريجريشن {r['regressions_today']}")
-    for t in r["top"]:
-        L.append(f"   - #{t['id']} [{t['state']}] {t['title']}")
-    return "\n".join(L)
-
-
-# --------------------------------------------------------------------------
-# #6 Wednesday Smoke / BC — flags DATA MISSING, never fabricates results
-# --------------------------------------------------------------------------
-def smoke_bc(date=None, con=None):
-    con = workitems._con(con)
-    items = workitems.all_work_items(con=con)
-    need = [w for w in items
-            if any(k in (w.get("tags") or "").lower() for k in ("smoke", "bc"))
-            or hadi_config.state_category(w["state"]) == "qa"]
-    ready_no_tester = [w for w in items
-                       if hadi_config.state_category(w["state"]) == "qa"
-                       and not (w.get("assignee"))]
-    warnings = []
-    if ready_no_tester:
-        warnings.append(f"DATA MISSING: {len(ready_no_tester)} عنصر Ready-for-QA من غير tester/تحديث.")
+def board_snapshot():
+    """Current board-item state from ado_snapshot.db."""
+    import sqlite3 as _sq3, os as _os
+    db = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "data", "ado_snapshot.db")
+    if not _os.path.exists(db):
+        return {}
+    con = _sq3.connect(db)
+    try:
+        rows = con.execute("SELECT state FROM board_items").fetchall()
+    except Exception:
+        return {}
+    finally:
+        con.close()
+    counts = {}
+    for (st,) in rows:
+        counts[st or "Unknown"] = counts.get(st or "Unknown", 0) + 1
+    active    = sum(counts.get(s, 0) for s in ["In Development", "In Progress", "Active", "Confirmed"])
+    qa        = sum(counts.get(s, 0) for s in ["Test case ready", "Reviewed"])
+    blocked   = counts.get("Blocked", 0)
+    pending   = sum(counts.get(s, 0) for s in ["Pending Deployment", "Pending For Release"])
+    new_items = sum(counts.get(s, 0) for s in ["New", "Planned", "Design"])
+    done      = sum(counts.get(s, 0) for s in ["Closed", "Solved"])
     return {
-        "candidates": [{"id": w["id"], "title": (w["title"] or "")[:70], "state": w["state"],
-                        "assignee": w.get("assignee") or "—", "severity": w["severity"],
-                        "priority": w["priority"]} for w in need],
-        "warnings": warnings,
-        "note": ("Smoke/BC signal مفترض من tags/state — أكّده بعد ما نعرف إزاي متسجّل فعليًا."),
+        "active": active, "qa": qa, "blocked": blocked,
+        "pending_deploy": pending, "new_planned": new_items,
+        "done_total": done, "total": len(rows), "raw": counts,
     }
 
+
+def format_daily(s):
+    snap = board_snapshot()
+    L = [f"📋 **ملخص البورد — {s['date']}**", ""]
+
+    if snap and snap.get("total", 0) > 0:
+        L.append("**📊 حالة البورد الآن**")
+        L.append(
+            f"🔨 شغل نشط: **{snap['active']}**  |  "
+            f"🧪 QA: **{snap['qa']}**  |  "
+            f"🚦 Pending Deploy: **{snap['pending_deploy']}**"
+        )
+        if snap["blocked"]:
+            L.append(f"🔴 Blocked: **{snap['blocked']}**")
+        L.append(f"📌 New/Planned: {snap['new_planned']}  |  ✅ مكتمل اليوم: {s.get('completed', 0)}")
+        L.append("")
+
+    created   = s.get("created", 0)
+    updates   = s.get("meaningful_updates", 0)
+    completed = s.get("completed", 0)
+    qa_in     = s.get("qa_entered", 0)
+    if created or updates or completed or qa_in:
+        L.append("**📈 نشاط اليوم**")
+        parts = []
+        if created:   parts.append(f"➕ جديد: {created}")
+        if updates:   parts.append(f"🔄 تحديثات: {updates}")
+        if completed: parts.append(f"✅ مكتمل: {completed}")
+        if qa_in:     parts.append(f"🧪 دخل QA: {qa_in}")
+        L.append("  ".join(parts))
+        L.append("")
+
+    if s.get("status_movements"):
+        moves = " · ".join(f"{k}: {v}" for k, v in s["status_movements"].items())
+        L.append(f"🔀 حركة الحالات: {moves}")
+        L.append("")
+
+    if s.get("releases"):
+        L.append(f"🚀 إصدارات النهارده: {s['releases']}")
+        L.append("")
+
+    r = s.get("risks") or {}
+    high        = r.get("high_sev_pri", 0)
+    stale       = r.get("stale", 0)
+    regressions = r.get("regressions_today", 0)
+    blocked_r   = snap.get("blocked", 0) if snap else r.get("blocked", 0)
+    risk_parts  = []
+    if high:        risk_parts.append(f"🔥 عالي الخطورة: {high}")
+    if blocked_r:   risk_parts.append(f"🚧 Blocked: {blocked_r}")
+    if stale:       risk_parts.append(f"😴 راكد: {stale}")
+    if regressions: risk_parts.append(f"⚠️ ريجريشن: {regressions}")
+    if risk_parts:
+        L.append("**⚠️ مخاطر**")
+        L.append("  ".join(risk_parts))
+        for t in (r.get("top") or [])[:5]:
+            L.append(f"  › #{t['id']} [{t['state']}] {t['title'][:60]}")
+
+    return "\n".join(L)
 
 def format_smoke_bc(s):
     L = ["🧪 **تقرير Smoke + BC**"]
@@ -255,29 +298,60 @@ def _health(open_items, evs, con):
 
 
 def format_weekly(s):
-    L = [f"🗓️ **التقرير الأسبوعي — {s['start']} → {s['end']}**",
-         f"• مكتمل: {s['completed']} · شغّال: {s['in_progress']} · جديد: {s['new']} · "
-         f"blocked: {s['blocked']} · reopened: {s['reopened']} · إصدارات: {s['releases']}",
-         f"• عالي الخطورة/الأولوية مفتوح: {s['high_sev_pri']}"]
+    snap = board_snapshot()
+    L = [f"📅 **التقرير الأسبوعي — {s['start']} → {s['end']}**", ""]
+
+    if snap and snap.get("total", 0) > 0:
+        L.append("**📊 حالة البورد**")
+        L.append(
+            f"🔨 نشط: **{snap['active']}**  |  "
+            f"🧪 QA: **{snap['qa']}**  |  "
+            f"🚦 Pending Deploy: **{snap['pending_deploy']}**"
+        )
+        if snap["blocked"]:
+            L.append(f"🔴 Blocked: **{snap['blocked']}**")
+        L.append("")
+
+    L.append("**📈 إحصائيات الأسبوع**")
+    completed = s.get("completed", 0)
+    in_prog   = s.get("in_progress", 0)
+    new_items = s.get("new", 0)
+    reopened  = s.get("reopened", 0)
+    releases  = s.get("releases", 0)
+    blocked_w = s.get("blocked", 0)
+    L.append(
+        f"✅ مكتمل: **{completed}**  |  "
+        f"🔨 In Progress: **{in_prog}**  |  "
+        f"➕ جديد: **{new_items}**"
+    )
+    if releases:
+        L.append(f"🚀 إصدارات: **{releases}**")
+    if reopened:
+        L.append(f"🔁 فُتحت تاني: {reopened}")
+    if blocked_w:
+        L.append(f"🚧 Blocked: {blocked_w}")
+    L.append("")
+
     ci = s.get("completed_items") or []
     if ci:
-        L.append(f"**الشغل اللي اتقفل الأسبوع ({len(ci)}):**")
+        L.append(f"**✅ المُغلق الأسبوع ({len(ci)})**")
         for w in ci[:40]:
-            pri = "—" if w["priority"] is None else f"P{w['priority']}"
-            sev = w.get("severity") or "—"
-            L.append(f"   • #{w['id']} [{pri}·{sev}] {w['title']} — 👤 {w['assignee']}")
+            pri = "-" if w["priority"] is None else f"P{w['priority']}"
+            sev = w.get("severity") or "-"
+            L.append(f"  · #{w['id']} [{pri}·{sev}] {w['title'][:60]}")
         if len(ci) > 40:
-            L.append(f"   _(+{len(ci) - 40} عنصر تاني)_")
-    L.append("**صحة الهندسة:**")
-    for k, v in s["health"].items():
-        dot = {"GREEN": "🟢", "YELLOW": "🟡", "RED": "🔴", "UNKNOWN": "⚪"}.get(v["status"], "⚪")
-        L.append(f"   {dot} {k}: {v['status']} — {v['evidence']}")
+            L.append(f"  _+{len(ci) - 40} عنصر تاني_")
+        L.append("")
+
+    health = s.get("health") or {}
+    if health:
+        L.append("**🩺 صحة الهندسة**")
+        for k, v in health.items():
+            dot = {"GREEN": "🟢", "YELLOW": "🟡", "RED": "🔴"}.get(v["status"], "🔵")
+            L.append(f"  {dot} {k}: {v['status']} — {v['evidence']}")
+
     return "\n".join(L)
 
-
-# --------------------------------------------------------------------------
-# #8 release digest — released work items grouped by type
-# --------------------------------------------------------------------------
 def release_digest(days=1, end_date=None, con=None):
     con = workitems._con(con)
     end = end_date or datetime.datetime.now(datetime.timezone.utc).date().isoformat()
