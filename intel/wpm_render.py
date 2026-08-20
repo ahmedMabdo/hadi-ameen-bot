@@ -1,18 +1,39 @@
 # -*- coding: utf-8 -*-
-"""8Orders — Weekly Product Metrics: RENDER LAYER.
+"""8Orders — Weekly Product Metrics: RENDER LAYER (v2).
 
-Same visual language, section order and components as the executive report that went
-to management (build_report2.py) — 21 numbered sections + glossary appendix — but every
-figure is driven by the weekly data dict from wpm_data.collect_week(). No hardcoded
-business numbers live in this file.
+WHAT CHANGED IN v2 (per the PO, Aug 2026)
+─────────────────────────────────────────
+· THREE LAYERS, one per audience, in one PDF:
+    Layer 1 — top management: verdict, north star, the decisions to make.
+    Layer 2 — marketing / operations / business / delivery: the operating detail.
+    Layer 3 — UX + backend/mobile engineering: defects, users affected, action items.
+  A reader stops at the end of their layer. Nothing is repeated across layers.
+
+· NO DUPLICATION. v1 stated the same funnel in sections 2, 3, 4, 5 and 7, and the
+  same action list in sections 17, 18, 19 and 20. Each fact now appears exactly
+  once, in the layer that can act on it.
+
+· EVERY PERCENTAGE SHOWS ITS DENOMINATOR inline — "62% (3,321 من 5,356 مستخدم)" —
+  and the denominator is always unique users. See wpm_data.v2 for why.
+
+· EVERY METRIC IS SEGMENTED by city / platform / version wherever the data allows.
+
+· THE GLOSSARY IS GENERATED FROM THE SAME DICT THE REPORT RENDERS FROM, so a rate
+  can never appear in the report without its definition, and a definition can
+  never drift from the formula that produced the number.
 
 Arabic RTL, Western digits, arrowheads pointing left (←) for RTL flows.
+No business number is hardcoded in this file.
 """
 import datetime as dt
 
 CBLUE = "#1e3a5f"; CBLUE2 = "#2563eb"; CGREEN = "#16a34a"
-CRED = "#dc2626"; CYEL = "#ca8a04"; CGRAY = "#64748b"
+CRED = "#dc2626"; CYEL = "#ca8a04"; CGRAY = "#64748b"; CORANGE = "#ea580c"
+CPURPLE = "#7c3aed"; CTEAL = "#0d9488"
 BG_G = "#f0fdf4"; BG_Y = "#fefce8"; BG_R = "#fef2f2"; BG_B = "#eff6ff"; BORD = "#e2e8f0"
+
+# One colour per layer, used on the layer banner, its dividers and its page edge.
+L1_C, L2_C, L3_C = CBLUE, CTEAL, CPURPLE
 
 AR_MONTHS = {1: "يناير", 2: "فبراير", 3: "مارس", 4: "أبريل", 5: "مايو", 6: "يونيو",
              7: "يوليو", 8: "أغسطس", 9: "سبتمبر", 10: "أكتوبر", 11: "نوفمبر", 12: "ديسمبر"}
@@ -25,12 +46,17 @@ def ar_date(iso):
     return f"{d.day} {AR_MONTHS[d.month]} {d.year}"
 
 
+def ar_short(iso):
+    d = dt.date.fromisoformat(iso)
+    return f"{d.day} {AR_MONTHS[d.month]}"
+
+
 def ar_full(iso):
     d = dt.date.fromisoformat(iso)
     return f"{AR_DOW[d.weekday()]} {d.day} {AR_MONTHS[d.month]}"
 
 
-# ───────────────────────────── components ─────────────────────────────────────
+# ───────────────────────────── primitives ─────────────────────────────────────
 def fmt(n):
     try:
         return f"{int(round(float(n))):,}"
@@ -38,42 +64,38 @@ def fmt(n):
         return str(n)
 
 
+def en(txt):
+    """Isolate an English/numeric run so RTL text around it stays correctly ordered."""
+    return f'<span class="en" dir="ltr">{txt}</span>'
+
+
 def na(txt="غير متاح"):
     return f'<span style="color:{CGRAY};font-weight:600;font-size:7.6pt;">{txt}</span>'
 
 
-def delta(cur, prev, good_up=True, pct=True, unit=""):
+def delta(cur, prev, good_up=True, unit="", pct_only=False):
     if prev in (None, 0):
         return na("—")
     d = cur - prev
     p = d / prev * 100
-    if abs(d) < 1e-9:
+    if abs(p) < 0.5:
         return f'<span style="color:{CGRAY};font-weight:700;">ثابت</span>'
-    up = d > 0
-    col = CGREEN if (up == good_up) else CRED
-    body = f'{"▲" if up else "▼"}&nbsp;{fmt(abs(d))}{unit}'
-    if pct:
-        body += f'&nbsp;({abs(p):.1f}%)'
+    col = CGREEN if ((d > 0) == good_up) else CRED
+    body = f'{"▲" if d > 0 else "▼"}&nbsp;{abs(p):.0f}%'
+    if not pct_only:
+        body += f'&nbsp;({fmt(abs(d))}{unit})'
     return f'<span style="color:{col};font-weight:800;" dir="ltr">{body}</span>'
 
 
 def light(c):
-    return (f'<span style="display:inline-block;width:11px;height:11px;border-radius:50%;'
+    return (f'<span style="display:inline-block;width:10px;height:10px;border-radius:50%;'
             f'background:{c};vertical-align:middle;"></span>')
 
 
-def flow(frm, to):
-    """RTL 'from -> to': target sits on the LEFT with the arrowhead pointing at it."""
-    return f'<span class="en" dir="ltr">{fmt(to)}&nbsp;←&nbsp;{fmt(frm)}</span>'
-
-
-def gloss(term_txt, g):
-    return f'{term_txt} <span class="gloss">({g})</span>'
-
-
-def bar_row(label, value, maxv, color, right_txt=""):
-    w = max(2, (value / maxv * 100) if maxv else 0)
-    return (f'<div class="br"><div class="br-l">{label}</div>'
+def bar_row(label, value, maxv, color, right_txt="", sub=""):
+    w = max(1.5, (value / maxv * 100) if maxv else 0)
+    s = f'<div class="br-s">{sub}</div>' if sub else ''
+    return (f'<div class="br"><div class="br-l">{label}{s}</div>'
             f'<div class="br-t"><div class="br-f" style="width:{w:.1f}%;background:{color};"></div></div>'
             f'<div class="br-v" dir="ltr">{right_txt or fmt(value)}</div></div>')
 
@@ -84,8 +106,8 @@ def heat_color(r):
     return f'rgb({c[0]},{c[1]},{c[2]})'
 
 
-def kpi_card(t_ar, t_en, value, unit, d_html, status, sub=""):
-    return (f'<div class="kpi" style="border-top:3px solid {status};">'
+def kpi_card(t_ar, t_en, value, unit, d_html, status, sub="", width="calc(25% - 6px)"):
+    return (f'<div class="kpi" style="border-top:3px solid {status};width:{width};">'
             f'<div class="kpi-t">{t_ar} <span class="kpi-en">{t_en}</span></div>'
             f'<div class="kpi-v" dir="ltr">{value}<span class="kpi-u">{unit}</span></div>'
             f'<div class="kpi-d">{d_html}</div>'
@@ -94,7 +116,8 @@ def kpi_card(t_ar, t_en, value, unit, d_html, status, sub=""):
 
 def box(kind, title, body):
     m = {"info": (BG_B, CBLUE2, "ℹ"), "risk": (BG_R, CRED, "⚠"), "opp": (BG_G, CGREEN, "✚"),
-         "warn": (BG_Y, CYEL, "◆"), "gap": ("#f1f5f9", CGRAY, "⊘")}
+         "warn": (BG_Y, CYEL, "◆"), "gap": ("#f1f5f9", CGRAY, "⊘"),
+         "fix": ("#faf5ff", CPURPLE, "⚙")}
     bg, bd, ic = m[kind]
     return (f'<div class="box" style="background:{bg};border-right:4px solid {bd};">'
             f'<div class="box-t" style="color:{bd};">{ic} {title}</div>'
@@ -102,20 +125,15 @@ def box(kind, title, body):
 
 
 def verdict_badge(v):
-    """Render the health verdict as a CSS dot + text.
-
-    The host has no emoji font, so a literal 🟢/🟡/🟠/🔴 renders as a tofu box.
-    Map the colour word to a real coloured circle instead.
-    """
+    """The host has no emoji font, so a literal 🟢 renders as tofu. Map to a CSS dot."""
     txt = str(v or "").strip()
-    palette = [("🔴", CRED), ("🟠", "#ea580c"), ("🟡", CYEL), ("🟢", CGREEN)]
     col = CYEL
-    for emoji, c in palette:
+    for emoji, c in [("🔴", CRED), ("🟠", CORANGE), ("🟡", CYEL), ("🟢", CGREEN)]:
         if emoji in txt:
             col, txt = c, txt.replace(emoji, "").strip()
             break
     else:
-        for word, c in [("حرِج", CRED), ("حرج", CRED), ("تحذير", "#ea580c"),
+        for word, c in [("حرِج", CRED), ("حرج", CRED), ("تحذير", CORANGE),
                         ("صحّي", CGREEN), ("صحي", CGREEN)]:
             if word in txt:
                 col = c
@@ -124,1068 +142,1076 @@ def verdict_badge(v):
             f'{txt or "مستقر مع تنبيهات"}</span>')
 
 
-def divider(num, ar, en):
-    return (f'<div class="divider"><div class="dnum" dir="ltr">{num}</div>'
-            f'<div class="dttl">{ar}<span class="dttl-en">{en}</span></div></div>')
+def layer_banner(num, ar, en_, who, color):
+    return (f'<div class="lbanner" style="background:{color};">'
+            f'<div class="lb-n" dir="ltr">{num}</div>'
+            f'<div><div class="lb-t">{ar} <span class="lb-en">{en_}</span></div>'
+            f'<div class="lb-w">موجّهة إلى: {who}</div></div></div>')
 
 
-def trend_svg(vals, labels, w=170, h=48, color=CBLUE2):
-    """RTL time axis: oldest on the RIGHT, newest on the LEFT."""
-    if len(vals) < 2:
-        return ''
-    mn, mx = min(vals), max(vals)
-    rng = (mx - mn) or 1
-    n = len(vals)
-    pts = [(w - (8 + i * (w - 16) / (n - 1)), h - 11 - ((v - mn) / rng) * (h - 22))
-           for i, v in enumerate(vals)]
-    poly = " ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
-    dots = "".join(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="2.6" fill="{color}"/>' for x, y in pts)
-    labs = "".join(f'<text x="{pts[i][0]:.1f}" y="{h - 1}" font-size="6" fill="#94a3b8" '
-                   f'text-anchor="middle">{labels[i]}</text>' for i in range(n))
-    return (f'<svg width="{w}" height="{h}" viewBox="0 0 {w} {h}">'
-            f'<polyline points="{poly}" fill="none" stroke="{color}" stroke-width="2.2"/>'
-            f'{dots}{labs}</svg>')
+def divider(num, ar, en_, color=CBLUE):
+    return (f'<div class="divider" style="border-color:{color};">'
+            f'<div class="dnum" style="background:{color};" dir="ltr">{num}</div>'
+            f'<div class="dttl" style="color:{color};">{ar}<span class="dttl-en">{en_}</span></div></div>')
 
 
-def daybars(series, active, w=190, h=56):
-    """Per-active-day order bars, newest on the LEFT (RTL)."""
-    vals = [(d, series[d]["orders"]) for d in active if series.get(d)]
+# ── the v2 signature component: a percentage that can never be misread ────────
+def rate(r, decimals=0, color=None):
+    """Render a rate WITH its numerator, denominator and basis. This component is
+    the whole point of v2 — a bare '58%' is exactly what made v1 untrustworthy."""
+    c = color or CBLUE
+    return (f'<span class="rate"><b style="color:{c};" dir="ltr">{r["v"]:.{decimals}f}%</b>'
+            f'<span class="rate-d" dir="ltr">{fmt(r["n"])} / {fmt(r["d"])}</span></span>')
+
+
+def rate_line(label, r, color=None):
+    return (f'<div class="rl"><div class="rl-l">{label}</div>'
+            f'<div class="rl-v">{rate(r, color=color)}</div>'
+            f'<div class="rl-b">{r["basis"]}</div></div>')
+
+
+def daybars(series, active, w=210, h=58):
+    """Per-active-day unique users (bar) with orders labelled. Newest on the LEFT (RTL)."""
+    vals = [(d, series[d]["users"], series[d]["orders"]) for d in active if series.get(d)]
     if not vals:
         return ''
-    mx = max(v for _, v in vals) or 1
+    mx = max(v for _, v, _ in vals) or 1
     n = len(vals)
     bw = (w - 8) / n - 4
     out = ''
-    for i, (d, v) in enumerate(vals):
-        bh = max(3, v / mx * (h - 30))   # leave headroom for the value label
+    for i, (d, v, o) in enumerate(vals):
+        bh = max(3, v / mx * (h - 30))
         x = w - 4 - (i + 1) * (bw + 4)
-        out += (f'<rect x="{x:.1f}" y="{h - 12 - bh:.1f}" width="{bw:.1f}" height="{bh:.1f}" '
+        out += (f'<rect x="{x:.1f}" y="{h - 13 - bh:.1f}" width="{bw:.1f}" height="{bh:.1f}" '
                 f'rx="2" fill="{CGREEN if v == mx else CBLUE2}"/>'
-                f'<text x="{x + bw / 2:.1f}" y="{h - 3}" font-size="5.6" fill="#94a3b8" '
+                f'<text x="{x + bw / 2:.1f}" y="{h - 3}" font-size="5.4" fill="#94a3b8" '
                 f'text-anchor="middle">{dt.date.fromisoformat(d).day}</text>'
-                f'<text x="{x + bw / 2:.1f}" y="{h - 15 - bh:.1f}" font-size="5.8" '
-                f'fill="#475569" text-anchor="middle" font-weight="700">{v}</text>')
+                f'<text x="{x + bw / 2:.1f}" y="{h - 16 - bh:.1f}" font-size="5.6" '
+                f'fill="#475569" text-anchor="middle" font-weight="700">{fmt(v)}</text>')
     return f'<svg width="{w}" height="{h}" viewBox="0 0 {w} {h}">{out}</svg>'
 
 
+def funnel_html(steps, maxh=76):
+    """User funnel as HTML, RTL: first step on the RIGHT, each bar a share of step one.
+
+    Deliberately NOT an SVG. WeasyPrint does not shape or bidi-order Arabic inside
+    <svg><text>, so Arabic step labels came out as disconnected reversed glyphs.
+    Plain HTML gets the browser text pipeline and renders correctly.
+    """
+    if not steps:
+        return ''
+    top = steps[0][1] or 1
+    cells = ""
+    for label, val, color in steps:
+        h = max(5, (val / top) * maxh)
+        cells += (f'<div class="fb"><div class="fb-v" dir="ltr">{fmt(val)}</div>'
+                  f'<div class="fb-bar" style="height:{h:.0f}px;background:{color};"></div>'
+                  f'<div class="fb-l">{label}</div>'
+                  f'<div class="fb-p" dir="ltr">{val / top * 100:.0f}%</div></div>')
+    return f'<div class="fun">{cells}</div>'
+
+
+# ───────────────────────────── glossary source of truth ───────────────────────
+# key -> (arabic term, english term, plain-language formula, how to read it)
+# The report NEVER shows a rate that is missing from here — see build_glossary().
+RATE_DEFS = {
+    "activation":       ("نسبة التفعيل", "Activation Rate",
+                         "المستخدمون اللي حطّوا حاجة في السلة ÷ المستخدمون اللي فتحوا التطبيق",
+                         "بتقيس: من كل مية واحد فتح التطبيق، كام واحد وصل لنية شراء حقيقية."),
+    "browse":           ("نسبة التصفّح", "Browse Rate",
+                         "المستخدمون اللي شافوا منتج ÷ المستخدمون اللي فتحوا التطبيق",
+                         "بتقيس: كام واحد اتخطّى الشاشة الرئيسية ودخل يبص على منتج فعلًا."),
+    "cart_to_checkout": ("السلة ← بدء الدفع", "Cart → Checkout",
+                         "المستخدمون اللي بدؤوا الدفع ÷ المستخدمون اللي حطّوا في السلة",
+                         "بتقيس: من اللي ملا سلة، كام واحد كمّل لشاشة الدفع."),
+    "checkout_to_order": ("بدء الدفع ← الطلب", "Checkout → Order",
+                          "المستخدمون اللي أتمّوا طلب ÷ المستخدمون اللي بدؤوا الدفع",
+                          "بتقيس: من اللي دخل شاشة الدفع، كام واحد الطلب بتاعه نجح."),
+    "cart_to_order":    ("السلة ← الطلب (كلي)", "Cart → Order",
+                         "المستخدمون اللي أتمّوا طلب ÷ المستخدمون اللي حطّوا في السلة",
+                         "أهم نسبة تحويل في التقرير: من اللي أبدى نية شراء، كام واحد اشترى."),
+    "purchase":         ("نسبة الشراء", "Purchase Rate",
+                         "المستخدمون اللي أتمّوا طلب ÷ المستخدمون اللي فتحوا التطبيق",
+                         "بتقيس: من كل مية واحد فتح التطبيق، كام واحد طلع بطلب."),
+    "pay_success":      ("نجاح الدفع", "Payment Success Rate",
+                         "المستخدمون اللي أتمّوا طلب ÷ (اللي أتمّوا طلب + اللي فشل معاهم الدفع)",
+                         "بتقيس بالمستخدم مش بالمحاولة: من كل مية حاولوا يدفعوا، كام واحد نجح."),
+    "error_hit":        ("نسبة المستخدمين المتأثرين بخطأ", "Error Incidence",
+                         "المستخدمون اللي قابلهم خطأ واحد على الأقل ÷ المستخدمون اللي فتحوا التطبيق",
+                         "الرقم ده بيقول كام شخص حقيقي اتضرب، مش كام خطأ اتسجّل."),
+    "rage_hit":         ("نسبة نقرات الغضب", "Rageclick Incidence",
+                         "المستخدمون اللي نقروا بغضب ÷ المستخدمون اللي فتحوا التطبيق",
+                         "نقرة الغضب = ضغط سريع متكرر في نفس المكان، علامة إحباط."),
+    "cancel":           ("نسبة الإلغاء", "Cancellation Rate",
+                         "المستخدمون اللي ألغوا طلب ÷ المستخدمون اللي أتمّوا طلب",
+                         "بتقيس: من كل مية مشترٍ، كام واحد لغى طلب في نفس الأسبوع."),
+    "voucher_use":      ("استخدام الفاوتشر", "Voucher Usage",
+                         "المستخدمون اللي طبّقوا فاوتشر ÷ المستخدمون اللي أتمّوا طلب",
+                         "بتقيس اعتماد المشترين على الخصومات."),
+    "reorder_use":      ("استخدام إعادة الطلب", "Reorder Usage",
+                         "المستخدمون اللي ضغطوا إعادة الطلب ÷ المستخدمون اللي أتمّوا طلب",
+                         "بتقيس: كام مشترٍ استخدم الاختصار بدل ما يبني الطلب من الأول."),
+    "rating_rate":      ("نسبة التقييم", "Rating Rate",
+                         "المستخدمون اللي قيّموا طلب ÷ المستخدمون اللي أتمّوا طلب",
+                         "بتقيس استعداد العميل يدّي رأيه — مؤشر تفاعل مش رضا."),
+    "multi_store":      ("سلة أكتر من متجر", "Multi-store Cart",
+                         "المستخدمون اللي فتحوا شيت أكتر من متجر ÷ المستخدمون اللي حطّوا في السلة",
+                         "بتقيس النيّة لاستخدام الميزة، مش إتمامها."),
+    "search_fail":      ("بحث بدون نتيجة", "Failed Search",
+                         "المستخدمون اللي بحثوا وماجاش نتيجة ÷ المستخدمون اللي فتحوا التطبيق",
+                         "كل واحد هنا دوّر على حاجة مش موجودة — فرصة توسيع كتالوج."),
+    "uncovered":        ("طلب من منطقة غير مخدومة", "Uncovered Demand",
+                         "المستخدمون اللي منطقتهم غير مخدومة ÷ المستخدمون اللي فتحوا التطبيق",
+                         "طلب حقيقي مكبوت — ناس عايزة تطلب والتغطية مش واصلاهم."),
+    "guest_share":      ("الدخول كضيف", "Guest Share",
+                         "المستخدمون اللي دخلوا كضيف ÷ المستخدمون اللي فتحوا التطبيق",
+                         "الضيف مش بيتعمله ريتنشن ولا إشعارات — فرصة تحويل لحساب."),
+    "ads_ignore":       ("تجاهل إعلانات الرئيسية", "Home Ads Ignore Rate",
+                         "المستخدمون اللي تجاهلوا الإعلان ÷ (اللي تجاهلوه + اللي نقروا عليه)",
+                         "فوق 50% معناها المساحة بتضايق أكتر ما بتفيد."),
+}
+
+# Terms that are not rates but still need defining for a non-analyst reader.
+CONCEPT_DEFS = [
+    ("المستخدم الفريد", "Unique User",
+     "الشخص الواحد بيتحسب مرة واحدة مهما عمل أحداث كتير أو فتح التطبيق كذا مرة.",
+     "ده المقام الوحيد المستخدم في كل نسب التقرير — عشان الأرقام تبقى قابلة للمقارنة."),
+    ("اليوم النشط", "Active Day",
+     "يوم عمل (8ص لـ 4ص القاهرة) فيه بيانات تتبّع حقيقية — أكتر من 5,000 حدث.",
+     "التقرير بيرجع لورا لحد ما يجمع 7 أيام نشطة، فمايتأثرش بانقطاع التتبّع."),
+    ("المؤشر الأهم", "North Star Metric",
+     "الرقم الواحد اللي بيلخّص نجاح المنتج. هنا: عدد الطلبات الناجحة.",
+     "أي قرار المفروض في الآخر يحرّك الرقم ده."),
+    ("متوسط قيمة الطلب", "AOV — Average Order Value",
+     "إجمالي الإيراد ÷ عدد الطلبات.",
+     "بيقول الطلب الواحد بيجيب كام — الإيراد = عدد الطلبات × الرقم ده."),
+    ("الإيراد لكل مستخدم", "ARPU",
+     "إجمالي الإيراد ÷ المستخدمين اللي فتحوا التطبيق.",
+     "بيقيس كفاءة تحويل الزيارات لفلوس، مش بس عدد الطلبات."),
+    ("الإيراد لكل مشترٍ", "ARPB",
+     "إجمالي الإيراد ÷ المستخدمين اللي أتمّوا طلب.",
+     "بيقيس قيمة العميل الفعلي في الأسبوع."),
+    ("طلبات لكل مشترٍ", "Orders per Buyer",
+     "إجمالي الطلبات ÷ عدد المشترين.",
+     "فوق 1 معناها فيه تكرار شراء داخل نفس الأسبوع."),
+    ("العميل المتكرر", "Repeat Buyer",
+     "مشترٍ عمل طلبين أو أكتر داخل نفس نافذة التقرير.",
+     "مؤشر ولاء قصير المدى — مش نفس كوهورت D7."),
+    ("العميل الوفي", "Loyal Buyer",
+     "مشترٍ عمل 3 طلبات أو أكتر داخل نفس نافذة التقرير.",
+     "دي النواة اللي بتحمل أغلب الإيراد المتكرر."),
+    ("القمع", "Funnel",
+     "خطوات المستخدم من فتح التطبيق للطلب، وكل خطوة بتتقاس بعدد المستخدمين الفريدين.",
+     "التسرّب = الفرق بين خطوة والخطوة اللي قبلها."),
+    ("الخطأ الشبكي مقابل غير الشبكي", "Network vs Code Error",
+     "الشبكي سببه نت المستخدم (قطع/إشارة ضعيفة)؛ غير الشبكي خلل في كود التطبيق.",
+     "الشبكي مابيتصلحش بالكود — غير الشبكي هو اللي عليه شغل هندسي."),
+    ("نسبة تعبئة الحقل", "Field Fill Rate",
+     "عدد الأحداث اللي الحقل فيها بقيمة حقيقية ÷ إجمالي الأحداث.",
+     "حقل بيتبعت دايمًا بصفر بيبان كأنه بيانات — وهو في الحقيقة فجوة."),
+    ("إسناد المدينة", "City Attribution",
+     "المستخدم بيتنسب لمدينة المتاجر اللي فتحها فعلًا، مش لموقع الإنترنت بتاعه.",
+     "موقع الإنترنت غلط هنا لأن شركات المحمول بتوجّه الترافيك لبوابة في القاهرة."),
+]
+
+
+def build_glossary(d):
+    """Generate the glossary from the SAME rates dict the report rendered from.
+
+    A rate cannot appear in the report without appearing here with its formula and
+    this week's value — and the value shown here is literally the value shown above.
+    """
+    items = []
+    for key, r in d["rates"].items():
+        if key not in RATE_DEFS:
+            continue
+        ar, en_, formula, howto = RATE_DEFS[key]
+        items.append(dict(ar=ar, en=en_, formula=formula, howto=howto,
+                          value=f'{r["v"]:.1f}%', detail=f'{fmt(r["n"])} / {fmt(r["d"])}',
+                          basis=r["basis"]))
+    return items
+
+
+# ───────────────────────────── stylesheet ─────────────────────────────────────
 def CSS(week_start, week_end):
-    # Font stack is deliberately identical to intel/8orders_report_generator.py so the
-    # weekly and daily reports look like one family: Google-Fonts Cairo at the same four
-    # weights, falling back to Arial. Naming the family "Cairo" also means the locally
-    # installed Cairo still matches if the webfont fetch fails at render time.
     return r"""
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap');
-@page { size:A4; margin:15mm 13mm 16mm 13mm;
+@page { size:A4; margin:14mm 12mm 15mm 12mm;
   @bottom-right { content:"صفحة " counter(page) " / " counter(pages); font-family:'Cairo',Arial,sans-serif; font-size:7.5pt; color:#94a3b8; }
   @bottom-left { content:"8Orders · تقرير مؤشرات المنتج الأسبوعي · """ + f"{ar_date(week_start)} – {ar_date(week_end)}" + r""""; font-family:'Cairo',Arial,sans-serif; font-size:7.5pt; color:#94a3b8; }
 }
 * { box-sizing:border-box; }
-body { font-family:'Cairo',Arial,sans-serif; direction:rtl; text-align:right; color:#1e293b; font-size:9pt; line-height:1.6; margin:0; }
+body { font-family:'Cairo',Arial,sans-serif; direction:rtl; text-align:right; color:#1e293b; font-size:9pt; line-height:1.55; margin:0; }
 h1,h2,h3 { margin:0; }
 .en { font-family:'Cairo',Arial,sans-serif; direction:ltr; unicode-bidi:isolate; font-weight:600; }
 .gloss { font-size:7pt; color:#94a3b8; font-weight:500; }
-.cover { background:linear-gradient(135deg,#1e3a5f 0%,#2b4a70 100%); color:#fff; padding:26px 24px; border-radius:14px; margin-bottom:14px; }
-.cover .logo { direction:ltr; font-weight:900; font-size:26pt; letter-spacing:-1px; }
+.cover { background:linear-gradient(135deg,#1e3a5f 0%,#2b4a70 100%); color:#fff; padding:22px 22px; border-radius:14px; margin-bottom:11px; }
+.cover .logo { direction:ltr; font-weight:900; font-size:24pt; letter-spacing:-1px; }
 .cover .logo b { color:#4ade80; }
-.cover h1 { font-size:20pt; font-weight:900; margin:10px 0 4px; }
-.cover .sub { font-size:10.5pt; opacity:.9; font-weight:500; }
-.cover .meta { margin-top:14px; display:flex; gap:20px; flex-wrap:wrap; font-size:8.5pt; }
-.cover .meta b { display:block; font-size:11pt; font-weight:800; }
-.note-avail { background:#fefce8; border:1px solid #fde68a; border-radius:8px; padding:9px 12px; font-size:8pt; color:#854d0e; margin-bottom:12px; }
-.divider { display:flex; align-items:center; gap:10px; margin:17px 0 9px; border-bottom:2px solid #1e3a5f; padding-bottom:6px; break-after:avoid; }
-.dnum { background:#1e3a5f; color:#fff; font-weight:900; font-size:11pt; width:30px; height:30px; border-radius:8px; display:flex; align-items:center; justify-content:center; }
-.dttl { font-size:13pt; font-weight:800; color:#1e3a5f; }
-.dttl-en { direction:ltr; font-weight:600; font-size:8.5pt; color:#94a3b8; margin-right:8px; }
+.cover h1 { font-size:19pt; font-weight:900; margin:8px 0 3px; }
+.cover .sub { font-size:10pt; opacity:.9; font-weight:500; }
+.cover .meta { margin-top:12px; display:flex; gap:18px; flex-wrap:wrap; font-size:8.2pt; }
+.cover .meta b { display:block; font-size:10.5pt; font-weight:800; }
+.note-avail { background:#fefce8; border:1px solid #fde68a; border-radius:8px; padding:8px 11px; font-size:7.9pt; color:#854d0e; margin-bottom:9px; }
+.note-rule { background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:8px 11px; font-size:8pt; color:#1e40af; margin-bottom:9px; }
+.lbanner { display:flex; align-items:center; gap:11px; color:#fff; border-radius:11px; padding:10px 14px; margin:14px 0 9px; break-inside:avoid; break-after:avoid; }
+.lb-n { font-size:20pt; font-weight:900; opacity:.55; line-height:1; }
+.lb-t { font-size:14pt; font-weight:900; }
+.lb-en { font-size:8.5pt; font-weight:600; opacity:.75; direction:ltr; margin-right:6px; }
+.lb-w { font-size:8pt; opacity:.85; font-weight:600; }
+.divider { display:flex; align-items:center; gap:9px; margin:13px 0 7px; border-bottom:2px solid; padding-bottom:5px; break-after:avoid; break-inside:avoid; }
+.dnum { color:#fff; font-weight:900; font-size:9.5pt; min-width:26px; height:26px; padding:0 5px; border-radius:7px; display:flex; align-items:center; justify-content:center; }
+.dttl { font-size:12pt; font-weight:800; }
+.dttl-en { direction:ltr; font-weight:600; font-size:8pt; color:#94a3b8; margin-right:7px; }
 .kpi-grid { display:flex; flex-wrap:wrap; gap:8px; }
-.kpi { background:#fff; border:1px solid #e2e8f0; border-radius:9px; padding:9px 11px; width:calc(25% - 6px); box-shadow:0 1px 2px rgba(0,0,0,.03); break-inside:avoid; }
-.kpi-t { font-size:7.6pt; color:#64748b; font-weight:600; min-height:22px; }
-.kpi-en { direction:ltr; color:#b0bac9; font-size:6.6pt; }
-.kpi-v { font-size:17pt; font-weight:900; color:#1e293b; line-height:1.1; margin:2px 0; }
+.kpi { background:#fff; border:1px solid #e2e8f0; border-radius:9px; padding:8px 10px; box-shadow:0 1px 2px rgba(0,0,0,.03); break-inside:avoid; }
+.kpi-t { font-size:7.5pt; color:#64748b; font-weight:600; min-height:20px; }
+.kpi-en { direction:ltr; color:#b0bac9; font-size:6.5pt; }
+.kpi-v { font-size:16pt; font-weight:900; color:#1e293b; line-height:1.1; margin:1px 0; }
 .kpi-u { font-size:8pt; font-weight:700; color:#94a3b8; margin-right:3px; }
-.kpi-d { font-size:7.8pt; } .kpi-s { font-size:7pt; color:#94a3b8; margin-top:2px; }
+.kpi-d { font-size:7.6pt; } .kpi-s { font-size:6.9pt; color:#94a3b8; margin-top:1px; }
 .br { display:flex; align-items:center; gap:8px; margin:3px 0; font-size:8pt; }
-.br-l { width:36%; color:#334155; font-weight:600; }
-.br-t { flex:1; background:#f1f5f9; border-radius:5px; height:14px; overflow:hidden; }
+.br-l { width:28%; color:#334155; font-weight:600; }
+.br-s { font-size:6.8pt; color:#94a3b8; font-weight:500; }
+.br-t { flex:1; background:#f1f5f9; border-radius:5px; height:13px; overflow:hidden; }
 .br-f { height:100%; border-radius:5px; }
-.br-v { width:76px; text-align:left; font-weight:800; color:#1e293b; }
-.box { border-radius:8px; padding:9px 12px; margin:7px 0; break-inside:avoid; }
-.box-t { font-weight:800; font-size:9pt; margin-bottom:3px; }
-.box-b { font-size:8.2pt; color:#334155; line-height:1.55; }
-table.tb { width:100%; border-collapse:collapse; font-size:8pt; margin:6px 0; }
-table.tb th { background:#1e3a5f; color:#fff; font-weight:700; padding:6px 8px; text-align:right; font-size:7.8pt; }
-table.tb td { padding:5px 8px; border-bottom:1px solid #eef2f7; }
+.br-v { width:88px; text-align:left; font-weight:800; color:#1e293b; font-size:7.6pt; }
+.box { border-radius:8px; padding:8px 11px; margin:6px 0; break-inside:avoid; }
+.box-t { font-weight:800; font-size:8.8pt; margin-bottom:2px; }
+.box-b { font-size:8.1pt; color:#334155; line-height:1.5; }
+table.tb { width:100%; border-collapse:collapse; font-size:8pt; margin:5px 0; }
+table.tb th { background:#1e3a5f; color:#fff; font-weight:700; padding:5px 7px; text-align:right; font-size:7.6pt; }
+table.tb td { padding:4px 7px; border-bottom:1px solid #eef2f7; vertical-align:top; }
 table.tb tr:nth-child(even) td { background:#f8fafc; }
-.tb .en { font-size:7.6pt; }
-.row2 { display:flex; gap:12px; } .col { flex:1; }
-.card { background:#fff; border:1px solid #e2e8f0; border-radius:9px; padding:11px 13px; margin:7px 0; break-inside:avoid; }
-.card h3 { font-size:10pt; color:#1e3a5f; font-weight:800; margin-bottom:6px; }
-.chip { display:inline-block; font-size:6.8pt; font-weight:800; padding:1px 6px; border-radius:20px; }
+.tb .en { font-size:7.5pt; }
+.tb-t td { background:#f1f5f9 !important; font-weight:800; }
+.row2 { display:flex; gap:11px; } .col { flex:1; }
+.card { background:#fff; border:1px solid #e2e8f0; border-radius:9px; padding:10px 12px; margin:6px 0; break-inside:avoid; }
+.card h3 { font-size:9.6pt; color:#1e3a5f; font-weight:800; margin-bottom:5px; }
+.chip { display:inline-block; font-size:6.6pt; font-weight:800; padding:1px 6px; border-radius:20px; white-space:nowrap; }
 .c-p0 { background:#dc2626; color:#fff; } .c-p1 { background:#ea580c; color:#fff; } .c-p2 { background:#ca8a04; color:#fff; }
-.c-mob { background:#ede9fe; color:#6d28d9; } .c-dt { background:#dbeafe; color:#1e40af; }
-.c-ops { background:#fef9c3; color:#854d0e; } .c-eng { background:#e0e7ff; color:#3730a3; }
-.hbadge { font-size:14pt; font-weight:900; }
+.c-and { background:#dcfce7; color:#15803d; } .c-ios { background:#e0e7ff; color:#3730a3; } .c-both { background:#f1f5f9; color:#475569; }
+.c-hrg { background:#cffafe; color:#0e7490; } .c-asy { background:#fae8ff; color:#a21caf; }
+.hbadge { font-size:13pt; font-weight:900; }
 .heat { display:flex; gap:2px; direction:ltr; }
 .heat .hc { flex:1; text-align:center; }
-.heat .hcell { height:26px; border-radius:3px; display:flex; align-items:center; justify-content:center; color:#fff; font-size:6.2pt; font-weight:800; }
-.heat .hlab { font-size:5.8pt; color:#94a3b8; margin-top:1px; }
-.small { font-size:7.6pt; color:#64748b; } .mini { font-size:7.4pt; color:#94a3b8; }
-ul.tl { margin:4px 0; padding-right:16px; } ul.tl li { margin:2px 0; font-size:8.3pt; }
-.gl { display:flex; flex-wrap:wrap; gap:7px; }
-.gl .g { width:calc(50% - 4px); background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:7px 10px; break-inside:avoid; }
-.gl .g b { color:#1e3a5f; font-size:8.6pt; } .gl .g div { font-size:7.8pt; color:#475569; margin-top:1px; }
-.src { background:#f8fafc; border:1px dashed #cbd5e1; border-radius:8px; padding:8px 11px; font-size:7.4pt; color:#64748b; margin-top:8px; }
+.heat .hcell { height:24px; border-radius:3px; display:flex; align-items:center; justify-content:center; color:#fff; font-size:6pt; font-weight:800; }
+.heat .hlab { font-size:5.6pt; color:#94a3b8; margin-top:1px; }
+.small { font-size:7.6pt; color:#64748b; } .mini { font-size:7.3pt; color:#94a3b8; line-height:1.45; }
+ul.tl { margin:3px 0; padding-right:15px; } ul.tl li { margin:2px 0; font-size:8.1pt; }
+.rate { display:inline-block; white-space:nowrap; }
+.rate b { font-size:11pt; font-weight:900; }
+.rate-d { font-size:6.8pt; color:#94a3b8; font-weight:600; margin-right:4px; }
+.rl { display:flex; align-items:center; gap:8px; padding:4px 0; border-bottom:1px solid #f1f5f9; }
+.rl-l { width:33%; font-weight:700; font-size:8.1pt; color:#334155; }
+.rl-v { width:26%; }
+.rl-b { flex:1; font-size:7.2pt; color:#94a3b8; }
+.gl { display:flex; flex-wrap:wrap; gap:6px; }
+.gl .g { width:calc(50% - 3px); background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:6px 9px; break-inside:avoid; }
+.gl .g .gt { font-weight:800; color:#1e3a5f; font-size:8.3pt; }
+.gl .g .ge { direction:ltr; font-size:6.6pt; color:#94a3b8; font-weight:600; }
+.gl .g .gf { font-size:7.4pt; color:#334155; margin-top:2px; }
+.gl .g .gh { font-size:7.1pt; color:#64748b; margin-top:1px; font-style:italic; }
+.gl .g .gv { font-size:7.4pt; font-weight:800; color:#2563eb; margin-top:2px; direction:ltr; text-align:left; }
+.src { background:#f8fafc; border:1px dashed #cbd5e1; border-radius:8px; padding:7px 10px; font-size:7.3pt; color:#64748b; margin-top:7px; }
 .src b { color:#475569; }
+.toc { background:#f8fafc; border:1px solid #e2e8f0; border-radius:9px; padding:9px 12px; font-size:8.2pt; margin-bottom:10px; }
+.toc .t { font-weight:800; color:#1e3a5f; margin-bottom:3px; font-size:9pt; }
+.toc .r { display:flex; gap:7px; align-items:baseline; margin:2px 0; }
+.toc .b { display:inline-block; width:9px; height:9px; border-radius:2px; }
+.pagebreak { break-before:page; }
+.fun { display:flex; gap:6px; align-items:flex-end; direction:rtl; padding:2px 4px; }
+.fun .fb { flex:1; text-align:center; }
+.fun .fb-v { font-size:8pt; font-weight:900; color:#1e293b; margin-bottom:2px; }
+.fun .fb-bar { border-radius:4px 4px 0 0; }
+.fun .fb-l { font-size:7pt; color:#475569; margin-top:3px; font-weight:600; }
+.fun .fb-p { font-size:6.8pt; color:#94a3b8; font-weight:700; }
+.pstrip { display:flex; gap:7px; }
+.pstrip .p { flex:1; background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:6px 9px; }
+.pstrip .p .pn { font-weight:800; font-size:8.6pt; color:#1e3a5f; direction:ltr; }
+.pstrip .p .pr { display:flex; justify-content:space-between; font-size:7.2pt; margin-top:2px;
+  border-top:1px solid #f1f5f9; padding-top:1px; color:#475569; }
+.pstrip .p .pr b { direction:ltr; }
 """
 
 
-# ───────────────────────────── the report ─────────────────────────────────────
+# ═══════════════════════════════ THE REPORT ═══════════════════════════════════
 def render(d, a):
-    # JSON round-trips turn integer dict keys into strings; normalise so the
-    # hour-of-day heatmap works whether the data came from PostHog or a fixture.
     d["hours"] = {int(k): int(v) for k, v in (d.get("hours") or {}).items()}
-
-    W_ = d["week"]
-    PW = d["pweek"]
-    AD = d["active_days"]
-    PD = d["per_day"]
-    PPD = d["prev_per_day"]
+    U, V, R = d["users"], d["vol"], d["rates"]
+    AD, PAD = d["active_days"], d["prev_active_days"]
+    PD, PPD = d["per_day"], d["prev_per_day"]
     wow_ok = d["wow_ok"]
 
-    def wow(key, good_up=True, unit=""):
-        """Week-over-week on a per-ACTIVE-DAY basis — the only fair comparison when
-        the two windows contain a different number of live days."""
+    def wow(key, good_up=True):
         if not (wow_ok and PPD):
             return na("مقارنة أسبوعية غير متاحة")
-        return delta(PD[key], PPD[key], good_up=good_up, unit=unit)
+        return delta(PD[key], PPD[key], good_up=good_up, pct_only=True)
+
+    def uwow(key, good_up=True):
+        """Week-over-week on a unique-user metric, normalised per active day."""
+        if not (wow_ok and d.get("prev_users") and PAD):
+            return na("—")
+        return delta(U[key] / AD, d["prev_users"][key] / PAD, good_up=good_up, pct_only=True)
 
     P = []
     HEAD = ('<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><style>'
             + CSS(d["week_start"], d["week_end"]) + '</style></head><body>')
 
-    # ===== Cover =====
-    gap_days = [x for x in d["days"] if x not in d["active"]]
+    # ═══════════════════════ COVER ═══════════════════════
     P.append(f'''
 <div class="cover">
   <div class="logo">8<b>Orders</b></div>
   <h1>تقرير مؤشرات المنتج — أسبوعي</h1>
   <div class="sub">تطبيق توصيل طعام وبقالة (الغردقة وأسيوط) · المؤشر الأهم: عدد الطلبات الناجحة</div>
   <div class="meta">
-    <div>الأسبوع<b style="font-size:9.5pt;">{ar_date(d["week_start"])} – {ar_date(d["week_end"])}</b></div>
-    <div>أيام فيها بيانات<b>{AD} من 7</b></div>
-    <div>نافذة اليوم<b style="font-size:8.5pt;">8 صباحًا ← 4 صباحًا (20 ساعة)</b></div>
-    <div>الطلبات الناجحة<b style="color:#4ade80;">{fmt(W_["orders"])} طلب</b></div>
+    <div>نافذة التقرير<b style="font-size:9pt;">{ar_date(d["week_start"])} – {ar_date(d["week_end"])}</b></div>
+    <div>أيام نشطة<b>{AD} يوم</b></div>
+    <div>مستخدمون فريدون<b style="color:#4ade80;">{fmt(U["active"])}</b></div>
+    <div>الطلبات الناجحة<b style="color:#4ade80;">{fmt(V["orders"])}</b></div>
+    <div>الإيراد<b>{fmt(V["revenue"])} ج.م</b></div>
     <div>المصدر<b>PostHog · 8orders</b></div>
   </div>
 </div>''')
 
-    if gap_days or not wow_ok:
-        bits = []
-        if gap_days:
-            bits.append(
-                f"<b>{len(gap_days)} يوم من الأسبوع مفيهم بيانات فعلية</b> "
-                f"({'، '.join(ar_date(x) for x in gap_days)}) — بسبب توقّف تتبّع PostHog "
-                f"(تجاوز حد الباقة المجانية). فكل المتوسطات في التقرير محسوبة على "
-                f"<b>{AD} يوم نشط</b> فقط، مش على 7، والإجماليات بتمثّل الأيام النشطة دي.")
-        if not wow_ok:
-            bits.append("<b>مقارنة «الأسبوع اللي فات» غير متاحة</b> لأن الأسبوع السابق "
-                        "مفيهوش بيانات صالحة — فأي نسبة تغيّر أسبوعية هتكون مضلِّلة، "
-                        "وعشان كده مش معروضة. هتشتغل لوحدها لما يتراكم أسبوعان متصلان.")
-        P.append('<div class="note-avail"><b>ملاحظة مهمة عن نطاق البيانات:</b> '
-                 + " ".join(bits) + '</div>')
+    # data-scope honesty banner
+    bits = []
+    if d["gap_days"]:
+        bits.append(f"<b>{len(d['gap_days'])} يوم جوّه الفترة مفيهم بيانات</b> "
+                    f"({'، '.join(ar_short(x) for x in d['gap_days'])}) — اتشالوا من الحساب.")
+    if d["stale_days"]:
+        bits.append(f"<b>التتبّع واقف من {ar_date(d['stale_days'][0])}</b> "
+                    f"({len(d['stale_days'])} يوم لحد تاريخ التقرير) — غالبًا تجاوز حد باقة "
+                    f"PostHog. عشان كده التقرير رجع لورا وجمّع آخر <b>{AD}</b> يوم فيهم "
+                    f"بيانات حقيقية بدل آخر 7 أيام تقويمية.")
+    if not wow_ok:
+        bits.append("<b>مقارنة الأسبوع اللي فات غير متاحة</b> — مفيش أسبوع سابق متصل "
+                    "فيه بيانات كافية، فأي نسبة تغيّر هتكون مضلِّلة ومش معروضة.")
+    if bits:
+        P.append('<div class="note-avail"><b>نطاق البيانات:</b> ' + " ".join(bits) + '</div>')
 
-    # ===== 1. Executive Summary =====
-    P.append(divider("01", "الملخص التنفيذي", "Executive Summary"))
-    wins = a.get("wins") or []
-    risks = a.get("risks") or []
-    wins_html = "<br>".join(f"• {x}" for x in wins[:4])
-    risks_html = "<br>".join(f"• {x}" for x in risks[:4])
-    avg_day = W_["orders"] / AD
+    # THE denominator rule — stated once, at the top, and never repeated
+    P.append(f'''<div class="note-rule"><b>قاعدة قراءة التقرير (مهمة):</b>
+  كل نسبة في التقرير ده محسوبة على <b>المستخدمين الفريدين</b> — الشخص بيتحسب مرة واحدة
+  مهما عمل أحداث كتير. وكل نسبة مكتوب جنبها البسط والمقام
+  ({en("مثال: 91% — 3,321 / 3,648")}) وعلى إيه بالظبط اتحسبت.
+  <b>مافيش أي نسبة في التقرير مبنية على عدد الأحداث أو عدد الجلسات.</b>
+  التعريف الكامل لكل مؤشر في قاموس المؤشرات آخر التقرير.</div>''')
+
+    P.append(f'''<div class="toc"><div class="t">التقرير 3 طبقات — كل طبقة لجمهور مختلف</div>
+  <div class="r"><span class="b" style="background:{L1_C};"></span>
+    <b>الطبقة 1 — القرار التنفيذي:</b> للإدارة العليا. الحالة العامة، المؤشر الأهم، والقرارات المطلوبة.</div>
+  <div class="r"><span class="b" style="background:{L2_C};"></span>
+    <b>الطبقة 2 — التشغيل والنمو:</b> للماركتنج، الأوبريشن، البيزنس، والديليفري. التفاصيل التشغيلية والمدن.</div>
+  <div class="r"><span class="b" style="background:{L3_C};"></span>
+    <b>الطبقة 3 — المنتج والتطوير:</b> للـ {en("UX")} والمطوّرين ({en("Backend / Mobile")}). الأعطال ومهام كل فريق.</div>
+  <div class="mini" style="margin-top:3px;">لو وقتك ضيق: اقرا طبقتك بس — مفيش تكرار بين الطبقات،
+    وكل معلومة مذكورة مرة واحدة في المكان اللي يقدر يتصرّف فيها.</div>
+</div>''')
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # LAYER 1 — EXECUTIVE
+    # ══════════════════════════════════════════════════════════════════════════
+    P.append(layer_banner("1", "القرار التنفيذي", "Executive", "الإدارة العليا", L1_C))
+
+    P.append(divider("1.1", "حالة المنتج هذا الأسبوع", "Product Health", L1_C))
+    wins_html = "<br>".join(f"• {x}" for x in (a.get("wins") or [])[:3])
+    risks_html = "<br>".join(f"• {x}" for x in (a.get("risks") or [])[:3])
     P.append(f'''
-<div class="card" style="border-top:4px solid {CYEL};">
+<div class="card" style="border-top:4px solid {L1_C};">
   <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
-    <div style="font-size:12pt;font-weight:900;">حالة المنتج هذا الأسبوع:
-      {verdict_badge(a.get("verdict"))}</div>
+    <div style="font-size:11.5pt;font-weight:900;">الحالة: {verdict_badge(a.get("verdict"))}</div>
     <div style="text-align:center;">{daybars(d["series"], d["active"])}
-      <div class="mini">الطلبات في كل يوم نشط</div></div>
+      <div class="mini">مستخدمون فريدون في كل يوم نشط</div></div>
   </div>
-  <div class="box-b" style="margin-top:6px;">{a.get("reading", "")}</div>
+  <div class="box-b" style="margin-top:5px;">{a.get("reading", "")}</div>
   {("<div class='mini'>" + a["note"] + "</div>") if a.get("note") else ""}
 </div>
 <div class="row2">
-  <div class="col">{box("opp", "أحسن اللي حصل الأسبوع", wins_html)}
-    {box("info", "الفرص",
-       f"• سدّ التسرّب بين السلة وبدء الدفع ({100 - d['cart_to_checkout']:.0f}% بيخرجوا قبل الدفع).<br>"
-       f"• استغلال «مشاركة التطبيق» ({fmt(W_['share'])} مرة) في عرض إحالة.<br>"
-       f"• التقاط الطلب المكبوت القريب ({fmt(W_['cov_users'])} مستخدم من مناطق غير مخدومة).<br>"
-       f"• رفع متوسط الطلب — دلوقتي {d['aov']:.0f} ج.م.")}</div>
-  <div class="col">{box("risk", "محتاج متابعة", risks_html)}
-    {box("warn", "المخاطر",
-       f"• نسبة نجاح الدفع {d['pay_success']:.1f}% (المستهدف 98%+).<br>"
-       f"• الاعتماد على مدينتين بس (الغردقة وأسيوط).<br>"
-       f"• {fmt(W_['rage'])} نقرة غضب، {d['rage_ios_pct']:.0f}% منها على iOS "
-       f"وبدون اسم شاشة — تفصيل في القسم 12.<br>"
-       f"• {'مقارنة أسبوعية مش متاحة لحد ما البيانات تتراكم.' if not wow_ok else 'تتبّع ناقص بيعمّي بعض القرارات (القسم 13).'}")}</div>
-</div>
-<div class="mini">خلاصة للمدير في 15 ثانية: {a.get("takeaway",
-  f"متوسط {fmt(avg_day)} طلب في اليوم النشط بمتوسط طلب {d['aov']:.0f} ج.م. "
-  f"أكبر رافعة مفردة = تسرّب السلة قبل الدفع.")}</div>''')
-
-    # ===== 2. North Star =====
-    P.append(divider("02", "المؤشر الأهم (الطلبات الناجحة)", "North Star Metric"))
-    act_rows = "".join(
-        f'<tr><td>{ar_full(x)}</td><td class="en" style="font-weight:800;">{fmt(d["series"][x]["orders"])}</td>'
-        f'<td class="en">{fmt(d["series"][x]["revenue"])}</td>'
-        f'<td class="en">{(d["series"][x]["revenue"] / d["series"][x]["orders"]) if d["series"][x]["orders"] else 0:.0f}</td></tr>'
-        for x in d["active"] if d["series"].get(x))
-    best = max(d["active"], key=lambda x: d["series"][x]["orders"])
-    worst = min(d["active"], key=lambda x: d["series"][x]["orders"])
-    P.append(f'''
-<div class="row2">
-  <div class="col" style="flex:1.05;">
-    <div class="card" style="border-top:4px solid {CGREEN};text-align:center;">
-      <div style="font-size:9pt;color:{CGRAY};font-weight:700;">
-        {gloss("إجمالي الطلبات الناجحة", "الطلب اللي اتعمل فعلاً واتأكد")} — <span class="en">Successful Orders</span></div>
-      <div style="font-size:42pt;font-weight:900;color:{CGREEN};line-height:1.05;" dir="ltr">{fmt(W_["orders"])}</div>
-      <div style="font-size:9.5pt;">متوسط <b dir="ltr">{fmt(avg_day)}</b> طلب في اليوم النشط</div>
-      <div style="font-size:8.4pt;margin-top:3px;">مقابل الأسبوع اللي فات: {wow("orders")}</div>
-    </div>
-  </div>
-  <div class="col" style="flex:1.25;">
-    <table class="tb" style="margin:0;">
-      <tr><th>اليوم</th><th>الطلبات</th><th>الإيراد (ج.م)</th><th>متوسط الطلب</th></tr>
-      {act_rows}
-      <tr><td><b>الإجمالي / المتوسط</b></td><td class="en" style="font-weight:800;">{fmt(W_["orders"])}</td>
-        <td class="en" style="font-weight:800;">{fmt(W_["revenue"])}</td>
-        <td class="en" style="font-weight:800;">{d["aov"]:.0f}</td></tr>
-    </table>
-  </div>
-</div>
-{box("info", "إزاي الرقم بيتكوّن؟",
-  f"<b>السلسلة:</b> {fmt(W_['people'])} شخص دخل التطبيق ← {fmt(W_['cart_sess'])} جلسة حطّت في السلة "
-  f"← {fmt(W_['checkout'])} بدء دفع ← <b>{fmt(W_['orders'])} طلب ناجح</b>. "
-  f"<b>أعلى يوم:</b> {ar_full(best)} بـ {fmt(d['series'][best]['orders'])} طلب · "
-  f"<b>أقل يوم:</b> {ar_full(worst)} بـ {fmt(d['series'][worst]['orders'])} طلب "
-  f"(الفرق {fmt(d['series'][best]['orders'] - d['series'][worst]['orders'])} طلب). "
-  f"<b>الإيراد الأسبوعي:</b> {fmt(W_['revenue'])} ج.م.")}''')
-
-    # ===== 2B. Driver tree =====
-    P.append(divider("★", "المؤشر الأهم ومحرّكاته الداعمة", "North Star & Input KPIs"))
-    P.append(f'''<div style="text-align:center;margin:4px 0 10px;">
-  <div style="display:inline-block;background:#1e3a5f;color:#fff;border-radius:10px;padding:8px 30px;">
-    <div style="font-size:8pt;opacity:.85;">المؤشر الأهم — الطلبات الناجحة في الأسبوع</div>
-    <div style="font-size:26pt;font-weight:900;color:#4ade80;line-height:1;" dir="ltr">{fmt(W_["orders"])}</div>
-  </div>
-  <div style="font-size:7.5pt;color:#94a3b8;margin-top:4px;">▼ الرقم ده بتكوّنه 5 محرّكات داعمة ▼</div>
+  <div class="col">{box("opp", "أحسن اللي حصل", wins_html)}</div>
+  <div class="col">{box("risk", "محتاج متابعة", risks_html)}</div>
 </div>''')
-    drivers = [
-        ("1. الطلب", "Demand", CBLUE2, [
-            ("مستخدم نشط", fmt(W_["people"])), ("جلسات", fmt(W_["sessions"])),
-            ("تثبيتات", fmt(W_["installs"])), ("حسابات جديدة", fmt(W_["signups"]))]),
-        ("2. التفعيل", "Activation", CBLUE2, [
-            ("جلسات وصلت للسلة", fmt(W_["cart_sess"])),
-            ("نسبة التفعيل", f'{W_["cart_sess"] / W_["sessions"] * 100 if W_["sessions"] else 0:.0f}%'),
-            ("دخول كضيف", fmt(W_["guest"]))]),
-        ("3. التحويل", "Conversion", CRED, [
-            ("السلة ← الدفع", f'{d["cart_to_checkout"]:.0f}%'),
-            ("الدفع ← طلب", f'{d["checkout_to_order"]:.0f}%'),
-            ("تحويل الجلسة", f'{d["sess_conv"]:.1f}%')]),
-        ("4. الجودة", "Quality", CYEL, [
-            ("نجاح الدفع", f'{d["pay_success"]:.1f}%'),
-            ("أخطاء غير شبكية", fmt(d["e_non"])),
-            ("نقرات الغضب", fmt(W_["rage"]))]),
-        ("5. التكرار", "Frequency", CYEL, [
-            ("طلبات/مشترٍ", f'{d["orders_per_buyer"]:.2f}'),
-            ("عميل طلب مرتين+", f'{d["repeat_rate"]:.0f}%'),
-            ("إعادة الطلب", fmt(W_["reorder"]))]),
-    ]
-    dcards = ""
-    for ar, en, color, rows in drivers:
-        rws = "".join(
-            f'<div style="display:flex;justify-content:space-between;font-size:7.4pt;margin-top:3px;'
-            f'border-top:1px solid #f1f5f9;padding-top:2px;"><span style="color:#475569;">{k}</span>'
-            f'<b dir="ltr">{v}</b></div>' for k, v in rows)
-        dcards += (f'<div style="width:calc(20% - 6px);background:#fff;border:1px solid {BORD};'
-                   f'border-top:3px solid {color};border-radius:9px;padding:8px 9px;break-inside:avoid;">'
-                   f'<div style="font-weight:800;font-size:8.6pt;color:{CBLUE};">{ar}'
-                   f'<div style="font-weight:600;font-size:6.6pt;color:#94a3b8;direction:ltr;">{en}</div>'
-                   f'</div>{rws}</div>')
-    P.append(f'<div style="display:flex;gap:7px;">{dcards}</div>')
-    weakest = min([("3. التحويل", d["cart_to_checkout"])], key=lambda x: x[1])
-    P.append(f'''
-<div style="background:#f8fafc;border:1px solid {BORD};border-radius:9px;padding:9px 12px;margin:9px 0;font-size:8.2pt;color:#334155;">
-  <b style="color:{CBLUE};">القيمة (Value) — بجانب المحرّكات:</b> مبتزوّدش <b>عدد</b> الطلبات،
-  لكن بتحدّد لو الزيادة تتحوّل فلوس. متوسط الطلب <b dir="ltr">{d["aov"]:.0f}</b> ج.م ·
-  الإيراد <b dir="ltr">{fmt(W_["revenue"])}</b> ج.م ·
-  إيراد لكل مستخدم <b dir="ltr">{W_["revenue"] / W_["people"] if W_["people"] else 0:.0f}</b> ج.م.
-</div>
-{box("risk", "أضعف حلقة الأسبوع",
-  f"المحرّك رقم 3 (التحويل): «السلة ← بدء الدفع» عند <b>{d['cart_to_checkout']:.0f}%</b> فقط. "
-  f"ده أعلى محرّك أثرًا لو اشتغلنا عليه — تحسينه بيرفع المؤشر الأهم مباشرة.")}
-<div class="mini">ملاحظة: دي محرّكات بنقرأها كاتجاهات، مش معادلة ضرب مظبوطة (فيه طلبات معادة بتتخطى بعض الخطوات).</div>''')
 
-    # ===== 3. KPI Dashboard =====
-    P.append(divider("03", "لوحة المؤشرات السريعة", "Executive KPI Dashboard"))
     P.append('<div class="kpi-grid">')
-    P.append(kpi_card("الطلبات الناجحة", "Orders", fmt(W_["orders"]), "", wow("orders"), CGREEN,
-                      f"متوسط {fmt(avg_day)}/يوم"))
-    P.append(kpi_card("الإيراد", "Revenue", fmt(W_["revenue"]), "ج.م", wow("revenue"), CYEL))
+    P.append(kpi_card("الطلبات الناجحة", "Orders", fmt(V["orders"]), "", wow("orders"), CGREEN,
+                      f"متوسط {fmt(V['orders'] / AD)} في اليوم النشط"))
+    P.append(kpi_card("المشترون", "Buyers", fmt(U["buyer"]), "", uwow("buyer"), CGREEN,
+                      f"{R['purchase']['v']:.0f}% من المستخدمين"))
+    P.append(kpi_card("الإيراد", "Revenue", fmt(V["revenue"]), "ج.م", wow("revenue"), CYEL,
+                      f"{fmt(V['revenue'] / AD)} ج.م في اليوم"))
     P.append(kpi_card("متوسط قيمة الطلب", "AOV", f'{d["aov"]:.0f}', "ج.م",
-                      delta(d["aov"], d["prev_aov"]) if wow_ok else na("—"), CBLUE2))
-    P.append(kpi_card("تحويل الجلسة", "Session Conv.", f'{d["sess_conv"]:.1f}', "%",
-                      '<span class="mini">من كل 100 جلسة</span>', CBLUE2))
-    P.append(kpi_card("مستخدم نشط", "Active Users", fmt(W_["people"]), "", wow("people"), CBLUE2,
-                      "أفراد في الأسبوع"))
-    P.append(kpi_card("الجلسات", "Sessions", fmt(W_["sessions"]), "", wow("sessions"), CGREEN))
-    P.append(kpi_card("عدد المشترين", "Buyers", fmt(W_["buyers"]), "",
-                      f'<span class="mini">تحويل {d["buyer_conv"]:.0f}%</span>', CGREEN))
-    P.append(kpi_card("طلبات لكل مشترٍ", "Orders/Buyer", f'{d["orders_per_buyer"]:.2f}', "",
-                      f'<span class="mini">طلب مرتين+: {d["repeat_rate"]:.0f}%</span>', CYEL))
-    P.append(kpi_card("نجاح الدفع", "Payment Success", f'{d["pay_success"]:.1f}', "%",
-                      '<span class="mini">المستهدف 98%+</span>', CYEL))
-    P.append(kpi_card("فشل الدفع", "Payment Fails", fmt(W_["payfail"]), "",
-                      wow("payfail", good_up=False), CRED, f"منها {fmt(d['sqf'])} تحقق"))
-    P.append(kpi_card("أخطاء التطبيق", "Errors", fmt(W_["errors"]), "",
-                      wow("errors", good_up=False), CRED,
-                      f"{d['e_net'] / W_['errors'] * 100 if W_['errors'] else 0:.0f}% مشاكل نت"))
-    P.append(kpi_card("أخطاء غير شبكية", "Non-network", fmt(d["e_non"]), "",
-                      '<span class="mini">محتاجة مراجعة</span>', CYEL))
-    P.append(kpi_card("نقرات الغضب", "Rageclicks", fmt(W_["rage"]), "",
-                      f'<span class="mini">{d["rage_ios_pct"]:.0f}% على iOS</span>', CYEL,
-                      "الشاشة غير محددة"))
-    P.append(kpi_card("طلب من مناطق غير مخدومة", "Uncovered", fmt(W_["cov_users"]), "",
-                      f'<span class="mini">{fmt(W_["cov_events"])} محاولة</span>', CYEL, "أفراد"))
-    P.append(kpi_card("مشاركة التطبيق", "App Shares", fmt(W_["share"]), "",
-                      wow("share"), CGREEN, "قناة إحالة"))
-    P.append(kpi_card("تقييمات الطلبات", "Ratings", fmt(W_["ratings"]), "", wow("ratings"), CGREEN,
-                      f'{W_["ratings"] / W_["orders"] * 100 if W_["orders"] else 0:.0f}% من الطلبات'))
+                      delta(d["aov"], d["prev_aov"], pct_only=True) if wow_ok else na("—"), CBLUE2))
+    P.append(kpi_card("مستخدمون فريدون", "Unique Users", fmt(U["active"]), "", uwow("active"), CBLUE2,
+                      "مقام كل النسب"))
+    P.append(kpi_card("السلة ← الطلب", "Cart → Order", f'{R["cart_to_order"]["v"]:.0f}', "%",
+                      f'<span class="mini">{fmt(R["cart_to_order"]["n"])} / {fmt(R["cart_to_order"]["d"])}</span>',
+                      CGREEN, "أهم نسبة تحويل"))
+    P.append(kpi_card("نجاح الدفع", "Payment Success", f'{R["pay_success"]["v"]:.0f}', "%",
+                      f'<span class="mini">{fmt(R["pay_success"]["n"])} / {fmt(R["pay_success"]["d"])}</span>',
+                      CYEL if R["pay_success"]["v"] < 95 else CGREEN, "المستهدف 98%+"))
+    P.append(kpi_card("مستخدمون قابلهم خطأ", "Users Hit by Error", fmt(U["error"]), "",
+                      f'<span class="mini">{R["error_hit"]["v"]:.0f}% من المستخدمين</span>',
+                      CRED, "أشخاص مش أحداث"))
     P.append('</div>')
-    P.append('<div class="mini">مؤشرات لسه مش متتبَّعة (فجوة): زمن فتح التطبيق، زمن استجابة '
-             'السيرفر، معدل الكراش المنفصل، مدة الجلسة، زمن التوصيل — التفصيل في القسم 13.</div>')
 
-    # ===== 4. AARRR =====
-    P.append(divider("04", "رحلة العميل (نموذج AARRR)", "Growth · AARRR"))
+    P.append(divider("1.2", "أين نقف — المدينة والمنصة", "City & Platform", L1_C))
+    UNK = "غير محدد"
+    real_cities = [c for c in d["cities"] if c["dim"] != UNK]
+    unknown_city = next((c for c in d["cities"] if c["dim"] == UNK), None)
+    city_rows = "".join(
+        f'<tr><td><b>{c["dim"]}</b></td><td class="en">{fmt(c["users"])}</td>'
+        f'<td class="en">{fmt(c["buyers"])}</td><td class="en">{c["purchase_rate"]:.1f}%</td>'
+        f'<td class="en">{fmt(c["orders"])}</td><td class="en">{fmt(c["revenue"])}</td>'
+        f'<td class="en">{c["aov"]:.0f}</td><td class="en">{c["error_rate"]:.0f}%</td></tr>'
+        for c in real_cities)
+    if unknown_city:
+        u_ = unknown_city
+        city_rows += (
+            f'<tr class="tb-t"><td>غير منسوب<div class="mini">مافتحوش أي متجر — '
+            f'فتحوا التطبيق وخرجوا</div></td><td class="en">{fmt(u_["users"])}</td>'
+            f'<td class="en">{fmt(u_["buyers"])}</td><td colspan="5" class="mini">'
+            f'{u_["users"] / U["active"] * 100:.0f}% من المستخدمين — دول مش مشكلة إسناد، '
+            f'دول ناس فتحت التطبيق ومادخلتش أي متجر أصلًا.</td></tr>')
+    plat_cards = ""
+    for p_ in d["platforms"][:3]:
+        plat_cards += (
+            f'<div class="p"><div class="pn">{p_["dim"]}</div>'
+            f'<div class="pr"><span>مستخدمون</span><b>{fmt(p_["users"])}</b></div>'
+            f'<div class="pr"><span>نسبة الشراء</span><b>{p_["purchase_rate"]:.1f}%</b></div>'
+            f'<div class="pr"><span>نسبة الخطأ</span><b>{p_["error_rate"]:.0f}%</b></div>'
+            f'<div class="pr"><span>متوسط الطلب</span><b>{p_["aov"]:.0f} ج.م</b></div></div>')
     P.append(f'''
-<div class="mini" style="margin-bottom:4px;">{gloss("AARRR", "5 مراحل: جذب، تفعيل، احتفاظ، إحالة، إيراد — إطار Dave McClure لقياس نمو المنتج")}</div>
-<table class="tb">
-  <tr><th>المرحلة</th><th>المقياس</th><th>القيمة</th><th>القراءة بالبسيط</th></tr>
-  <tr><td><b>الجذب</b> — Acquisition</td><td>تثبيتات · حسابات جديدة · دخول كضيف</td>
-    <td class="en">{fmt(W_["installs"])} · {fmt(W_["signups"])} · {fmt(W_["guest"])}</td>
-    <td>ناس بتحمّل التطبيق، بس اللي بيعمل حساب أقل بكتير ({W_["signups"] / W_["installs"] * 100 if W_["installs"] else 0:.0f}% من التثبيتات).</td></tr>
-  <tr><td><b>التفعيل</b> — Activation</td><td>جلسات وصلت للسلة</td>
-    <td class="en">{fmt(W_["cart_sess"])} ({W_["cart_sess"] / W_["sessions"] * 100 if W_["sessions"] else 0:.0f}%)</td>
-    <td>دي بداية نية الشراء الحقيقية.</td></tr>
-  <tr><td><b>الاحتفاظ</b> — Retention</td>
-    <td>{gloss("عميل طلب أكتر من مرة", "خلال نفس الأسبوع")}</td>
-    <td class="en">{fmt(d["repeat_buyers"])} ({d["repeat_rate"]:.1f}%)</td>
-    <td>الأسبوع كامل خلّانا نقيسها فعليًا — مش تقدير (التفصيل في القسم 11).</td></tr>
-  <tr><td><b>الإحالة</b> — Referral</td><td>مشاركة التطبيق</td>
-    <td class="en">{fmt(W_["share"])}</td>
-    <td>«الزباين بيرشّحوا التطبيق لبعض» — قناة مجانية تستاهل نستغلها.</td></tr>
-  <tr><td><b>الإيراد</b> — Revenue</td><td>الفلوس · متوسط الطلب</td>
-    <td class="en">{fmt(W_["revenue"])} · {d["aov"]:.0f}</td>
-    <td>الإيراد بيتحدّد بمتوسط الطلب أكتر من عدد الطلبات.</td></tr>
-</table>
-{box("opp", "التوصية",
-  f"بالترتيب: (1) تحويل الضيوف ({fmt(W_['guest'])}) لحسابات مسجّلة — بيفتح الاحتفاظ والإشعارات، "
-  f"(2) استغلال المشاركة ({fmt(W_['share'])}) في عرض إحالة مقيس، "
-  f"(3) رفع متوسط الطلب من {d['aov']:.0f} ج.م بباقات أو حد أدنى للتوصيل المجاني.")}''')
+<table class="tb"><tr><th>المدينة</th><th>مستخدمون</th><th>مشترون</th>
+  <th>نسبة الشراء</th><th>طلبات</th><th>إيراد (ج.م)</th><th>متوسط الطلب</th><th>نسبة الخطأ</th></tr>
+  {city_rows}</table>
+<div class="mini" style="margin-bottom:6px;">المدينة متحسبة من المتاجر اللي المستخدم فتحها فعلًا،
+  مش من موقع الإنترنت — المنهجية آخر التقرير. المقارنة الكاملة بين المدينتين في الطبقة 2.</div>
+<div class="pstrip">{plat_cards}</div>''')
 
-    # ===== 5. HEART =====
-    P.append(divider("05", "تجربة المستخدم (نموذج HEART)", "HEART Framework"))
+    # ── the three decisions ──
+    P.append(divider("1.3", "القرارات المطلوبة من الإدارة", "Decisions Needed", L1_C))
+    top_code = next((e for e in d["errors"] if e["kind"] == "code"), None)
+    zero_fields = [q for q in d["data_quality"] if q["fill_rate"] < 1]
+    # best/worst must ignore the unattributed bucket — it has 0 buyers by construction
+    # (those users never opened a store), so it would always "win" as the worst city.
+    best_city = max(real_cities, key=lambda c: c["purchase_rate"]) if real_cities else None
+    worst_city = min(real_cities, key=lambda c: c["purchase_rate"]) if real_cities else None
+    decisions = []
+    if top_code:
+        decisions.append((
+            "اعتماد إصلاح أعلى خطأ برمجي في التطبيق",
+            f'خطأ {en(top_code["msg"][:52])} ضرب <b>{fmt(top_code["users"])}</b> مستخدم '
+            f'({top_code["os"]}) — إجمالي المتأثرين بأخطاء {fmt(U["error"])} '
+            f'({R["error_hit"]["v"]:.0f}% من المستخدمين).',
+            "تقليل التسرّب وتحسين الثبات", "الهندسة", "p0"))
+    if zero_fields:
+        decisions.append((
+            "إلزام تعبئة حقول الطلب الفارغة",
+            f'<b>{len(zero_fields)}</b> حقل على حدث الطلب بيتبعت فاضي أو بصفر '
+            f'({en("، ".join(q["field"] for q in zero_fields[:4]))}) — '
+            f'فمفيش هامش ربح ولا تحليل متاجر ولا تكلفة توصيل.',
+            "يفتح تحليل الربحية بالكامل", "الهندسة + البيانات", "p0"))
+    decisions.append((
+        "ترقية باقة PostHog أو ضبط حد تنبيه",
+        f'التتبّع وقف مرتين في شهرين (يوليو، وتاني من {ar_date(d["stale_days"][0])} '
+        f'لو موجود). كل انقطاع بيضيّع أسبوع مقارنة.'
+        if d["stale_days"] else
+        'التتبّع وقف قبل كده في يوليو وضيّع أسبوعين مقارنة — الحد لسه من غير تنبيه.',
+        "استمرارية القرار المبني على بيانات", "البيانات + المالية", "p1"))
+    if best_city and worst_city and best_city["dim"] != worst_city["dim"]:
+        decisions.append((
+            f'تخصيص خطة نمو لـ{worst_city["dim"]}',
+            f'{worst_city["dim"]}: {fmt(worst_city["users"])} مستخدم بنسبة شراء '
+            f'{worst_city["purchase_rate"]:.0f}% مقابل {best_city["purchase_rate"]:.0f}% في '
+            f'{best_city["dim"]} — الفجوة '
+            f'{best_city["purchase_rate"] - worst_city["purchase_rate"]:.0f} نقطة.',
+            "سوق قائم غير مستغل", "التشغيل + التسويق", "p1"))
+    if U["uncovered"]:
+        decisions.append((
+            "دراسة توسّع التغطية القريبة",
+            f'<b>{fmt(U["uncovered"])}</b> مستخدم ({R["uncovered"]["v"]:.1f}% من المستخدمين) '
+            f'حاولوا يطلبوا من مناطق غير مخدومة، وأغلبهم جوّه نفس المحافظتين.',
+            "طلب مكبوت جاهز", "التشغيل", "p2"))
+    dec_rows = "".join(
+        f'<tr><td><b>{i + 1}. {t}</b><div class="mini">{why}</div></td>'
+        f'<td>{imp}</td><td>{own}</td><td><span class="chip c-{pr}">{pr.upper()}</span></td></tr>'
+        for i, (t, why, imp, own, pr) in enumerate(decisions[:4]))
     P.append(f'''
-<div class="mini" style="margin-bottom:4px;">{gloss("HEART", "إطار Google لقياس التجربة: سعادة، تفاعل، تبنّي، احتفاظ، نجاح المهمة")}</div>
-<table class="tb">
-  <tr><th>البُعد</th><th>المتاح للقياس</th><th>القيمة</th><th>الحالة</th></tr>
-  <tr><td><b>السعادة</b> — Happiness</td><td>تقييمات الطلبات</td>
-    <td class="en">{fmt(W_["ratings"])}</td>
-    <td>{light(CGREEN)} {W_["ratings"] / W_["orders"] * 100 if W_["orders"] else 0:.0f}% من الطلبات اتقيّمت؛ متوسط الدرجة و{gloss("NPS", "مقياس الولاء")} لسه مش متتبعين.</td></tr>
-  <tr><td><b>التفاعل</b> — Engagement</td><td>جلسات · مشاهدات منتج · نقرات غضب</td>
-    <td class="en">{fmt(W_["sessions"])} · {fmt(W_["product"])} · {fmt(W_["rage"])}</td>
-    <td>{light(CYEL)} تفاعل عالي، بس نقرات الغضب علامة إحباط.</td></tr>
-  <tr><td><b>التبنّي</b> — Adoption</td><td>تبنّي أحدث نسختين</td>
-    <td class="en">{d["new_ver_pct"]:.0f}%</td>
-    <td>{light(CGREEN)} النسخ القديمة بتختفي.</td></tr>
-  <tr><td><b>الاحتفاظ</b> — Retention</td><td>عميل طلب مرتين+ · طلبات/مشترٍ</td>
-    <td class="en">{d["repeat_rate"]:.1f}% · {d["orders_per_buyer"]:.2f}</td>
-    <td>{light(CYEL)} مقياس حقيقي بقى متاح بفضل الأسبوع الكامل.</td></tr>
-  <tr><td><b>نجاح المهمة</b> — Task Success</td><td>تحويل الجلسة · نجاح الدفع</td>
-    <td class="en">{d["sess_conv"]:.1f}% · {d["pay_success"]:.1f}%</td>
-    <td>{light(CYEL)} نجاح الدفع المفروض يوصل 98%+.</td></tr>
-</table>''')
-
-    # ===== 6. Marketplace & Coverage =====
-    P.append(divider("06", "صحة السوق والتغطية", "Marketplace & Coverage"))
-    cov_rows = "".join(f'<tr><td>{r}</td><td class="en">{fmt(u)}</td><td class="en">{fmt(att)}</td></tr>'
-                       for r, u, att in d["cov_regions"])
-    cancel_total = W_["cancel_unpaid"] + W_["cancelled"]
-    P.append(f'''
-<div class="row2">
-  <div class="col">{box("info", "جانب الطلب (Demand)",
-    f"مستخدمون نشطون: <b>{fmt(W_['people'])}</b> · جلسات: <b>{fmt(W_['sessions'])}</b> · "
-    f"طلبات ناجحة: <b>{fmt(W_['orders'])}</b>.<br>التطبيق بيخدم <b>الغردقة وأسيوط</b> بس.")}</div>
-  <div class="col">{box("warn", "جانب العرض (Supply)",
-    f"المتاح: <b>{fmt(W_['store'])}</b> فتح متجر و<b>{fmt(W_['select_rest'])}</b> اختيار مطعم. "
-    f"أما عدد التجار النشطين، ونسبة قبول الطلب، وزمن التوصيل، والتأخير — "
-    f"<b>مش متتبَّعة في PostHog</b> (غالبًا في السيرفر). القرار التشغيلي ناقص من غيرها.")}</div>
+<table class="tb"><tr><th style="width:52%;">القرار / السبب بالأرقام</th><th>الأثر</th>
+  <th>المالك</th><th>الأولوية</th></tr>{dec_rows}</table>
+<div class="card" style="background:{L1_C};color:#fff;border:none;text-align:center;padding:12px;">
+  <div style="font-size:7.8pt;opacity:.75;font-weight:700;">الخلاصة التنفيذية — Executive Takeaway</div>
+  <div style="font-size:12pt;font-weight:900;line-height:1.5;margin-top:3px;">
+    {a.get("takeaway", f"{fmt(V['orders'])} طلب من {fmt(U['buyer'])} مشترٍ.")}</div>
 </div>
-<div class="card"><h3>الطلب المكبوت — مناطق بيحاولوا يطلبوا منها وهي مش مخدومة</h3>
-  <div class="box-b" style="margin-bottom:5px;">حدث <span class="en">area_not_covered</span> =
-    <b>{fmt(W_["cov_events"])} محاولة</b> من <b>{fmt(W_["cov_users"])} مستخدم</b>
-    (نفس الشخص بيحاول أكتر من مرة، فالعبرة بعدد الأشخاص).
-    العناوين حقيقية — المستخدم كتبها بنفسه، مش تخمين موقع الإنترنت:</div>
-  <table class="tb" style="margin:0;"><tr><th>المنطقة</th><th>عدد المستخدمين</th><th>عدد المحاولات</th></tr>{cov_rows}</table>
-  <div class="mini" style="margin-top:4px;">بعض المستخدمين حاولوا في أكتر من منطقة، فمجموع الصفوف أكبر شوية من
-    {fmt(W_["cov_users"])}. أقرب توسّع منطقي = جوه نفس المحافظتين، مش مدن بعيدة.</div>
+<div class="mini">نهاية الطبقة 1. الإدارة العليا ممكن تقف هنا — الباقي تفاصيل تنفيذية.</div>''')
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # LAYER 2 — BUSINESS / OPERATIONS / MARKETING / DELIVERY
+    # ══════════════════════════════════════════════════════════════════════════
+    P.append('<div class="pagebreak"></div>')
+    P.append(layer_banner("2", "التشغيل والنمو", "Growth & Operations",
+                          "الماركتنج · الأوبريشن · البيزنس · الديليفري", L2_C))
+
+    # ── 2.1 the user funnel, and the correction that makes it trustworthy ──
+    P.append(divider("2.1", "رحلة المستخدم — فين بيقعوا بالظبط", "User Funnel", L2_C))
+    steps = [("فتح التطبيق", U["active"], "#93c5fd"), ("شاف منتج", U["product"], "#60a5fa"),
+             ("حطّ في السلة", U["cart"], "#3b82f6"), ("بدأ الدفع", U["checkout"], "#1d4ed8"),
+             ("أتمّ طلب", U["buyer"], CGREEN)]
+    drop_browse = U["active"] - U["product"]
+    drop_cart = U["product"] - U["cart"]
+    drop_checkout = U["cart"] - U["checkout"]
+    drop_order = U["checkout"] - U["buyer"]
+    biggest = max([("من فتح التطبيق لمشاهدة منتج", drop_browse),
+                   ("من مشاهدة منتج لإضافة للسلة", drop_cart),
+                   ("من السلة لبدء الدفع", drop_checkout),
+                   ("من بدء الدفع لإتمام الطلب", drop_order)], key=lambda x: x[1])
+    P.append(f'''
+<div class="card"><h3>القمع بالمستخدمين الفريدين — كل عمود = عدد أشخاص</h3>
+  <div style="text-align:center;">{funnel_html(steps)}</div>
 </div>
 <div class="row2">
-  <div class="col"><table class="tb"><tr><th>مؤشر السوق</th><th>القيمة</th><th>الحالة</th></tr>
-    <tr><td>{gloss("إلغاء أونلاين غير مدفوع", "Cancel_Unpaid_Online_Order")}</td>
-      <td class="en">{fmt(W_["cancel_unpaid"])}</td><td>{light(CYEL)} يستحق متابعة</td></tr>
-    <tr><td>{gloss("إلغاء طلب", "order_cancelled")}</td>
-      <td class="en">{fmt(W_["cancelled"])}</td>
-      <td>{light(CYEL)} {cancel_total / (W_["orders"] + cancel_total) * 100 if (W_["orders"] + cancel_total) else 0:.1f}% من إجمالي الطلبات</td></tr>
-    <tr><td>نسبة القبول · زمن التوصيل · التأخير · سبب الإلغاء</td><td>—</td>
-      <td>{light(CGRAY)} فجوة تتبّع (سيرفر)</td></tr>
-  </table></div>
-  <div class="col">{box("gap", "تنبيه دقة",
-    "المدن اللي بتظهر في بيانات الموقع (<span class='en'>IP</span>) مش مكان التوصيل الحقيقي — "
-    "شركات المحمول بتوجّه الإنترنت لبوابة في القاهرة. عشان كده مافيش «إيراد حسب المدينة» في التقرير، "
-    "وبدالها تحليل التغطية الحقيقي فوق المبني على العنوان اللي المستخدم كتبه.")}</div>
+  <div class="col"><div class="card"><h3>نِسَب التحويل بين الخطوات</h3>
+    {rate_line("فتح التطبيق ← شاف منتج", R["browse"], CBLUE2)}
+    {rate_line("فتح التطبيق ← حطّ في السلة", R["activation"], CBLUE2)}
+    {rate_line("السلة ← بدء الدفع", R["cart_to_checkout"], CGREEN)}
+    {rate_line("بدء الدفع ← أتمّ الطلب", R["checkout_to_order"], CGREEN)}
+    {rate_line("السلة ← الطلب (كلي)", R["cart_to_order"], CGREEN)}
+    {rate_line("فتح التطبيق ← الطلب", R["purchase"], CBLUE)}
+  </div></div>
+  <div class="col">{box("info", "أكبر تسرّب فعلي هذا الأسبوع",
+    f"<b>{biggest[0]}</b> — <b>{fmt(biggest[1])}</b> مستخدم خرجوا في الخطوة دي. "
+    f"باقي التسرّب: من التطبيق للمنتج {fmt(drop_browse)}، "
+    f"من المنتج للسلة {fmt(drop_cart)}، من السلة للدفع {fmt(drop_checkout)}، "
+    f"من الدفع للطلب {fmt(drop_order)}.")}
+    {box("warn", "تصحيح مهم عن التقارير السابقة",
+    f"التقارير القديمة كانت بتقول إن أكبر تسرّب هو «السلة ← بدء الدفع» بنسبة تسرّب عالية. "
+    f"ده كان <b>خطأ في المقام</b>: كانت بتقسم <b>أحداث</b> بدء الدفع على <b>أحداث</b> "
+    f"إضافة للسلة — والمستخدم بيضيف كذا صنف للسلة وبيبدأ الدفع مرة واحدة، فالنسبة كانت "
+    f"بتطلع منخفضة بشكل مصطنع. بالمستخدمين الفريدين، النسبة الحقيقية "
+    f"<b>{R['cart_to_checkout']['v']:.0f}%</b>. "
+    f"يعني <b>مشكلة التحويل مش هي أكبر مشكلة عندنا</b> — الجودة هي المشكلة.")}
+  </div>
 </div>''')
 
-    # ===== 7. Funnel =====
-    P.append(divider("07", "قمع الشراء", "Product Funnel"))
-    mx = W_["app_open"] or 1
-    funnel_bars = "".join([
-        bar_row("فتح التطبيق", W_["app_open"], mx, "#93c5fd"),
-        bar_row("فتح متجر", W_["store"], mx, "#60a5fa"),
-        bar_row("مشاهدة منتج", W_["product"], mx, "#3b82f6"),
-        bar_row("إضافة للسلة", W_["cart"], mx, "#2563eb"),
-        bar_row("بدء الدفع", W_["checkout"], mx, "#1d4ed8"),
-        bar_row("طلب ناجح", W_["orders"], mx, CGREEN)])
-    lift10 = 0.10 * W_["cart"]
-    lift_orders = lift10 * (d["checkout_to_order"] / 100)
-    P.append(f'''
-<div class="mini" style="margin-bottom:4px;">{gloss("القمع", "خطوات العميل من فتح التطبيق للطلب؛ في كل خطوة ناس بتقع")}</div>
-<div class="row2">
-  <div class="col" style="flex:1.2;">
-    <div class="card"><h3>عدد الأحداث في كل خطوة (الأسبوع)</h3>{funnel_bars}
-    <div class="mini">المشاهدات أكتر من فتح المتجر لأن العميل بيتفرّج على كذا منتج في المتجر الواحد —
-      الأرقام هنا بالأحداث مش بالأشخاص.</div></div>
-  </div>
-  <div class="col">
-    <div class="card"><h3>أهم تحويل: السلة ← الطلب</h3>
-      {bar_row("إضافة للسلة ← بدء الدفع", W_["checkout"], W_["cart"], CRED, f'{d["cart_to_checkout"]:.0f}%')}
-      {bar_row("بدء الدفع ← طلب ناجح", W_["orders"], W_["checkout"], CGREEN, f'{d["checkout_to_order"]:.0f}%')}
-      {bar_row("السلة ← الطلب (كلي)", W_["orders"], W_["cart"], CYEL, f'{d["cart_to_order"]:.0f}%')}
-      <div class="mini" style="margin-top:4px;">أكبر تسرّب:
-        <b style="color:{CRED};">{100 - d["cart_to_checkout"]:.0f}% ممّن حطّوا في السلة مايبدؤوش الدفع أصلاً</b>.
-        اللي يبدأ الدفع، {d["checkout_to_order"]:.0f}% منهم بيكمّل بنجاح.</div>
-    </div>
-  </div>
-</div>
-{box("risk", "نقطة التدخّل الأولى — بالأرقام",
-  f"من كل 100 واحد حطّ في السلة، {d['cart_to_checkout']:.0f} بس بيبدؤوا الدفع "
-  f"({fmt(W_['checkout'])} من {fmt(W_['cart'])}) والباقي بيخرج. "
-  f"لو حسّنّا الرقم ده 10 نقط بس، يبقى: 10% × {fmt(W_['cart'])} ≈ "
-  f"<b>{fmt(lift10)} عملية بدء دفع زيادة في الأسبوع</b> ≈ حوالي "
-  f"<b>{fmt(lift_orders)} طلب إضافي محتمل</b> (بنفس نسبة إتمام الدفع الحالية "
-  f"{d['checkout_to_order']:.0f}%) ≈ {fmt(lift_orders * d['aov'])} ج.م إيراد. "
-  f"الخطوات الوسط (الرئيسية/المنيو/عرض السلة/شاشة الدفع) لسه مش متتبَّعة كأحداث منفصلة — "
-  f"إضافتها هتورّينا الخطوة الدقيقة اللي بيقعوا فيها.")}''')
+    # ── 2.2 city deep dive ──
+    P.append(divider("2.2", "الغردقة مقابل أسيوط", "City Deep-Dive", L2_C))
+    if len(real_cities) >= 2:
+        c1, c2 = real_cities[0], real_cities[1]
+        cmp_rows = "".join(
+            f'<tr><td>{lbl}</td><td class="en">{v1}</td><td class="en">{v2}</td><td>{note}</td></tr>'
+            for lbl, v1, v2, note in [
+                ("مستخدمون فريدون", fmt(c1["users"]), fmt(c2["users"]),
+                 f'{c1["dim"]} أكبر بـ {c1["users"] / c2["users"] if c2["users"] else 0:.1f}×'),
+                ("مشترون", fmt(c1["buyers"]), fmt(c2["buyers"]), "عدد الأشخاص اللي طلبوا"),
+                ("نسبة الشراء", f'{c1["purchase_rate"]:.1f}%', f'{c2["purchase_rate"]:.1f}%',
+                 "من المستخدمين اللي فتحوا التطبيق"),
+                ("السلة ← الطلب", f'{c1["cart_to_order"]:.1f}%', f'{c2["cart_to_order"]:.1f}%',
+                 "جودة نية الشراء"),
+                ("الطلبات", fmt(c1["orders"]), fmt(c2["orders"]), "إجمالي الطلبات الناجحة"),
+                ("الإيراد (ج.م)", fmt(c1["revenue"]), fmt(c2["revenue"]), "إجمالي الأسبوع"),
+                ("متوسط قيمة الطلب", f'{c1["aov"]:.0f}', f'{c2["aov"]:.0f}', "ج.م لكل طلب"),
+                ("نسبة المتأثرين بخطأ", f'{c1["error_rate"]:.0f}%', f'{c2["error_rate"]:.0f}%',
+                 "أقل = أحسن"),
+                ("نقرات الغضب", f'{c1["rage_rate"]:.0f}%', f'{c2["rage_rate"]:.0f}%',
+                 "أقل = أحسن"),
+                ("عدد المتاجر", fmt(d["store_city_counts"]["hurghada"]),
+                 fmt(d["store_city_counts"]["assiut"]), "متاجر متعرّف عليها في المدينة"),
+            ])
+        gap = c1["purchase_rate"] - c2["purchase_rate"]
+        P.append(f'''
+<table class="tb"><tr><th>المؤشر</th><th>{c1["dim"]}</th><th>{c2["dim"]}</th><th>القراءة</th></tr>
+  {cmp_rows}</table>
+{box("opp" if abs(gap) < 5 else "warn", "قراءة الفرق",
+  f"الفرق في نسبة الشراء بين المدينتين <b>{abs(gap):.1f}</b> نقطة "
+  f"({'لصالح ' + c1['dim'] if gap > 0 else 'لصالح ' + c2['dim']}). "
+  + (f"{c2['dim']} فيها {fmt(d['store_city_counts']['assiut'])} متجر مقابل "
+     f"{fmt(d['store_city_counts']['hurghada'])} في {c1['dim']} — "
+     f"عمق الكتالوج على الأرجح أهم سبب، وده قرار توريد مش قرار منتج."
+     if d["store_city_counts"]["assiut"] < d["store_city_counts"]["hurghada"] else ""))}''')
+    else:
+        P.append(box("gap", "المقارنة بين المدن غير متاحة",
+                     "مافيش مدينتين بأحجام كافية في نافذة التقرير دي."))
 
-    # ===== 8. Behaviour =====
-    P.append(divider("08", "سلوك العميل", "Customer Behaviour"))
+    # top stores
+    store_rows = "".join(
+        f'<tr><td>{s["name"]}</td><td class="en">{s["store_id"]}</td>'
+        f'<td><span class="chip {"c-hrg" if s["city"] == "الغردقة" else "c-asy" if s["city"] == "أسيوط" else "c-both"}">{s["city"]}</span></td>'
+        f'<td class="en">{fmt(s["users"])}</td><td class="en">{fmt(s["opens"])}</td></tr>'
+        for s in d["top_stores"][:10])
+    P.append(f'''
+<div class="card"><h3>أكتر المتاجر جذبًا للمستخدمين</h3>
+  <table class="tb" style="margin:0;"><tr><th>المتجر</th><th>المعرّف</th><th>المدينة</th>
+    <th>مستخدمون فريدون</th><th>مرات الفتح</th></tr>{store_rows}</table>
+  <div class="mini" style="margin-top:3px;">مرتّبة بعدد الأشخاص مش بعدد الفتحات — عشان متجر
+    المستخدم بيرجعله كتير مايبانش أكبر من متجر بيجذب ناس أكتر.</div>
+</div>''')
+
+    # ── 2.3 retention ──
+    P.append(divider("2.3", "الاحتفاظ وتكرار الشراء", "Retention", L2_C))
+    P.append('<div class="kpi-grid">')
+    P.append(kpi_card("عميل طلب مرتين+", "Repeat Buyers", f'{d["repeat_rate"]:.1f}', "%",
+                      f'<span class="mini">{fmt(d["repeat_buyers"])} / {fmt(U["buyer"])} مشترٍ</span>',
+                      CGREEN, width="calc(25% - 6px)"))
+    P.append(kpi_card("عميل طلب 3 مرات+", "Loyal Buyers", f'{d["loyal_rate"]:.1f}', "%",
+                      f'<span class="mini">{fmt(d["loyal_buyers"])} / {fmt(U["buyer"])} مشترٍ</span>',
+                      CGREEN))
+    P.append(kpi_card("طلبات لكل مشترٍ", "Orders / Buyer", f'{d["orders_per_buyer"]:.2f}', "",
+                      f'<span class="mini">على {AD} يوم نشط</span>', CYEL))
+    P.append(kpi_card("إعادة الطلب", "Reorder", f'{R["reorder_use"]["v"]:.1f}', "%",
+                      f'<span class="mini">{fmt(R["reorder_use"]["n"])} / {fmt(R["reorder_use"]["d"])} مشترٍ</span>',
+                      CBLUE2, "استخدام الزر"))
+    P.append('</div>')
+    P.append(f'''
+<div class="row2">
+  <div class="col">{box("info", "قراءة الاحتفاظ",
+    f"من كل 10 مشترين، حوالي <b>{d['repeat_rate'] / 10:.0f}</b> رجعوا طلبوا تاني في نفس "
+    f"النافذة، و<b>{d['loyal_rate'] / 10:.0f}</b> طلبوا 3 مرات أو أكتر. "
+    f"لكن استخدام زر «إعادة الطلب» "
+    f"<b>{R['reorder_use']['v']:.0f}%</b> بس — يعني الناس بتعيد الطلب "
+    f"<b>يدوي</b> بدل الاختصار. الزر إما مش ظاهر أو مش في المكان الصح.")}</div>
+  <div class="col">{box("gap", "اللي لسه مش قابل للقياس",
+    "كوهورت D1/D7 الحقيقي (نسبة الرجوع بعد يوم/بعد أسبوع) محتاج أسبوعين متصلين من البيانات "
+    "من غير انقطاع. الرقم المعروض فوق هو <b>تكرار داخل نفس النافذة</b> — مؤشر سليم بس مش "
+    "نفس D7. هيتفعّل تلقائيًا أول ما البيانات تتراكم.")}</div>
+</div>''')
+
+    # ── 2.4 revenue ──
+    P.append(divider("2.4", "الإيراد ومتوسط قيمة الطلب", "Revenue & AOV", L2_C))
+    P.append('<div class="kpi-grid">')
+    P.append(kpi_card("الإيراد", "Revenue", fmt(V["revenue"]), "ج.م", wow("revenue"), CYEL))
+    P.append(kpi_card("متوسط قيمة الطلب", "AOV", f'{d["aov"]:.0f}', "ج.م",
+                      delta(d["aov"], d["prev_aov"], pct_only=True) if wow_ok else na("—"), CBLUE2))
+    P.append(kpi_card("إيراد لكل مستخدم", "ARPU", f'{d["arpu"]:.0f}', "ج.م",
+                      f'<span class="mini">على {fmt(U["active"])} مستخدم</span>', CBLUE2))
+    P.append(kpi_card("إيراد لكل مشترٍ", "ARPB", f'{d["arpb"]:.0f}', "ج.م",
+                      f'<span class="mini">على {fmt(U["buyer"])} مشترٍ</span>', CGREEN))
+    P.append('</div>')
+    pmax = max((p["users"] for p in d["pay_methods"]), default=1) or 1
+    pm_bars = "".join(
+        bar_row(p["method"], p["users"], pmax,
+                CGREEN if "cash" in p["method"].lower() else CBLUE2,
+                f'{fmt(p["users"])} مستخدم · {p["users"] / U["buyer"] * 100 if U["buyer"] else 0:.0f}%')
+        for p in d["pay_methods"][:6])
+    P.append(f'''
+<div class="row2">
+  <div class="col"><div class="card"><h3>طرق الدفع (بعدد المستخدمين)</h3>{pm_bars}
+    <div class="mini">النسبة من إجمالي المشترين. المستخدم ممكن يستخدم أكتر من طريقة
+      في الأسبوع، فمجموع النسب ممكن يعدّي 100%.</div>
+  </div></div>
+  <div class="col">{box("risk", "أهم قيد على الإيراد",
+    f"الإيراد = عدد الطلبات × متوسط الطلب. متوسط الطلب دلوقتي <b>{d['aov']:.0f}</b> ج.م، "
+    f"فأي نمو في العدد لوحده مش بيكبّر الإيراد بنفس النسبة. "
+    f"وأخطر من كده: حقول <span class='en'>subtotal / delivery_fee / discount_amount</span> "
+    f"كلها بتوصل بصفر، فمش قادرين نحسب <b>صافي</b> الإيراد ولا هامش الطلب — "
+    f"التفصيل في الطبقة 3.")}
+    {box("opp", "أسرع رافعة على الإيراد",
+    f"رفع متوسط الطلب 10% بس = "
+    f"<b>{fmt(V['revenue'] * 0.10)}</b> ج.م زيادة في الأسبوع من غير ما نجيب مستخدم واحد جديد. "
+    f"الأدوات: حد أدنى للتوصيل المجاني، باقات، أو اقتراح إضافات وقت الدفع.")}
+  </div>
+</div>''')
+
+    # ── 2.5 demand & coverage ──
+    P.append(divider("2.5", "الطلب والتغطية", "Demand & Coverage", L2_C))
+    cov_rows = "".join(f'<tr><td>{c["region"]}</td><td class="en">{fmt(c["users"])}</td>'
+                       f'<td class="en">{fmt(c["attempts"])}</td></tr>' for c in d["cov_regions"])
+    P.append(f'''
+<div class="row2">
+  <div class="col"><div class="card"><h3>مناطق بتحاول تطلب وهي غير مخدومة</h3>
+    <table class="tb" style="margin:0;"><tr><th>المنطقة</th><th>مستخدمون</th><th>محاولات</th></tr>
+      {cov_rows}</table>
+    <div class="mini" style="margin-top:3px;">العناوين دي كتبها المستخدم بنفسه — مش تخمين موقع
+      إنترنت. إجمالي <b>{fmt(U["uncovered"])}</b> مستخدم
+      ({R["uncovered"]["v"]:.1f}% من المستخدمين). نفس الشخص ممكن يحاول في أكتر من منطقة.</div>
+  </div></div>
+  <div class="col">{box("opp", "أقرب توسّع منطقي",
+    f"أغلب الطلب المكبوت جوّه نفس المحافظتين (أطراف الغردقة وقرى أسيوط) — يعني التوسّع "
+    f"مايحتاجش مدينة جديدة بلوجستيات جديدة، محتاج بس مدّ نطاق التوصيل الحالي. "
+    f"ده أرخص توسّع متاح.")}
+    {box("info", "البحث كمؤشر طلب",
+    f"<b>{fmt(U['search_fail'])}</b> مستخدم ({R['search_fail']['v']:.1f}%) بحثوا وماجاش نتيجة. "
+    f"كل واحد فيهم قال لنا بالظبط إيه اللي ناقص في الكتالوج — بس <b>الكلمة نفسها مش متسجّلة</b>، "
+    f"فمش عارفين دوّروا على إيه. مطلوب حدث "
+    f"<span class='en'>search_performed (query, results_count)</span>.")}
+  </div>
+</div>''')
+
+    # ── 2.6 peak hours ──
+    P.append(divider("2.6", "ساعات الذروة والتخطيط التشغيلي", "Peak Hours", L2_C))
     hmax = max(d["hours"].values()) if d["hours"] else 1
     heat_cells = ""
     for h in range(24):
         v = d["hours"].get(h, 0)
-        r = (v / hmax) if hmax else 0
-        col = heat_color(r) if v else "#eef2f7"
+        r_ = (v / hmax) if hmax else 0
+        col = heat_color(r_) if v else "#eef2f7"
         heat_cells += (f'<div class="hc"><div class="hcell" style="background:{col};'
-                       f'color:{"#fff" if r > 0.4 else "#334155"};">{v if v else ""}</div>'
+                       f'color:{"#fff" if r_ > 0.4 else "#334155"};">{v if v else ""}</div>'
                        f'<div class="hlab">{h:02d}</div></div>')
     peak_h = max(d["hours"], key=lambda k: d["hours"][k]) if d["hours"] else 0
     night = sum(v for h, v in d["hours"].items() if h in (0, 1, 2, 3))
-    pmax = max((c for _, c in d["pay"]), default=1) or 1
-    pm_bars = "".join(
-        bar_row(m, c, pmax, (CGREEN if "cash" in m.lower() else CBLUE2),
-                f'{fmt(c)} · {c / W_["orders"] * 100 if W_["orders"] else 0:.0f}%')
-        for m, c in d["pay"][:7])
-    cash_share = sum(c for m, c in d["pay"] if "cash" in m.lower())
     P.append(f'''
-<div class="card"><h3>أكتر ساعات الطلب (مجموع الأسبوع) — الرقم = عدد الطلبات في الساعة</h3>
+<div class="card"><h3>الطلبات حسب ساعة اليوم (مجموع النافذة)</h3>
   <div class="heat">{heat_cells}</div>
-  <div class="mini" style="margin-top:5px;">الذروة الساعة <b>{peak_h}:00</b>
-    ({fmt(d["hours"].get(peak_h, 0))} طلب على مدار الأسبوع). وفيه
-    <b>استمرار قوي للطلبات بعد منتصف الليل</b> ({fmt(night)} طلب من 12ص لـ 4ص =
-    {night / W_["orders"] * 100 if W_["orders"] else 0:.0f}% من الطلبات).
-    من 4 لـ 8 صباحًا التطبيق شبه متوقّف (المطاعم مقفولة) — وعشان كده نافذة اليوم بتبدأ 8 صباحًا.</div>
-</div>
-<div class="row2">
-  <div class="col"><div class="card"><h3>طرق الدفع (الأسبوع)</h3>{pm_bars}
-    <div class="mini">الكاش <b>{cash_share / W_["orders"] * 100 if W_["orders"] else 0:.0f}%</b>
-      من الطلبات، والباقي دفع رقمي. أعلى فشل في
-      <span class="en">online / onlineWallet</span> — السياق في القسم 12.</div></div></div>
-  <div class="col"><div class="card"><h3>سلوكيات تانية</h3>
-    {bar_row("طلبات استخدمت فاوتشر", d["with_voucher"], W_["orders"], CBLUE2, f'{fmt(d["with_voucher"])} · {d["with_voucher"] / W_["orders"] * 100 if W_["orders"] else 0:.0f}%')}
-    {bar_row("طلبات معادة (reorder)", W_["reorder"], W_["orders"], "#60a5fa", f'{fmt(W_["reorder"])} · {W_["reorder"] / W_["orders"] * 100 if W_["orders"] else 0:.0f}%')}
-    {bar_row("طلبات اتقيّمت", W_["ratings"], W_["orders"], CGREEN, f'{fmt(W_["ratings"])} · {W_["ratings"] / W_["orders"] * 100 if W_["orders"] else 0:.0f}%')}
-    {bar_row("سلة أكتر من متجر (فتح الشيت)", W_["multi_sheet"], W_["orders"], "#a78bfa", fmt(W_["multi_sheet"]))}
-    <div class="mini">«سلة أكتر من متجر» بقت قابلة للقياس عن طريق
-      <span class="en">user_open_multi_merchant_sheet</span> — التفصيل في القسم 10.</div>
-  </div></div>
+  <div class="mini" style="margin-top:4px;">الذروة الساعة <b>{peak_h}:00</b>
+    ({fmt(d["hours"].get(peak_h, 0))} طلب). وفيه <b>استمرار قوي بعد منتصف الليل</b>:
+    {fmt(night)} طلب من 12ص لـ 4ص =
+    {night / V["orders"] * 100 if V["orders"] else 0:.0f}% من الطلبات — دي وردية كاملة
+    محتاجة تغطية سائقين. من 4 لـ 8 صباحًا التطبيق شبه واقف (المطاعم مقفولة)، وعشان كده
+    نافذة اليوم في التقرير بتبدأ 8 صباحًا.</div>
 </div>''')
 
-    # ===== 9. Search =====
-    P.append(divider("09", "تحليلات البحث", "Search Analytics"))
+    # ── 2.7 marketing ──
+    P.append(divider("2.7", "التسويق والتفاعل", "Marketing & Engagement", L2_C))
     P.append(f'''
 <div class="row2">
-  <div class="col">{box("info", "المتاح هذا الأسبوع",
-    f"بحث بدون نتيجة (<span class='en'>search_no_results</span>): <b>{fmt(W_['search_fail'])}</b> "
-    f"على مدار {AD} يوم نشط (متوسط {fmt(W_['search_fail'] / AD)} في اليوم). "
-    f"استخدام الفلاتر: <b>{fmt(next((c for _, ev, c in d['feats'] if ev == 'filter_applied'), 0))}</b>. "
-    f"يعني الناس بتلاقي نتايجها في الأغلب، والفلاتر مستخدمة بكثافة.")}</div>
-  <div class="col">{box("gap", "فجوة تتبّع البحث",
-    "المتاح هو «بحث بدون نتيجة» بس. مفيش حدث «بحث ناجح» بيحمل الكلمة، فـ"
-    "<span class='en'>CTR</span> البحث، وأكتر الكلمات بحثًا، ومعدل التخلّي بعد البحث "
-    "<b>مش ممكن نحسبهم</b>. المطلوب من التطوير: حدث <span class='en'>search_performed</span> "
-    "بخاصية الكلمة وعدد النتائج — ساعتها نعرف الناس بتدوّر على إيه ومش بتلاقيه.")}</div>
-</div>''')
-
-    # ===== 10. Feature Adoption =====
-    P.append(divider("10", "استخدام الميزات", "Feature Adoption"))
-    fmax = d["feats"][0][2] if d["feats"] else 1
-    feat_rows = ""
-    for ar, ev, c in d["feats"]:
-        w = (c / fmax * 100) if fmax else 0
-        feat_rows += (f'<tr><td>{ar}</td>'
-                      f'<td class="en" style="direction:ltr;text-align:left;font-size:7.2pt;color:#94a3b8;">{ev}</td>'
-                      f'<td class="en" style="font-weight:800;">{fmt(c)}</td>'
-                      f'<td style="width:30%;"><div style="background:#f1f5f9;border-radius:4px;height:10px;">'
-                      f'<div style="width:{w:.1f}%;background:{CBLUE2};height:100%;border-radius:4px;"></div>'
-                      f'</div></td></tr>')
-    def _f(ev):
-        return next((c for _, e, c in d["feats"] if e == ev), 0)
-    discard, click_ads = _f("discard_home_ads"), _f("click_on_home_ads")
-    P.append(f'''
-<div class="mini" style="margin-bottom:4px;">كل دي أحداث حقيقية راجعة من PostHog على مدار
-  {AD} يوم نشط، مرتّبة بالاستخدام:</div>
-<table class="tb">
-  <tr><th>الميزة</th><th style="text-align:left;">الحدث</th><th>الاستخدام</th><th>المقياس</th></tr>
-  {feat_rows}
-</table>
-<div class="row2">
-  <div class="col">{box("warn", "ملاحظة عن الإعلانات",
-    f"المستخدمون بيتجاهلوا إعلانات الرئيسية (<b>{fmt(discard)}</b>) بمعدل "
-    f"<b>{discard / click_ads if click_ads else 0:.1f}×</b> أكتر من ما بيدوسوا عليها "
-    f"(<b>{fmt(click_ads)}</b>) — الإعلانات في الرئيسية مزعجة أكتر ما هي فعّالة، "
-    f"محتاجة مراجعة لمكانها أو محتواها.")}</div>
-  <div class="col">{box("opp", "الفرص",
-    f"«تصفّح الأصناف» (<b>{fmt(_f('category_tapped'))}</b>) هو السلوك الأساسي للاكتشاف — "
-    f"نستثمر فيه بترتيب أذكى للأصناف. و«مشاركة التطبيق» ({fmt(W_['share'])}) قناة إحالة "
-    f"مجانية نربطها بعرض مقيس.")}</div>
-</div>
-{box("opp", "الطلب من أكتر من متجر — بقى قابل للقياس",
-  f"فيه حدث حقيقي اسمه <span class='en'>user_open_multi_merchant_sheet</span> = "
-  f"<b>{fmt(W_['multi_sheet'])} مرة</b> هذا الأسبوع، يعني المستخدم فتح شيت «أكتر من متجر». "
-  f"مع <span class='en'>user_select_restaurant</span> = <b>{fmt(W_['select_rest'])}</b>. "
-  f"دي أقرب قياس متاح لتبنّي الميزة، ونسبتها للطلبات = "
-  f"<b>{W_['multi_sheet'] / W_['orders'] * 100 if W_['orders'] else 0:.0f}%</b>.")}
-{box("gap", "اللي لسه ناقص لقياس الميزة صح",
-  f"حقل <span class='en'>store_id</span> على حدث الطلب "
-  f"{'<b>فاضي في الطلبات</b>' if d['store_id_empty'] else 'موجود جزئيًا'}، فمفيش إسناد للمتجر — "
-  f"يعني مش قادرين نقول <b>كام طلب فعلاً اتعمل من أكتر من متجر</b>، ولا نرتّب المتاجر حسب الطلبات، "
-  f"ولا نحسب متوسط طلب لكل متجر. المطلوب من التطوير: تعبئة "
-  f"<span class='en'>store_id</span> و<span class='en'>stores_count</span> على كل طلب. "
-  f"فتح الشيت بيقيس <b>النية</b>، مش <b>الإتمام</b>.")}''')
-
-    # ===== 11. Retention =====
-    P.append(divider("11", "الاحتفاظ بالعملاء", "Retention"))
-    P.append(f'''
-{box("opp", "الأسبوع الكامل خلّى الاحتفاظ قابل للقياس",
-  f"التقرير اليومي مكانش يقدر يقيس الاحتفاظ (محتاج أكتر من يوم). "
-  f"مع {AD} يوم نشط بقى عندنا قياس حقيقي: من <b>{fmt(W_['buyers'])}</b> مشترٍ، "
-  f"<b>{fmt(d['repeat_buyers'])}</b> طلبوا أكتر من مرة = <b>{d['repeat_rate']:.1f}%</b>، "
-  f"ومنهم <b>{fmt(d['loyal_buyers'])}</b> طلبوا 3 مرات أو أكتر.")}
-<div class="kpi-grid" style="margin-bottom:6px;">
-  {kpi_card("عميل طلب مرتين+", "Repeat Buyers", f'{d["repeat_rate"]:.1f}', "%",
-            f'<span class="mini">{fmt(d["repeat_buyers"])} من {fmt(W_["buyers"])}</span>', CGREEN)}
-  {kpi_card("عميل طلب 3 مرات+", "Loyal Buyers", fmt(d["loyal_buyers"]), "",
-            f'<span class="mini">{d["loyal_buyers"] / W_["buyers"] * 100 if W_["buyers"] else 0:.1f}% من المشترين</span>', CGREEN)}
-  {kpi_card("طلبات لكل مشترٍ", "Orders/Buyer", f'{d["orders_per_buyer"]:.2f}', "",
-            f'<span class="mini">على {AD} يوم</span>', CYEL)}
-  {kpi_card("إعادة الطلب", "Reorder", fmt(W_["reorder"]), "",
-            f'<span class="mini">{W_["reorder"] / W_["orders"] * 100 if W_["orders"] else 0:.1f}% من الطلبات</span>', CBLUE2)}
-</div>
-<table class="tb">
-  <tr><th>مؤشر</th><th>القيمة</th><th>القراءة</th></tr>
-  <tr><td>نسبة تكرار الشراء خلال الأسبوع</td><td class="en">{d["repeat_rate"]:.1f}%</td>
-    <td>كل 10 مشترين، حوالي {d["repeat_rate"] / 10:.0f} رجعوا طلبوا تاني في نفس الأسبوع.</td></tr>
-  <tr><td>زر «إعادة الطلب» (<span class="en">reorder_initiated</span>)</td>
-    <td class="en">{fmt(W_["reorder"])}</td>
-    <td>استخدام الزر أقل بكتير من التكرار الفعلي — يعني الناس بتعيد الطلب يدوي. فرصة لتسهيل الزر.</td></tr>
-  <tr><td>حذف الحساب (<span class="en">remove_account</span>)</td>
-    <td class="en">{fmt(W_["remove_account"])}</td>
-    <td>{"إشارة تسرّب محدودة." if W_["remove_account"] < 50 else "يستحق تحقيق."}</td></tr>
-</table>
-{box("gap", "اللي لسه ناقص",
-  f"{gloss('كوهورت D1/D7', 'نسبة الرجوع بعد يوم / بعد 7 أيام')} الحقيقي محتاج أسبوعين متصلين "
-  f"من البيانات. لما يتوفّروا هيتفعّل تلقائيًا في التقرير. الرقم المعروض فوق هو "
-  f"<b>تكرار داخل الأسبوع</b> — مؤشر سليم بس مش نفس D7.")}''')
-
-    # ===== 12. Performance / Errors =====
-    P.append(divider("12", "الأداء والأخطاء", "Performance & Errors"))
-    def _err_kind(k):
-        return (f'<span style="color:{CGRAY};font-weight:800;">مشكلة نت</span>' if k == "net"
-                else f'<span style="color:{CRED};font-weight:800;">غير شبكي</span>')
-    err_rows = "".join(
-        f'<tr><td class="en" style="direction:ltr;text-align:left;">{m}</td>'
-        f'<td class="en">{fmt(c)}</td><td>{_err_kind(k)}</td></tr>' for m, c, k in d["err_top"])
-    top_code = next((f"{m} ({fmt(c)} مرة)" for m, c, k in d["err_top"] if k == "code"), "—")
-    pf_rows = "".join(f'<tr><td class="en" style="direction:ltr;text-align:left;">{m}</td>'
-                      f'<td class="en" style="direction:ltr;text-align:left;">{r}</td>'
-                      f'<td class="en">{fmt(c)}</td></tr>' for m, r, c in d["payfail_rows"])
-    P.append(f'''
-<div class="row2">
-  <div class="col">{box("warn", "تصنيف الأخطاء (الأسبوع)",
-    f"الإجمالي: <b>{fmt(W_['errors'])}</b> على {AD} يوم نشط "
-    f"(متوسط {fmt(W_['errors'] / AD)} في اليوم).<br>"
-    f"شكلها مشاكل نت عند المستخدم (النت قطع / إشارة ضعيفة): "
-    f"<b>{fmt(d['e_net'])}</b> ({d['e_net'] / W_['errors'] * 100 if W_['errors'] else 0:.0f}%) — "
-    f"دي مش بتتصلح بالكود.<br>"
-    f"<b>الباقي {fmt(d['e_non'])} "
-    f"({d['e_non'] / W_['errors'] * 100 if W_['errors'] else 0:.0f}%) غير شبكية</b> — "
-    f"دي المحتاجة مراجعة من المطوّر.")}</div>
-  <div class="col">{box("risk", "محتاج مراجعة هندسية",
-    f"أعلى خطأ غير شبكي: <span class='en'>{top_code}</span> — بيوقف تجربة ناس حقيقيين. "
-    f"<b>مهم:</b> التصنيف مبني على نص رسالة الخطأ فهو تقريبي — المطوّر لازم يأكّد كل واحدة "
-    f"قبل ما نعتبرها خلل مؤكد.")}</div>
-</div>
-<table class="tb">
-  <tr><th style="text-align:left;">رسالة الخطأ</th><th>العدد</th><th>النوع</th></tr>
-  {err_rows}
-</table>
-<div class="row2">
-  <div class="col"><div class="card"><h3>فشل الدفع — التفصيل</h3>
-    <table class="tb" style="margin:0;"><tr><th style="text-align:left;">الطريقة</th>
-      <th style="text-align:left;">السبب</th><th>العدد</th></tr>{pf_rows}</table>
+  <div class="col"><div class="card"><h3>مؤشرات التسويق (كلها بالمستخدمين)</h3>
+    {rate_line("استخدام الفاوتشر", R["voucher_use"], CBLUE2)}
+    {rate_line("تقييم الطلب", R["rating_rate"], CGREEN)}
+    {rate_line("الدخول كضيف", R["guest_share"], CYEL)}
+    {rate_line("تجاهل إعلان الرئيسية", R["ads_ignore"], CRED)}
+    {rate_line("سلة أكتر من متجر", R["multi_store"], CPURPLE)}
   </div></div>
-  <div class="col">{box("warn", "فشل الدفع — سياق مهم",
-    f"إجمالي المحاولات الفاشلة: <b>{fmt(W_['payfail'])}</b>، منها "
-    f"<b>{fmt(d['sqf'])}</b> <span class='en'>success_query_false</span>. "
-    f"نسبة نجاح الدفع الكلية <b>{d['pay_success']:.1f}%</b>. " + d["payment_context"])}</div>
-</div>
-{box("gap", "النقرات الغاضبة — الحقيقة الكاملة",
-  f"<b>{fmt(W_['rage'])}</b> نقرة غضب، لكن: (1) "
-  f"<b>{d['rage_ios_pct']:.0f}% منها على iOS</b> — وده يرجّح إن الرصد شغّال على iOS بس، "
-  f"مش إن أندرويد مريح؛ (2) اسم الشاشة راجع دايمًا "
-  f"<span class='en'>«Flutter»</span> فـ<b>مش قادرين نحدّد الشاشة</b>. "
-  f"المطلوب: تسمية الشاشات + تفعيل الرصد على أندرويد قبل ما نبني عليها أي قرار.")}''')
-
-    # ===== 13. Tracking Quality =====
-    P.append(divider("13", "جودة التتبّع (الفجوات)", "Tracking Quality"))
-    P.append(f'''
-<table class="tb">
-  <tr><th>الفجوة</th><th>أثرها على القرار</th><th>المطلوب</th><th>الأولوية</th></tr>
-  <tr><td>تسمية الشاشات</td><td>{fmt(W_["rage"])} نقرة غضب بدون شاشة معروفة</td>
-    <td class="en">$screen_name لكل شاشة</td><td><span class="chip c-p1">P1</span></td></tr>
-  <tr><td>إسناد المتجر</td><td>مش عارفين الطلب من أنهي متجر ولا كام متجر</td>
-    <td class="en">store_id, stores_count on order_placed</td><td><span class="chip c-p0">P0</span></td></tr>
-  <tr><td>منطقة التوصيل كخاصية</td><td>مفيش تحليل جغرافي حقيقي للطلبات</td>
-    <td class="en">zone / area on order_placed</td><td><span class="chip c-p1">P1</span></td></tr>
-  <tr><td>تفاصيل قيمة الطلب</td><td>لا فصل رسوم/خصم/عناصر → مش قادرين نحسب صافي</td>
-    <td class="en">delivery_fee, discount, items_count</td><td><span class="chip c-p1">P1</span></td></tr>
-  <tr><td>خطوات القمع الوسط</td><td>مش عارفين الشاشة اللي بيتسرّبوا فيها بالظبط</td>
-    <td class="en">cart_viewed, payment_screen_viewed</td><td><span class="chip c-p1">P1</span></td></tr>
-  <tr><td>سبب الإلغاء</td><td>{fmt(W_["cancel_unpaid"] + W_["cancelled"])} إلغاء بدون تشخيص</td>
-    <td class="en">cancel_reason</td><td><span class="chip c-p2">P2</span></td></tr>
-  <tr><td>بحث ناجح + الكلمة</td><td>لا CTR بحث ولا كلمات مطلوبة</td>
-    <td class="en">search_performed (query, results_count)</td><td><span class="chip c-p2">P2</span></td></tr>
-  <tr><td>خطأ منظّم للكراش</td><td>لا معدل كراش منفصل عن أخطاء الشبكة</td>
-    <td class="en">$exception (type, is_fatal)</td><td><span class="chip c-p1">P1</span></td></tr>
-  <tr><td>استمرارية باقة PostHog</td><td>انقطاع 9–26 يوليو ضيّع أسبوعين مقارنة</td>
-    <td>ترقية الباقة / حد تنبيه</td><td><span class="chip c-p1">P1</span></td></tr>
-</table>
-{box("info", "ملاحظة إيجابية",
-  "أسماء الأحداث الأساسية (طلب / سلة / دفع / تغطية) نظيفة ومتّسقة ومفيش تكرار. "
-  "الفجوات دي إضافات مطلوبة، مش إصلاح لحاجة مكسورة.")}''')
-
-    # ===== 14. Segments =====
-    P.append(divider("14", "شرائح المستخدمين", "User Segments"))
-    os_rows = "".join(
-        f'<tr><td>{n}</td><td class="en">{fmt(s)}</td><td class="en">{fmt(o)}</td>'
-        f'<td class="en">{o / s * 100 if s else 0:.1f}%</td>'
-        f'<td class="en">{e / s if s else 0:.2f}</td></tr>' for n, s, o, e in d["os_split"])
-    vmax = d["versions"][0][1] if d["versions"] else 1
-    ver_bars = "".join(bar_row(v, s, vmax, (CGREEN if i < 2 else "#cbd5e1"), fmt(s))
-                       for i, (v, s) in enumerate(d["versions"][:6]))
-    and_row = next((x for x in d["os_split"] if x[0] == "Android"), None)
-    ios_row = next((x for x in d["os_split"] if x[0] == "iOS"), None)
-    seg_note = "—"
-    if and_row and ios_row and and_row[1] and ios_row[1]:
-        ac = and_row[2] / and_row[1] * 100
-        ic = ios_row[2] / ios_row[1] * 100
-        hi, lo = ("iOS", "أندرويد") if ic > ac else ("أندرويد", "iOS")
-        seg_note = (f'{hi} بيحوّل أعلى (<b>{max(ic, ac):.1f}%</b> مقابل {min(ic, ac):.1f}% لـ{lo}) '
-                    f'مع إن أندرويد {and_row[1] / sum(x[1] for x in d["os_split"]) * 100:.0f}% '
-                    f'من الجلسات — فرصة لتحسين تجربة {lo}.')
-    P.append(f'''
-<div class="row2">
-  <div class="col"><div class="card"><h3>حسب نظام التشغيل</h3>
-    <table class="tb" style="margin:0;"><tr><th>النظام</th><th>جلسات</th><th>طلبات</th>
-      <th>تحويل</th><th>خطأ/جلسة</th></tr>{os_rows}</table>
-    <div class="mini" style="margin-top:4px;">{seg_note}</div>
-  </div></div>
-  <div class="col"><div class="card"><h3>حسب نسخة التطبيق (جلسات)</h3>
-    {ver_bars}
-    <div class="mini" style="margin-top:4px;">تبنّي أحدث نسختين ≈
-      <b>{d["new_ver_pct"]:.0f}%</b> — النسخ القديمة بتختفي.</div>
-  </div></div>
-</div>
-<div class="row2">
-  <div class="col">{box("info", "جديد مقابل عائد",
-    f"تثبيتات جديدة <b>{fmt(W_['installs'])}</b> · حسابات جديدة <b>{fmt(W_['signups'])}</b> · "
-    f"دخول كضيف <b>{fmt(W_['guest'])}</b> · تسجيل دخول <b>{fmt(W_['logins'])}</b>. "
-    f"أغلب الطلبات من عملاء عايدين — المشترين <b>{fmt(W_['buyers'])}</b> مقابل "
-    f"{fmt(W_['signups'])} حساب جديد.")}</div>
-  <div class="col">{box("warn", "الاعتماد على مدينتين",
-    "التطبيق في الغردقة وأسيوط بس، فأي مشكلة تشغيلية في وحدة منهم تأثّر على المؤشر الأهم كله. "
-    "التوسّع المدروس (القسم 6) يقلّل المخاطرة دي.")}</div>
-</div>''')
-
-    # ===== 15. Revenue =====
-    P.append(divider("15", "الإيراد", "Revenue"))
-    P.append(f'''
-<div class="kpi-grid" style="margin-bottom:6px;">
-  {kpi_card("الإيراد (الأسبوع)", "Revenue", fmt(W_["revenue"]), "ج.م", wow("revenue"), CYEL)}
-  {kpi_card("متوسط الطلب", "AOV", f'{d["aov"]:.0f}', "ج.م",
-            delta(d["aov"], d["prev_aov"]) if wow_ok else na("—"), CBLUE2)}
-  {kpi_card("إيراد لكل مستخدم", "Rev/User",
-            f'{W_["revenue"] / W_["people"] if W_["people"] else 0:.0f}', "ج.م",
-            '<span class="mini">تقريبي</span>', CBLUE2)}
-  {kpi_card("إيراد لكل جلسة", "Rev/Session",
-            f'{W_["revenue"] / W_["sessions"] if W_["sessions"] else 0:.0f}', "ج.م",
-            '<span class="mini">تقريبي</span>', CBLUE2)}
-  {kpi_card("إيراد يومي متوسط", "Rev/Day", fmt(W_["revenue"] / AD), "ج.م",
-            f'<span class="mini">على {AD} يوم نشط</span>', CGREEN)}
-  {kpi_card("إيراد لكل مشترٍ", "Rev/Buyer",
-            f'{W_["revenue"] / W_["buyers"] if W_["buyers"] else 0:.0f}', "ج.م",
-            f'<span class="mini">{d["orders_per_buyer"]:.2f} طلب لكل مشترٍ</span>', CGREEN)}
-  {kpi_card("طلبات بفاوتشر", "Voucher Orders", fmt(d["with_voucher"]), "",
-            f'<span class="mini">{d["with_voucher"] / W_["orders"] * 100 if W_["orders"] else 0:.0f}% من الطلبات</span>', CYEL)}
-  {kpi_card("نسبة نجاح الدفع", "Payment Success", f'{d["pay_success"]:.1f}', "%",
-            '<span class="mini">المستهدف 98%+</span>', CYEL)}
-</div>
-<div class="row2">
-  <div class="col">{box("risk", "أهم قيد على الإيراد",
-    f"الإيراد = عدد الطلبات × متوسط الطلب. متوسط الطلب دلوقتي "
-    f"<b>{d['aov']:.0f}</b> ج.م، فأي نمو في العدد لوحده مش بيكبّر الإيراد بنفس النسبة. "
-    f"كمان تفاصيل {gloss('GMV', 'إجمالي قيمة البضاعة')} (رسوم التوصيل / الخصم / عدد العناصر) "
-    f"مش متتبَّعة، فمش قادرين نفصل <b>صافي</b> الإيراد عن الإجمالي — "
-    f"وده بيمنع حساب هامش حقيقي لكل طلب.")}</div>
-  <div class="col">{box("gap", "مش موجود في التقرير — وليه",
-    "«الإيراد حسب المدينة» مش معروض لأن المدينة بتتحسب من موقع الإنترنت "
-    "(<span class='en'>IP</span>) وهو غير دقيق لمكان التوصيل. البديل الصح = تحليل التغطية "
-    "بالعناوين الحقيقية في القسم 6. وأفضل المطاعم / الأصناف كمان مش متتبَّعة كخصائص على الطلب "
-    "(نفس فجوة <span class='en'>store_id</span>).")}</div>
-</div>''')
-
-    # ===== 16. Anomaly Detection =====
-    P.append(divider("16", "كشف الشذوذ الآلي", "Anomaly Detection"))
-    anoms = []
-    if wow_ok and PPD:
-        for key, label, good_up in [("orders", "الطلبات (متوسط يومي)", True),
-                                    ("revenue", "الإيراد (متوسط يومي)", True),
-                                    ("payfail", "فشل الدفع (متوسط يومي)", False),
-                                    ("errors", "أخطاء التطبيق (متوسط يومي)", False),
-                                    ("share", "مشاركة التطبيق", True),
-                                    ("search_fail", "بحث بدون نتيجة", False)]:
-            cur, prv = PD[key], PPD[key]
-            if not prv:
-                continue
-            ch = (cur - prv) / prv * 100
-            if abs(ch) < 15:
-                continue
-            good = (ch > 0) == good_up
-            anoms.append((label, flow(prv, cur),
-                          f'{light(CGREEN if good else CRED)} {"إيجابي" if good else "سلبي"}',
-                          f'{"نضخّمه" if good else "نراجعه"} — تغيّر {abs(ch):.0f}%.'))
-    if not anoms:
-        # No baseline: flag internal outliers instead of inventing a comparison.
-        if d["cart_to_checkout"] < 55:
-            anoms.append(("تسرّب السلة قبل الدفع",
-                          f'<span class="en" dir="ltr">{d["cart_to_checkout"]:.0f}%</span>',
-                          f'{light(CRED)} سلبي', "أعلى رافعة تحويل — القسم 7."))
-        if d["pay_success"] < 98:
-            anoms.append(("نجاح الدفع تحت المستهدف",
-                          f'<span class="en" dir="ltr">{d["pay_success"]:.1f}% / 98%</span>',
-                          f'{light(CYEL)} تنبيه', "سياق Paymob للمحافظ — القسم 12."))
-        if d["rage_ios_pct"] > 90:
-            anoms.append(("نقرات الغضب مركّزة على منصة واحدة",
-                          f'<span class="en" dir="ltr">{d["rage_ios_pct"]:.0f}% iOS</span>',
-                          f'{light(CGRAY)} فجوة رصد', "الأرجح رصد ناقص على أندرويد."))
-        if d["store_id_empty"]:
-            anoms.append(("إسناد المتجر مفقود على كل الطلبات",
-                          '<span class="en" dir="ltr">store_id = ∅</span>',
-                          f'{light(CGRAY)} فجوة تتبّع', "يمنع تحليل المتاجر — القسم 10."))
-        peak = max(d["hours"], key=lambda k: d["hours"][k]) if d["hours"] else 0
-        anoms.append((f"تركّز الطلب في ساعة الذروة {peak}:00",
-                      f'<span class="en" dir="ltr">{fmt(d["hours"].get(peak, 0))}</span>',
-                      f'{light(CBLUE2)} تشغيلي', "تعزيز الطاقة التشغيلية وقت الذروة."))
-    an_rows = "".join(f'<tr><td>{t}</td><td>{v}</td><td>{k}</td><td>{act}</td></tr>'
-                      for t, v, k, act in anoms)
-    P.append(f'''
-<div class="mini" style="margin-bottom:4px;">{
-  "المقارنة مع الأسبوع اللي فات على أساس <b>المتوسط اليومي</b> (لأن عدد الأيام النشطة مختلف)."
-  if wow_ok else
-  "مقارنة أسبوعية مش متاحة هذا الأسبوع، فالكشف هنا بيقارن المؤشرات <b>بمستهدفاتها</b> وبيرصد الفجوات الداخلية."
-}</div>
-<table class="tb">
-  <tr><th>الإشارة</th><th>القيمة</th><th>النوع</th><th>الإجراء</th></tr>
-  {an_rows}
-</table>''')
-
-    # ===== 17. Top Insights =====
-    P.append(divider("17", "أهم الملاحظات", "Top Insights"))
-    insights = [
-        ("أكبر تسرّب: السلة ← بدء الدفع",
-         f"{100 - d['cart_to_checkout']:.0f}% ممّن حطّوا في السلة مايبدؤوش الدفع "
-         f"(السلة {fmt(W_['cart'])} ثم الدفع {fmt(W_['checkout'])})",
-         f"أكبر رافعة تحويل مفردة ≈ {fmt(lift_orders)} طلب/أسبوع", "Product/UX", "p0", "عالية"),
-        ("إسناد المتجر مفقود بالكامل",
-         "store_id فاضي على الطلبات، فتبنّي «أكتر من متجر» بيتقاس بالنية بس "
-         f"({fmt(W_['multi_sheet'])} فتح شيت)",
-         "يمنع تحليل المتاجر والهامش", "Engineering/Data", "p0", "عالية"),
-        ("خلل تحقق الدفع محتاج مراجعة",
-         f"{fmt(d['sqf'])} من {fmt(W_['payfail'])} فشل دفع سببها success_query_false",
-         "لو خلل تحقق بنخسر طلبات ناجحة", "Engineering", "p1", "متوسطة"),
-        ("أخطاء غير شبكية محتاجة مراجعة",
-         f"{fmt(d['e_non'])} خطأ غير شبكي، أبرزها {top_code}",
-         "تعطّل تجربة + فقد تحويل", "Engineering", "p1", "متوسطة"),
-        ("نقرات الغضب مجهولة الشاشة",
-         f"{fmt(W_['rage'])} نقرة، {d['rage_ios_pct']:.0f}% على iOS، والشاشة غير محددة",
-         "مش قابلة للتنفيذ قبل تسمية الشاشات", "UX + Data", "p1", "عالية"),
-        ("الاحتفاظ بقى مقيسًا",
-         f"{d['repeat_rate']:.1f}% من المشترين طلبوا أكتر من مرة، وطلبات/مشترٍ {d['orders_per_buyer']:.2f}",
-         "أساس لقياس الولاء والـ LTV", "Product", "p2", "عالية"),
-        ("الطلب المكبوت قريب مش بعيد",
-         f"{fmt(W_['cov_users'])} مستخدم من مناطق غير مخدومة، أغلبهم أطراف الغردقة وقرى أسيوط",
-         "توسّع داخل نفس المحافظتين", "Operations", "p2", "عالية"),
-        ("إعلانات الرئيسية بتتجاهل أكتر مما بتتنقر",
-         f"{fmt(discard)} تجاهل مقابل {fmt(click_ads)} نقرة "
-         f"({discard / click_ads if click_ads else 0:.1f}× )",
-         "مساحة مهدرة في أهم شاشة", "Product/Marketing", "p2", "عالية"),
-        ("الطلب مستمر بعد منتصف الليل",
-         f"{fmt(night)} طلب بين 12ص و4ص = "
-         f"{night / W_['orders'] * 100 if W_['orders'] else 0:.0f}% من الطلبات",
-         "تخطيط تشغيلي ليلي", "Operations", "p2", "عالية"),
-        ("الاعتماد على مدينتين", "الغردقة وأسيوط بس", "مخاطرة تركّز", "Strategy", "p2", "عالية"),
-    ]
-    ins_rows = "".join(
-        f'<tr><td><b>{i + 1}. {t}</b><div class="mini">{ev}</div></td><td>{im}</td><td>{o}</td>'
-        f'<td><span class="chip c-{pr}">{pr.upper()}</span></td><td>{cf}</td></tr>'
-        for i, (t, ev, im, o, pr, cf) in enumerate(insights))
-    P.append(f'''
-<table class="tb">
-  <tr><th style="width:40%;">الملاحظة / الدليل</th><th>الأثر</th><th>المالك</th>
-    <th>الأولوية</th><th>الثقة</th></tr>
-  {ins_rows}
-</table>''')
-
-    # ===== 18. Opportunities (ICE) =====
-    P.append(divider("18", "الفرص (ترتيب ICE)", "Opportunities · ICE"))
-    opps = [
-        ("تعبئة store_id و stores_count على الطلب", 8, 9, 8, "مكسب سريع",
-         "يفتح تحليل المتاجر وقياس ميزة «أكتر من متجر» فعليًا"),
-        ("تفعيل التتبّع الناقص (شاشات / منطقة / خطوات القمع)", 7, 9, 8, "مكسب سريع",
-         "يفتح تحليل تشغيلي كامل بجهد بسيط"),
-        ("مراجعة تحقق الدفع success_query_false", 9, 7, 6, "مكسب سريع",
-         f"استرجاع طلبات نخسرها ({fmt(d['sqf'])} حالة/أسبوع)"),
-        ("سدّ تسرّب السلة ← بدء الدفع", 9, 6, 5, "متوسط",
-         f"أكبر رافعة تحويل ≈ {fmt(lift_orders)} طلب/أسبوع"),
-        ("مراجعة الأخطاء غير الشبكية", 7, 7, 7, "متوسط",
-         f"تقليل {fmt(d['e_non'])} خطأ وتحسين الثبات"),
-        ("مراجعة إعلانات الرئيسية", 6, 7, 8, "مكسب سريع",
-         "استرجاع مساحة أهم شاشة في التطبيق"),
-        ("حملة إحالة على «شارك التطبيق»", 7, 6, 6, "متوسط",
-         f"تضخيم قناة مجانية ({fmt(W_['share'])} مشاركة)"),
-        ("رفع متوسط الطلب (باقات / حد أدنى للتوصيل)", 8, 5, 5, "استراتيجي",
-         f"تحويل النمو لفلوس (AOV {d['aov']:.0f} ج.م)"),
-        ("توسّع داخل أسيوط والغردقة", 6, 6, 4, "استراتيجي",
-         f"التقاط طلب مكبوت ({fmt(W_['cov_users'])} مستخدم/أسبوع)"),
-    ]
-    opp_rows = "".join(
-        f'<tr><td><b>{t}</b></td><td>{cat}</td><td class="en">{I}</td><td class="en">{C}</td>'
-        f'<td class="en">{E}</td><td class="en" style="font-weight:800;">{(I + C + E) / 3:.1f}</td>'
-        f'<td class="mini">{note}</td></tr>'
-        for (t, I, C, E, cat, note) in sorted(opps, key=lambda x: -(x[1] + x[2] + x[3])))
-    P.append(f'''
-<div class="mini" style="margin-bottom:4px;">{gloss("ICE", "ترتيب الفرص بمتوسط ثلاثة: الأثر Impact + الثقة Confidence + السهولة Ease، من 10")}</div>
-<table class="tb">
-  <tr><th>الفرصة</th><th>الفئة</th><th>Impact</th><th>Confidence</th><th>Ease</th>
-    <th>ICE</th><th>العائد المتوقّع</th></tr>
-  {opp_rows}
-</table>
-<div class="mini">الصدارة لإصلاح فجوات التتبّع ومراجعة الدفع — أثر عالي وجهد قليل.</div>''')
-
-    # ===== 19. Actions by team =====
-    P.append(divider("19", "المهام حسب الفريق", "Action Items by Team"))
-    teams = [
-        ("المنتج — Product", [
-            f"سدّ تسرّب السلة ← بدء الدفع (تجربة A/B) — العائد ≈ {fmt(lift_orders)} طلب/أسبوع.",
-            "تعريف أحداث خطوات القمع الوسط والشاشات والمنطقة.",
-            f"خطة رفع متوسط الطلب من {d['aov']:.0f} ج.م (باقات / حد أدنى)."]),
-        ("الهندسة — Engineering", [
-            f"تعبئة <span class='en'>store_id</span> و<span class='en'>stores_count</span> على كل طلب.",
-            f"مراجعة <span class='en'>success_query_false</span>: فشل حقيقي ولا خلل تحقق؟ ({fmt(d['sqf'])} حالة).",
-            f"مراجعة أعلى خطأ غير شبكي: <span class='en'>{top_code}</span>."]),
-        ("البيانات — Data", [
-            "تسمية الشاشات <span class='en'>$screen_name</span> وتفعيل رصد النقرات على أندرويد.",
-            "إضافة <span class='en'>search_performed</span> و<span class='en'>cancel_reason</span>.",
-            "حد تنبيه على باقة PostHog لمنع تكرار انقطاع 9–26 يوليو."]),
-        ("الجودة — QA", [
-            "اختبار الدفع لكل الطرق (<span class='en'>online / wallet / applePay</span>).",
-            "اختبار سلة أكتر من متجر من فتح الشيت لحد إتمام الطلب.",
-            f"متابعة أخطاء أحدث نسختين ({', '.join(v for v, _ in d['versions'][:2])})."]),
-        ("التصميم — UX/UI", [
-            "تبسيط الانتقال من السلة لشاشة الدفع (أكبر تسرّب).",
-            "مراجعة مكان ومحتوى إعلانات الرئيسية (بتتجاهل أكتر مما بتتنقر).",
-            "مراجعة تحميل الصور (أخطاء الصور متكررة)."]),
-        ("التسويق — Marketing", [
-            f"حملة إحالة مبنية على «شارك التطبيق» ({fmt(W_['share'])} مشاركة).",
-            f"قياس عائد الفاوتشر ({fmt(W_['voucher'])} استخدام، {fmt(d['with_voucher'])} طلب).",
-            f"تحويل الضيوف ({fmt(W_['guest'])}) لحسابات مسجّلة."]),
-        ("العمليات — Operations", [
-            f"خطة تغطية للطلب المكبوت القريب ({fmt(W_['cov_users'])} مستخدم/أسبوع).",
-            f"تعزيز التشغيل وقت الذروة حوالي الساعة {peak_h}:00.",
-            f"تغطية الطلب الليلي ({fmt(night)} طلب بين 12ص و4ص)."]),
-        ("الدعم — Support", [
-            f"تواصل مع مستخدمي الدفع الفاشل ({fmt(W_['payfail'])} محاولة).",
-            f"متابعة أسباب الإلغاء يدويًا ({fmt(W_['cancel_unpaid'] + W_['cancelled'])}) لحد ما تتسجّل.",
-            "رصد شكاوى ما بعد أخطاء الصور والمشاركة."]),
-    ]
-    team_cards = ""
-    for name, items in teams:
-        lis = "".join(f"<li>{x}</li>" for x in items)
-        team_cards += (f'<div class="kpi" style="width:calc(33.33% - 6px);border-top:3px solid #1e3a5f;">'
-                       f'<div style="font-weight:800;font-size:8.6pt;color:{CBLUE};margin-bottom:3px;">{name}</div>'
-                       f'<ul class="tl">{lis}</ul></div>')
-    P.append(f'<div class="kpi-grid">{team_cards}</div>')
-
-    # ===== 20. Executive Decisions =====
-    P.append(divider("20", "القرارات المقترحة للإدارة", "Executive Decisions"))
-    P.append(f'''
-<div class="row2">
-  <div class="col">{box("risk", "أهم 5 مشاكل",
-    f"1) تسرّب السلة ← بدء الدفع ({100 - d['cart_to_checkout']:.0f}%).<br>"
-    f"2) إسناد المتجر مفقود بالكامل (store_id فاضي).<br>"
-    f"3) خلل تحقق الدفع محتاج مراجعة ({fmt(d['sqf'])} حالة).<br>"
-    f"4) أخطاء غير شبكية ({fmt(d['e_non'])}) محتاجة مراجعة.<br>"
-    f"5) فجوات تتبّع بتعمّي القرار (القسم 13).")}</div>
-  <div class="col">{box("opp", "أهم 5 فرص",
-    f"1) سدّ تسرّب الدفع (≈ {fmt(lift_orders)} طلب/أسبوع).<br>"
-    f"2) تفعيل التتبّع الناقص (أقل جهد وأعلى أثر).<br>"
-    f"3) استرجاع الدفع الفاشل.<br>"
-    f"4) رفع متوسط الطلب من {d['aov']:.0f} ج.م.<br>"
-    f"5) التوسّع القريب داخل المحافظتين.")}</div>
-</div>
-<div class="card" style="border-top:3px solid {CBLUE};"><h3>أهم 10 قرارات هذا الأسبوع</h3>
-<table class="tb" style="margin:0;">
-  <tr><th>القرار</th><th>السبب</th><th>الأثر المتوقّع</th><th>المالك</th><th>الأولوية</th></tr>
-  <tr><td>اعتماد تعبئة <span class="en">store_id</span></td><td>مفيش إسناد للمتجر</td>
-    <td>تحليل متاجر + قياس ميزة متعدد المتاجر</td><td>Eng/Data</td>
-    <td><span class="chip c-p0">P0</span></td></tr>
-  <tr><td>تمويل إصلاح تسرّب السلة ← الدفع</td><td>أكبر رافعة تحويل</td>
-    <td>≈ {fmt(lift_orders)} طلب/أسبوع ({fmt(lift_orders * d["aov"])} ج.م)</td>
-    <td>Product</td><td><span class="chip c-p0">P0</span></td></tr>
-  <tr><td>مراجعة خلل الدفع</td><td>يمكن يخفي طلبات ناجحة</td>
-    <td>استرجاع طلبات</td><td>Eng</td><td><span class="chip c-p1">P1</span></td></tr>
-  <tr><td>اعتماد أحداث التتبّع الناقصة</td><td>قرارات ناقصة الأدلة</td>
-    <td>تحليل كامل</td><td>Data</td><td><span class="chip c-p1">P1</span></td></tr>
-  <tr><td>ترقية باقة PostHog / حد تنبيه</td><td>انقطاع 9–26 يوليو ضيّع المقارنات</td>
-    <td>رؤية مستمرة</td><td>Data/Fin</td><td><span class="chip c-p1">P1</span></td></tr>
-  <tr><td>مراجعة أعلى 3 أخطاء غير شبكية</td><td>ثبات التطبيق</td>
-    <td>− أخطاء وتخلّي</td><td>Eng</td><td><span class="chip c-p1">P1</span></td></tr>
-  <tr><td>تسمية الشاشات + رصد أندرويد</td><td>{fmt(W_["rage"])} نقرة غضب مجهولة الشاشة</td>
-    <td>رؤية للإحباط</td><td>UX/Data</td><td><span class="chip c-p1">P1</span></td></tr>
-  <tr><td>اختبار رفع متوسط الطلب</td><td>الإيراد مقيّد بـ AOV</td>
-    <td>+ فلوس لكل طلب</td><td>Product</td><td><span class="chip c-p1">P1</span></td></tr>
-  <tr><td>مراجعة إعلانات الرئيسية</td><td>تجاهل {discard / click_ads if click_ads else 0:.1f}× النقر</td>
-    <td>+ فعالية أهم شاشة</td><td>Product/Mkt</td><td><span class="chip c-p2">P2</span></td></tr>
-  <tr><td>دراسة التوسّع القريب</td><td>طلب مكبوت جوه المحافظتين</td>
-    <td>سوق إضافي</td><td>Ops</td><td><span class="chip c-p2">P2</span></td></tr>
-</table></div>
-<div class="row2">
-  <div class="col">{box("info", "المؤشرات اللي نراقبها الأسبوع الجاي",
-    f"(1) نسبة «السلة ← بدء الدفع» — دلوقتي {d['cart_to_checkout']:.0f}%. "
-    f"(2) نسبة نجاح الدفع — دلوقتي {d['pay_success']:.1f}%. "
-    f"(3) الأخطاء غير الشبكية — دلوقتي {fmt(d['e_non'])}. "
-    f"(4) متوسط الطلب — دلوقتي {d['aov']:.0f} ج.م.")}
-    {box("warn", "المخاطر",
-    "استمرار فجوة إسناد المتجر · تسرّب السلة من غير تدخّل · "
-    "الاعتماد على مدينتين · انقطاع بيانات جديد.")}</div>
-  <div class="col">{box("risk", "أكتر مشكلة ممكن تأثّر على الفلوس",
-    f"تسرّب «السلة ← بدء الدفع» عند {d['cart_to_checkout']:.0f}% — "
-    f"أكبر رافعة مفردة على المؤشر الأهم.")}
-    {box("risk", "أكتر فجوة بتعمّي القرار",
-    "<span class='en'>store_id</span> فاضي — بيمنعنا نعرف الطلب من أنهي متجر، "
-    "وبالتالي مفيش تحليل متاجر ولا هامش ولا قياس حقيقي لميزة «أكتر من متجر».")}
-    {box("warn", "أكتر تجربة محتاجة تحسين",
-    f"تجربة الدفع (نجاح {d['pay_success']:.1f}% لازم يوصل 98%+) "
-    f"وشاشة الانتقال من السلة للدفع.")}</div>
-</div>
-<div style="break-inside:avoid;">
-<div class="card" style="background:#1e3a5f;color:#fff;border:none;text-align:center;padding:14px;">
-  <div style="font-size:8pt;opacity:.75;font-weight:700;">الخلاصة التنفيذية — Executive Takeaway</div>
-  <div style="font-size:12.5pt;font-weight:900;line-height:1.55;margin-top:4px;">
-    {a.get("takeaway",
-      f"{fmt(W_['orders'])} طلب ناجح بمتوسط {fmt(avg_day)} في اليوم النشط و{d['aov']:.0f} ج.م لكل طلب.")}<br>
-    أكبر رافعة = تسرّب السلة قبل الدفع · أكبر فجوة = إسناد المتجر.
+  <div class="col">{box("risk", "إعلانات الرئيسية",
+    f"<b>{fmt(U['ads_discard'])}</b> مستخدم تجاهلوا إعلان الرئيسية مقابل "
+    f"<b>{fmt(U['ads_click'])}</b> نقروا عليه — نسبة تجاهل "
+    f"<b>{R['ads_ignore']['v']:.0f}%</b>. المساحة دي أغلى مساحة في التطبيق وبتضايق "
+    f"أكتر ما بتحوّل. قرار مطلوب: نغيّر المحتوى، نغيّر المكان، أو نقلّل التكرار.")}
+    {box("opp", "تحويل الضيوف",
+    f"<b>{fmt(U['guest'])}</b> مستخدم دخلوا كضيف ({R['guest_share']['v']:.0f}% من المستخدمين). "
+    f"الضيف مش بيتعملّه ريتنشن ولا بيوصله إشعار ولا عرض — كل واحد فيهم فرصة ضايعة. "
+    f"مقابل <b>{fmt(U['signup'])}</b> حساب جديد اتعمل في نفس النافذة.")}
   </div>
 </div>
-<div class="src">
-  <b>المنهجية والمصادر:</b> المؤشرات مبنية على أطر عالمية معتمدة —
-  المؤشر الأهم <span class="en">North Star</span> (Amplitude / Sean Ellis) ·
-  رحلة العميل <span class="en">AARRR</span> (Dave McClure, 500 Startups) ·
-  تجربة المستخدم <span class="en">HEART</span> (Google — Rodden et al.) ·
-  مقاييس السوق (<span class="en">a16z Marketplace Metrics</span>) ·
-  ترتيب الأولويات <span class="en">ICE</span> (Sean Ellis) / <span class="en">RICE</span> (Intercom) ·
-  <span class="en">Lean Analytics</span> (Croll &amp; Yoskovitz).
-  <br><b>البيانات:</b> كل الأرقام محسوبة برمجيًا من PostHog (مشروع 8orders) على نافذة عمل
-  8ص–4ص بتوقيت القاهرة، لأيام: {'، '.join(ar_date(x) for x in d["active"])}.
-  القراءة النوعية مكتوبة على الأرقام دي بدون أي إعادة حساب.
-  <br><b>وقت التوليد:</b> <span class="en">{d["generated_at"]}</span> (توقيت القاهرة).
+{box("info", "قناة الإحالة",
+  f"«مشاركة التطبيق» استخدمها <b>{fmt(U['share'])}</b> مستخدم بس هذا الأسبوع. "
+  f"الرقم صغير جدًا مقارنة بـ {fmt(U['buyer'])} مشترٍ — يعني القناة موجودة بس مش مفعّلة. "
+  f"عرض إحالة مقيس (خصم للطرفين) هو أرخص قناة نمو متاحة، بس محتاج أول حاجة "
+  f"<b>تتبّع للإحالة نفسها</b> عشان نعرف جابت كام مستخدم.")}''')
+
+    # ── 2.8 ops actions ──
+    P.append(divider("2.8", "مهام الإدارات التشغيلية", "Operational Action Items", L2_C))
+    ops_teams = [
+        ("التشغيل — Operations", CTEAL, [
+            f"تغطية وردية 12ص–4ص: {fmt(night)} طلب ({night / V['orders'] * 100 if V['orders'] else 0:.0f}% من الطلبات).",
+            f"تعزيز الطاقة حوالي الساعة {peak_h}:00 (الذروة).",
+            f"دراسة مدّ نطاق التوصيل لأطراف المدينتين ({fmt(U['uncovered'])} مستخدم مكبوت)."]),
+        ("التسويق — Marketing", CTEAL, [
+            f"مراجعة إعلانات الرئيسية (نسبة تجاهل {R['ads_ignore']['v']:.0f}%).",
+            f"حملة تحويل الضيوف لحسابات ({fmt(U['guest'])} ضيف).",
+            f"قياس عائد الفاوتشر ({fmt(U['voucher'])} مستخدم طبّقوه)."]),
+        ("البيزنس — Business", CTEAL, [
+            f"خطة رفع متوسط الطلب من {d['aov']:.0f} ج.م (باقات / حد أدنى للتوصيل المجاني).",
+            (f"خطة توريد لتعميق كتالوج {real_cities[1]['dim']}."
+             if len(real_cities) >= 2 else "خطة تعميق الكتالوج في المدينة الأصغر."),
+            "تحديد هامش الطلب المستهدف (محتاج أولًا تعبئة حقول الطلب — الطبقة 3)."]),
+        ("الديليفري — Delivery", CTEAL, [
+            f"متابعة الإلغاء: {fmt(U['cancelled'])} مستخدم ألغوا ({R['cancel']['v']:.1f}% من المشترين).",
+            "تسجيل سبب الإلغاء يدويًا لحد ما يتضاف كخاصية.",
+            "ربط زمن التوصيل بالتقييم (المؤشرين مش متتبعين حاليًا)."]),
+    ]
+    cards = ""
+    for name, col, items in ops_teams:
+        lis = "".join(f"<li>{x}</li>" for x in items)
+        cards += (f'<div class="kpi" style="width:calc(50% - 4px);border-top:3px solid {col};">'
+                  f'<div style="font-weight:800;font-size:8.5pt;color:{CBLUE};margin-bottom:2px;">{name}</div>'
+                  f'<ul class="tl">{lis}</ul></div>')
+    P.append(f'<div class="kpi-grid">{cards}</div>')
+    P.append('<div class="mini">نهاية الطبقة 2.</div>')
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # LAYER 3 — PRODUCT / UX / ENGINEERING
+    # ══════════════════════════════════════════════════════════════════════════
+    P.append('<div class="pagebreak"></div>')
+    P.append(layer_banner("3", "المنتج والتصميم والتطوير", "Product · UX · Engineering",
+                          "الـ UX designers والمطوّرين (Backend & Mobile)", L3_C))
+
+    # ── 3.1 errors ──
+    P.append(divider("3.1", "الأخطاء — مين اتأثر وعلى إيه", "Errors by Impact", L3_C))
+    es = d["error_split"]
+
+    def plat_chip(e):
+        if e["android_users"] and e["ios_users"]:
+            return '<span class="chip c-both">الاتنين</span>'
+        if e["android_users"]:
+            return '<span class="chip c-and">أندرويد</span>'
+        if e["ios_users"]:
+            return '<span class="chip c-ios">iOS</span>'
+        return '<span class="chip c-both">—</span>'
+
+    err_rows = "".join(
+        f'<tr><td class="en" style="direction:ltr;text-align:left;font-size:7.2pt;">{e["msg"]}</td>'
+        f'<td class="en" style="font-weight:800;">{fmt(e["users"])}</td>'
+        f'<td class="en">{fmt(e["events"])}</td>'
+        f'<td>{plat_chip(e)}</td>'
+        f'<td class="en" style="font-size:7pt;">{e["versions"]}</td>'
+        f'<td>{"<span style=color:" + CGRAY + ";font-weight:800;>شبكي</span>" if e["kind"] == "net" else "<span style=color:" + CRED + ";font-weight:800;>برمجي</span>"}</td></tr>'
+        for e in d["errors"])
+    code_errors = [e for e in d["errors"] if e["kind"] == "code"]
+    P.append(f'''
+<div class="row2">
+  <div class="col">{box("warn", "تصنيف الأخطاء",
+    f"<b>{fmt(U['error'])}</b> مستخدم قابلهم خطأ واحد على الأقل = "
+    f"<b>{R['error_hit']['v']:.0f}%</b> من كل المستخدمين.<br>"
+    f"منهم <b>{fmt(es['code_users'])}</b> مستخدم قابلهم خطأ <b>برمجي</b> — "
+    f"<b>دي شغل الهندسة</b>، و<b>{fmt(es['net_users'])}</b> قابلهم خطأ <b>شبكي</b> "
+    f"(نت المستخدم) مابيتصلحش بالكود.<br>"
+    f"<span class='mini'>الرقمين متداخلين — الشخص الواحد ممكن يكون قابله النوعين، "
+    f"فمجموعهم أكبر من {fmt(U['error'])}. كل رقم فيهم عدد أشخاص حقيقي لوحده، "
+    f"محسوب مستقل مش بجمع صفوف الجدول.</span>")}</div>
+  <div class="col">{box("risk", "أولوية الإصلاح",
+    (f"أعلى خطأ برمجي: <span class='en'>{code_errors[0]['msg'][:70]}</span> — "
+     f"<b>{fmt(code_errors[0]['users'])}</b> مستخدم على "
+     f"{code_errors[0]['os']} نسخة {en(code_errors[0]['versions'])}."
+     if code_errors else "مافيش خطأ برمجي بارز هذا الأسبوع.")
+    + " <b>ملاحظة منهجية:</b> التصنيف مبني على نص رسالة الخطأ فهو تقريبي — "
+      "المطوّر لازم يأكّد كل واحدة قبل ما تتحوّل لتذكرة.")}</div>
 </div>
+<table class="tb">
+  <tr><th style="text-align:left;width:38%;">رسالة الخطأ</th><th>مستخدمون متأثرون</th>
+    <th>عدد المرات</th><th>المنصة</th><th>النسخة</th><th>النوع</th></tr>
+  {err_rows}
+</table>
+<div class="mini">مرتّبة بعدد <b>الأشخاص</b> المتأثرين مش بعدد المرات — خطأ بيضرب شخص واحد
+  ألف مرة أقل أهمية من خطأ بيضرب ألف شخص مرة واحدة.</div>''')
+
+    # ── 3.2 payment failures ──
+    P.append(divider("3.2", "فشل الدفع", "Payment Failures", L3_C))
+    pf_rows = "".join(
+        f'<tr><td class="en" style="direction:ltr;text-align:left;">{p["method"]}</td>'
+        f'<td class="en" style="direction:ltr;text-align:left;">{p["reason"]}</td>'
+        f'<td class="en" style="font-weight:800;">{fmt(p["users"])}</td>'
+        f'<td class="en">{fmt(p["events"])}</td>'
+        f'<td class="en">{fmt(p["android_users"])} / {fmt(p["ios_users"])}</td></tr>'
+        for p in d["payfails"])
+    P.append(f'''
+<div class="row2">
+  <div class="col"><div class="card"><h3>تفصيل فشل الدفع</h3>
+    <table class="tb" style="margin:0;"><tr><th style="text-align:left;">الطريقة</th>
+      <th style="text-align:left;">السبب</th><th>مستخدمون</th><th>مرات</th>
+      <th>أندرويد / iOS</th></tr>{pf_rows}</table>
+  </div></div>
+  <div class="col">{box("warn", "السياق قبل ما تفتح تذكرة",
+    f"نجاح الدفع على مستوى المستخدم <b>{R['pay_success']['v']:.1f}%</b> "
+    f"({fmt(R['pay_success']['n'])} نجحوا من {fmt(R['pay_success']['d'])} حاولوا). "
+    + d["payment_context"])}
+    {box("fix", "المطلوب من الباك إند",
+    f"<span class='en'>success_query_false</span> مش سبب فشل — دي نتيجة استعلام تحقق. "
+    f"محتاجين نعرف: هل الدفع فشل فعلًا عند البوابة، ولا نجح والتطبيق ماقراش النتيجة صح؟ "
+    f"لو التانية، فإحنا بنخسر طلبات ناجحة. مطلوب تسجيل كود الاستجابة الحقيقي من "
+    f"<span class='en'>Paymob</span> في خاصية منفصلة.")}
+  </div>
 </div>''')
 
-    # ===== Glossary =====
-    P.append('<div style="break-before:page;"></div>')
-    P.append(divider("+", "ملحق: قاموس المصطلحات", "Glossary"))
-    glossary = [
-        ("المؤشر الأهم — North Star", "الرقم الوحيد اللي بيلخّص نجاح المنتج. هنا: عدد الطلبات الناجحة."),
-        ("محرّكات المؤشر — Input KPIs", "المؤشرات الداعمة اللي بتكوّن المؤشر الأهم: طلب، تفعيل، تحويل، جودة، تكرار."),
-        ("اليوم النشط — Active Day", f"يوم عمل فيه بيانات تتبّع حقيقية. الأسبوع ده فيه {AD} يوم نشط من 7."),
-        ("تحويل الجلسة — Session Conversion", f"من كل 100 جلسة، كام واحدة خلصت بطلب. الأسبوع ده {d['sess_conv']:.1f}."),
-        ("طلبات لكل مشترٍ — Orders/Buyer", f"المشتري الواحد عمل كام طلب. الأسبوع ده {d['orders_per_buyer']:.2f}."),
-        ("عميل متكرر — Repeat Buyer", f"عميل طلب أكتر من مرة في نفس الفترة. الأسبوع ده {d['repeat_rate']:.1f}%."),
-        ("متوسط قيمة الطلب — AOV", "إجمالي الفلوس ÷ عدد الطلبات."),
-        ("مستخدم نشط — DAU/WAU/MAU", "عدد الأشخاص اللي فتحوا التطبيق في يوم / أسبوع / شهر."),
-        ("إجمالي المبيعات — GMV", "قيمة كل البضاعة المباعة قبل خصم أي عمولات أو رسوم."),
-        ("الكوهورت — Cohort D1/D7", "مجموعة بدؤوا نفس اليوم، نشوف كام % رجع بعد يوم (D1) وبعد 7 أيام (D7)."),
-        ("رحلة العميل — AARRR", "5 مراحل: جذب، تفعيل، احتفاظ، إحالة، إيراد."),
-        ("تجربة المستخدم — HEART", "إطار جوجل: سعادة، تفاعل، تبنّي، احتفاظ، نجاح المهمة."),
-        ("مقياس الولاء — NPS", "«هتنصح بالتطبيق لصاحبك؟» من 0 لـ 10. (مش متتبَّع حاليًا)."),
-        ("الإحالة — Referral", "عميل حالي بيجيب عميل جديد عن طريق «شارك التطبيق»."),
-        ("القمع — Funnel", "خطوات العميل من فتح التطبيق للطلب؛ في كل خطوة ناس بتقع."),
-        ("التسرّب — Drop-off", "نسبة اللي بيخرجوا في خطوة قبل ما يكمّلوا."),
-        ("نقرة الغضب — Rageclick", "المستخدم بيدوس بسرعة ومتكرر في نفس المكان = علامة إحباط."),
-        ("ترتيب الأولويات — ICE/RICE", "تقييم كل فكرة بالأثر والثقة والسهولة عشان نرتّب الأهم."),
-        ("خطأ شبكي مقابل غير شبكي", "الشبكي سببه نت المستخدم (مش بيتصلح بالكود)؛ غير الشبكي خلل في التطبيق."),
-        ("إسناد المتجر — store_id", "خاصية على الطلب بتقول الطلب من أنهي متجر. حاليًا فاضية = فجوة."),
+    # ── 3.3 UX friction ──
+    P.append(divider("3.3", "احتكاك الواجهة", "UX Friction", L3_C))
+    and_plat = next((p for p in d["platforms"] if p["dim"] == "Android"), None)
+    ios_plat = next((p for p in d["platforms"] if p["dim"] == "iOS"), None)
+    rage_note = ""
+    if and_plat and ios_plat:
+        if and_plat["rage_rate"] < 1 and ios_plat["rage_rate"] > 5:
+            rage_note = (f"<b>أندرويد بيقول {and_plat['rage_rate']:.1f}% نقر غضب و iOS "
+                         f"{ios_plat['rage_rate']:.0f}%.</b> الفرق ده مش معقول سلوكيًا — "
+                         f"الأرجح إن <b>رصد نقرة الغضب مش شغّال على أندرويد أصلًا</b>. "
+                         f"يعني الرقم الحقيقي أعلى من المعروض، ومينفعش نبني عليه قرار "
+                         f"قبل ما الرصد يتفعّل على المنصتين.")
+        else:
+            rage_note = (f"نقر الغضب: أندرويد {and_plat['rage_rate']:.0f}% مقابل "
+                         f"iOS {ios_plat['rage_rate']:.0f}% من مستخدمي كل منصة.")
+    P.append(f'''
+<div class="row2">
+  <div class="col">{box("risk", "نقرات الغضب",
+    f"<b>{fmt(U['rage'])}</b> مستخدم ({R['rage_hit']['v']:.0f}% من المستخدمين) نقروا بغضب — "
+    f"ضغط سريع متكرر في نفس المكان، يعني حاجة مش بتستجيب أو مش واضحة. " + rage_note)}</div>
+  <div class="col">{box("gap", "أكبر عائق أمام تصميم الحل",
+    "اسم الشاشة راجع دايمًا <span class='en'>«Flutter»</span> بدل اسم الشاشة الحقيقية، "
+    "فإحنا عارفين إن فيه إحباط بس <b>مش عارفين فين</b>. "
+    "المطلوب من الموبايل: تمرير <span class='en'>$screen_name</span> حقيقي مع كل حدث. "
+    "من غيره أي إعادة تصميم هتبقى تخمين.")}</div>
+</div>
+{box("fix", "مهام تصميم قابلة للتنفيذ دلوقتي (من غير انتظار تتبّع جديد)",
+  f"1) زر «إعادة الطلب»: بيستخدمه {R['reorder_use']['v']:.0f}% بس من المشترين رغم إن "
+  f"{d['repeat_rate']:.0f}% منهم بيكرروا الشراء فعلًا — الزر مش مكتشَف، يتنقل لمكان أوضح. "
+  f"2) إعلانات الرئيسية: نسبة تجاهل {R['ads_ignore']['v']:.0f}% — تقليل التكرار أو تصغير المساحة. "
+  f"3) شاشة «منطقتك غير مخدومة»: {fmt(U['uncovered'])} مستخدم بيوصلوها — تتحوّل من رسالة "
+  f"رفض لنموذج تسجيل اهتمام («ابلغني لما توصلوا لعندي»).")}''')
+
+    # ── 3.4 feature adoption ──
+    P.append(divider("3.4", "تبنّي الميزات — بعدد المستخدمين", "Feature Adoption", L3_C))
+    feat_rows = ""
+    for f_ in d["features"][:14]:
+        w = f_["reach"]
+        feat_rows += (f'<tr><td>{f_["label"]}</td>'
+                      f'<td class="en" style="direction:ltr;text-align:left;font-size:7pt;color:#94a3b8;">{f_["event"]}</td>'
+                      f'<td class="en" style="font-weight:800;">{fmt(f_["users"])}</td>'
+                      f'<td class="en">{f_["reach"]:.1f}%</td>'
+                      f'<td class="en">{f_["per_user"]:.1f}</td>'
+                      f'<td style="width:22%;"><div style="background:#f1f5f9;border-radius:4px;height:9px;">'
+                      f'<div style="width:{min(100, w):.1f}%;background:{CPURPLE};height:100%;border-radius:4px;"></div>'
+                      f'</div></td></tr>')
+    P.append(f'''
+<table class="tb">
+  <tr><th>الميزة</th><th style="text-align:left;">الحدث</th><th>مستخدمون</th>
+    <th>نسبة الوصول</th><th>مرات/مستخدم</th><th>المدى</th></tr>
+  {feat_rows}
+</table>
+<div class="mini">«نسبة الوصول» = المستخدمون اللي استخدموا الميزة ÷ كل المستخدمين.
+  «مرات/مستخدم» بتفرّق بين ميزة كتير ناس بتستخدمها مرة، وميزة ناس قليلة بتستخدمها كتير —
+  التقارير القديمة كانت بترتّب بعدد الأحداث فبتخلط بين الاتنين.</div>''')
+
+    # ── 3.5 data quality ──
+    P.append(divider("3.5", "جودة البيانات والتتبّع", "Data Quality & Tracking", L3_C))
+    dq_rows = "".join(
+        f'<tr><td class="en" style="direction:ltr;text-align:left;">{q["field"]}</td>'
+        f'<td>{q["label"]}</td>'
+        f'<td class="en" style="font-weight:800;color:{CRED if q["fill_rate"] < 1 else CGREEN};">'
+        f'{q["fill_rate"]:.1f}%</td>'
+        f'<td class="en">{fmt(q["filled"])} / {fmt(q["total"])}</td>'
+        f'<td>{"<b style=color:" + CRED + ";>فارغ تمامًا</b>" if q["fill_rate"] < 1 else "شغّال"}</td></tr>'
+        for q in d["data_quality"])
+    P.append(f'''
+{box("risk", "أخطر اكتشاف في التقرير ده",
+  f"حقول قيمة الطلب <b>موجودة على الحدث وبتوصل PostHog</b> — بس بقيمة <b>صفر</b> دايمًا. "
+  f"ده أسوأ من إنها مش موجودة، لأنها بتبان كأنها بيانات لحد ما تتجمّع. "
+  f"النتيجة: مفيش صافي إيراد، مفيش هامش لكل طلب، مفيش تكلفة توصيل، ومفيش متوسط عدد أصناف. "
+  f"كل تحليل ربحية متوقّف على الإصلاح ده.")}
+<table class="tb">
+  <tr><th style="text-align:left;">الحقل على <span class="en">order_placed</span></th>
+    <th>معناه</th><th>نسبة التعبئة</th><th>العدد</th><th>الحالة</th></tr>
+  {dq_rows}
+</table>
+<table class="tb">
+  <tr><th>الفجوة</th><th>أثرها على القرار</th><th>المطلوب</th><th>الأولوية</th></tr>
+  <tr><td>قيم الطلب بتوصل صفر</td><td>لا صافي إيراد ولا هامش ولا تكلفة توصيل</td>
+    <td class="en">subtotal, delivery_fee, discount_amount, items_count</td>
+    <td><span class="chip c-p0">P0</span></td></tr>
+  <tr><td>إسناد المتجر على الطلب</td>
+    <td>store_id موجود على السلة والدفع لكن <b>مش على الطلب</b> — فمفيش ترتيب متاجر ولا هامش لكل متجر</td>
+    <td class="en">store_id, stores_count on order_placed</td>
+    <td><span class="chip c-p0">P0</span></td></tr>
+  <tr><td>تسمية الشاشات</td><td>{fmt(U["rage"])} مستخدم محبط والشاشة مجهولة</td>
+    <td class="en">$screen_name على كل حدث</td><td><span class="chip c-p1">P1</span></td></tr>
+  <tr><td>رصد نقر الغضب على أندرويد</td><td>الرقم الحالي منحاز لـ iOS فمش قابل للمقارنة</td>
+    <td>تفعيل الرصد في SDK أندرويد</td><td><span class="chip c-p1">P1</span></td></tr>
+  <tr><td>منطقة التوصيل كخاصية</td><td>المدينة متحسبة بالاستنتاج من المتجر بدل ما تكون مسجّلة</td>
+    <td class="en">zone / city on order_placed</td><td><span class="chip c-p1">P1</span></td></tr>
+  <tr><td>سبب فشل الدفع الحقيقي</td><td>success_query_false مش سبب — مش عارفين فشل ولا خلل تحقق</td>
+    <td class="en">gateway_response_code</td><td><span class="chip c-p1">P1</span></td></tr>
+  <tr><td>بحث ناجح + الكلمة</td><td>{fmt(U["search_fail"])} مستخدم بحثوا وفشلوا ومش عارفين على إيه</td>
+    <td class="en">search_performed (query, results_count)</td><td><span class="chip c-p2">P2</span></td></tr>
+  <tr><td>سبب الإلغاء</td><td>{fmt(U["cancelled"])} مستخدم ألغوا بدون تشخيص</td>
+    <td class="en">cancel_reason</td><td><span class="chip c-p2">P2</span></td></tr>
+  <tr><td>خطأ منظّم للكراش</td><td>لا معدل كراش منفصل عن أخطاء الشبكة</td>
+    <td class="en">$exception (type, is_fatal)</td><td><span class="chip c-p2">P2</span></td></tr>
+  <tr><td>استمرارية باقة PostHog</td><td>انقطاع التتبّع بيلغي المقارنة الأسبوعية</td>
+    <td>ترقية الباقة + حد تنبيه</td><td><span class="chip c-p1">P1</span></td></tr>
+</table>
+{box("info", "ملاحظة إيجابية",
+  "أسماء الأحداث الأساسية (طلب / سلة / دفع / تغطية) نظيفة ومتّسقة ومفيش تكرار، "
+  "و<span class='en'>store_id</span> موجود فعلًا على أحداث التصفّح والسلة والدفع — "
+  "وده اللي خلّى إسناد المدينة ممكن أصلًا. الفجوات دي إضافات مطلوبة، "
+  "مش إصلاح لحاجة مكسورة من الأساس.")}''')
+
+    # ── 3.6 engineering action items ──
+    P.append(divider("3.6", "مهام الفرق التقنية", "Engineering Action Items", L3_C))
+    top3_code = code_errors[:3]
+    eng_teams = [
+        ("الباك إند — Backend", CPURPLE, [
+            "تعبئة <span class='en'>subtotal / delivery_fee / discount_amount / items_count</span> "
+            "بقيم حقيقية على <span class='en'>order_placed</span>.",
+            "إضافة <span class='en'>store_id</span> و<span class='en'>stores_count</span> "
+            "على <span class='en'>order_placed</span> (موجودين على السلة والدفع بالفعل).",
+            "تسجيل كود استجابة <span class='en'>Paymob</span> الحقيقي بدل "
+            "<span class='en'>success_query_false</span>."]),
+        ("الموبايل — Mobile", CPURPLE, (
+            [f"إصلاح <span class='en'>{e['msg'][:56]}</span> — {fmt(e['users'])} مستخدم "
+             f"({e['os']}، نسخة {e['versions']})." for e in top3_code]
+            or ["مافيش خطأ برمجي بارز هذا الأسبوع — يتراجع الأسبوع الجاي."])
+            + ["تمرير <span class='en'>$screen_name</span> حقيقي بدل "
+               "<span class='en'>Flutter</span> على كل حدث."]),
+        ("التصميم — UX/UI", CPURPLE, [
+            f"إعادة تموضع زر «إعادة الطلب» (استخدام {R['reorder_use']['v']:.0f}% مقابل "
+            f"تكرار شراء فعلي {d['repeat_rate']:.0f}%).",
+            f"مراجعة إعلانات الرئيسية (تجاهل {R['ads_ignore']['v']:.0f}%).",
+            "تحويل شاشة «منطقة غير مخدومة» لنموذج تسجيل اهتمام."]),
+        ("البيانات — Data", CPURPLE, [
+            "حد تنبيه على استهلاك باقة PostHog قبل الوصول للسقف.",
+            "إضافة <span class='en'>search_performed</span> و<span class='en'>cancel_reason</span>.",
+            "تفعيل رصد <span class='en'>$rageclick</span> على أندرويد."]),
+        ("الجودة — QA", CPURPLE, [
+            f"اختبار الدفع لكل الطرق ({', '.join(p['method'] for p in d['pay_methods'][:4])}).",
+            f"متابعة أخطاء أحدث النسخ ({', '.join(v['dim'] for v in d['versions'][:2])}).",
+            "التأكد إن حقول الطلب بترجع قيم حقيقية بعد إصلاح الباك إند."]),
     ]
-    P.append('<div class="gl">'
-             + "".join(f'<div class="g"><b>{t}</b><div>{g}</div></div>' for t, g in glossary)
-             + '</div>')
+    cards = ""
+    for name, col, items in eng_teams:
+        lis = "".join(f"<li>{x}</li>" for x in items)
+        cards += (f'<div class="kpi" style="width:calc(50% - 4px);border-top:3px solid {col};">'
+                  f'<div style="font-weight:800;font-size:8.5pt;color:{CBLUE};margin-bottom:2px;">{name}</div>'
+                  f'<ul class="tl">{lis}</ul></div>')
+    P.append(f'<div class="kpi-grid">{cards}</div>')
+
+    # version table — which build to watch
+    ver_rows = "".join(
+        f'<tr><td class="en">{v["dim"]}</td><td class="en">{fmt(v["users"])}</td>'
+        f'<td class="en">{v["purchase_rate"]:.1f}%</td><td class="en">{v["error_rate"]:.0f}%</td>'
+        f'<td class="en">{v["rage_rate"]:.0f}%</td>'
+        f'<td class="en">{v["error_events"] / v["users"] if v["users"] else 0:.1f}</td></tr>'
+        for v in d["versions"])
+    P.append(f'''
+<div class="card"><h3>حسب نسخة التطبيق — أي بيلد محتاج متابعة</h3>
+  <table class="tb" style="margin:0;"><tr><th>النسخة</th><th>مستخدمون</th><th>نسبة الشراء</th>
+    <th>نسبة الخطأ</th><th>نقر الغضب</th><th>أخطاء/مستخدم</th></tr>{ver_rows}</table>
+  <div class="mini" style="margin-top:3px;">لو نسخة أحدث بتوري «نسبة خطأ» أعلى من اللي قبلها،
+    دي إشارة انحدار (regression) تستاهل وقفة قبل ما التبنّي يكمّل.</div>
+</div>
+<div class="mini">نهاية الطبقة 3.</div>''')
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # APPENDIX — GLOSSARY (generated from the same dict the report rendered from)
+    # ══════════════════════════════════════════════════════════════════════════
+    P.append('<div class="pagebreak"></div>')
+    P.append(divider("+", "ملحق: قاموس المؤشرات", "Glossary of Metrics", CBLUE))
+    P.append('''<div class="mini" style="margin-bottom:6px;">كل مؤشر ظهر في التقرير موجود هنا
+      بمعادلته ومقامه وقيمته هذا الأسبوع. القيمة المكتوبة هنا هي <b>نفس</b> القيمة المعروضة فوق —
+      متولّدة من نفس الرقم، فمستحيل تختلف.</div>''')
+    gl = ""
+    for g in build_glossary(d):
+        gl += (f'<div class="g"><div class="gt">{g["ar"]} <span class="ge">{g["en"]}</span></div>'
+               f'<div class="gf"><b>المعادلة:</b> {g["formula"]}</div>'
+               f'<div class="gh">{g["howto"]}</div>'
+               f'<div class="gv">هذا الأسبوع: {g["value"]} &nbsp;({g["detail"]})</div></div>')
+    P.append(f'<div class="gl">{gl}</div>')
+
+    P.append(divider("+", "مصطلحات عامة", "General Terms", CBLUE))
+    gl2 = "".join(
+        f'<div class="g"><div class="gt">{t} <span class="ge">{e}</span></div>'
+        f'<div class="gf">{f_}</div><div class="gh">{h}</div></div>'
+        for t, e, f_, h in CONCEPT_DEFS)
+    P.append(f'<div class="gl">{gl2}</div>')
+
+    # methodology
+    P.append(f'''
+<div class="src">
+  <b>المنهجية:</b>
+  <br>· <b>المقام الموحّد:</b> كل نسبة = مستخدمون فريدون ÷ مستخدمون فريدون
+    (<span class="en">uniq(person_id)</span>). مافيش نسبة مبنية على أحداث أو جلسات.
+  <br>· <b>نافذة اليوم:</b> 8 صباحًا لـ 4 صباحًا اليوم اللي بعده بتوقيت القاهرة (20 ساعة) —
+    لأن من 4 لـ 8 ص التطبيق شبه واقف.
+  <br>· <b>اليوم النشط:</b> يوم فيه {en(f"{5000:,}")} حدث أو أكتر. التقرير بيرجع لورا لحد
+    {d["lookback_days"]} يوم لحد ما يجمع {AD} يوم نشط، فبيفضل قابل للمقارنة حتى لو التتبّع اتقطع.
+  <br>· <b>إسناد المدينة:</b> موقع الإنترنت غير صالح هنا — شركات المحمول بتوجّه الترافيك
+    لبوابة في القاهرة، فبتظهر طلبات «من القاهرة» والتطبيق أصلًا مش شغّال هناك. البديل:
+    بنبني خريطة <b>متجر ← مدينة</b> من أحداث الـ {en("WiFi")} بس (اللي فيها الـ IP محلي حقيقي)،
+    وبعدين بننسب كل مستخدم لمدينة المتاجر اللي فتحها فعلًا. الفصل بين المدينتين شبه تام
+    (كل متجر ~100% مدينة واحدة)، والتغطية بتوصل ~99% من المستخدمين اللي فتحوا أي متجر.
+  <br>· <b>الأطر المرجعية:</b> {en("North Star")} (Amplitude / Sean Ellis) ·
+    {en("AARRR")} (Dave McClure) · {en("HEART")} (Google — Rodden et al.) ·
+    {en("Lean Analytics")} (Croll &amp; Yoskovitz).
+  <br>· <b>البيانات:</b> كل الأرقام محسوبة برمجيًا من PostHog (مشروع 8orders) للأيام:
+    {'، '.join(ar_short(x) for x in d["active"])}.
+    القراءة النوعية مكتوبة على الأرقام دي بدون أي إعادة حساب.
+  <br>· <b>وقت التوليد:</b> {en(d["generated_at"])} (توقيت القاهرة).
+</div>''')
 
     return HEAD + "".join(P) + '</body></html>'

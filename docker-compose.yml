@@ -16,6 +16,9 @@ services:
     # توجيه كل ملفات حالة التشغيل لمجلد ثابت /app/data (volume) عشان تفضل بعد أي redeploy.
     # القيم دي مش أسرار، ومتوافقة للخلف: من غيرها الكود بيرجع لمساراته القديمة.
     environment:
+      # ‼ لازم يفضل موجود: جدولة Dokploy بتنفّذ الكرون بتوقيت الكونتينر. من غيره الكرون
+      # بيبقى UTC، والتقرير الأسبوعي بيتزحلق ساعة كل ما التوقيت الصيفي في مصر يتغيّر.
+      TZ: Africa/Cairo
       HADI_REMINDERS_FILE: /app/data/reminders.json
       HADI_TRIAGE_STATE: /app/data/triage_state.json
       HADI_PENDING_STORE: /app/data/pending_points.json
