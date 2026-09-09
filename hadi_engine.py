@@ -60,7 +60,10 @@ SESSION_TTL_HOURS = float(os.getenv("HADI_SESSION_TTL_HOURS", "6") or "6")
 # 2026-07-26: الرقم مقاس مش مخمّن — logs/usage.jsonl على 117 تفاعل:
 # p50=2 p90=8 p95=12 p99=17 max=17. الـ 50 القديمة كانت 3x أعلى حالة حصلت،
 # يعني مساحة هروب واسعة لو الموديل دخل حلقة. 22 = p99 + هامش 5.
-MAX_TURNS = int(os.getenv("HADI_MAX_TURNS", "22") or "22")
+# 2026-09-09: طلبات تحليلية معقدة (تقاطع بيانات عملاء/طلبات) كانت بتضرب
+# السقف ده وترجع EngineError(error_max_turns) للمستخدم جوه الشات. رفعناه
+# لـ 30 كهامش أوسع بدل تحويلها HEAVY_MAX_TURNS من غير تصنيف طلبات موجود.
+MAX_TURNS = int(os.getenv("HADI_MAX_TURNS", "30") or "30")
 # المهام الخلفية (pending flush) والتقارير محتاجة مساحة أوسع من الرد التفاعلي.
 HEAVY_MAX_TURNS = int(os.getenv("HADI_HEAVY_MAX_TURNS", "50") or "50")
 SESSIONS_FILE = Path(os.environ.get("HADI_SESSIONS_FILE", str(BASE_DIR / "sessions.json")))
