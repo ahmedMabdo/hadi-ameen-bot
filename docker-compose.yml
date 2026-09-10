@@ -19,6 +19,9 @@ services:
       # ‼ لازم يفضل موجود: جدولة Dokploy بتنفّذ الكرون بتوقيت الكونتينر. من غيره الكرون
       # بيبقى UTC، والتقرير الأسبوعي بيتزحلق ساعة كل ما التوقيت الصيفي في مصر يتغيّر.
       TZ: Africa/Cairo
+      # كان ناقص: sessions.json كان بيتكتب في /app (مش volume)، فكل redeploy
+      # بيمسح كل المحادثات المفتوحة. الكومنت تحت كان بيوعد بده والكود مابيعملهوش.
+      HADI_SESSIONS_FILE: /app/data/sessions.json
       HADI_REMINDERS_FILE: /app/data/reminders.json
       HADI_TRIAGE_STATE: /app/data/triage_state.json
       HADI_PENDING_STORE: /app/data/pending_points.json

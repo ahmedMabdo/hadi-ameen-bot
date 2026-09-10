@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>8Orders — System Knowledge Graph</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; overflow: hidden; }
+  #graph { width: 100vw; height: 100vh; }
+  .cluster { fill-opacity: 0.06; stroke-opacity: 0.35; stroke-width: 2px; }
+  .cluster-label { font-size: 15px; font-weight: 700; opacity: 0.6; text-anchor: middle; pointer-events: none; }
+  .member { stroke: #ccc; stroke-width: 1px; stroke-dasharray: 2 3; opacity: 0.45; }
+  .integration { fill: none; stroke: #9b59b6; stroke-width: 3px; opacity: 0.7; marker-end: url(#arrow-int); }
+  .integration-label { font-size: 11px; font-weight: 600; fill: #9b59b6; pointer-events: none; }
+  .node circle { cursor: pointer; stroke: #fff; stroke-width: 2.5px; filter: drop-shadow(0 2px 4px rgba(0,0,0,.18)); }
+  .node.shared circle { stroke-width: 4px; }
+  .node text { pointer-events: none; font-size: 10px; font-weight: 600; fill: #fff; text-anchor: middle; dominant-baseline: central; }
+  .node .sub { font-size: 8px; font-weight: 400; opacity: 0.85; }
+  .link { fill: none; stroke: #bbb; stroke-width: 1.5px; marker-end: url(#arrow); }
+  .link.cross { stroke: #e07a2f; stroke-width: 2px; stroke-dasharray: 6 3; marker-end: url(#arrow-cross); }
+  .link-label { font-size: 8px; fill: #777; pointer-events: none; }
+  #title { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); font-size: 13px; font-weight: 700; color: #444; background: rgba(255,255,255,.9); padding: 5px 16px; border-radius: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.1); pointer-events: none; }
+  #controls { position: absolute; top: 12px; left: 16px; display: flex; gap: 6px; }
+  #controls button { font: inherit; font-size: 12px; font-weight: 600; padding: 6px 14px; border: 1px solid #ccc; border-radius: 18px; background: #fff; color: #555; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  #controls button.active { background: #4a90d9; color: #fff; border-color: #4a90d9; }
+  #legend { position: absolute; bottom: 16px; left: 16px; background: rgba(255,255,255,.92); border-radius: 8px; padding: 10px 14px; font-size: 10px; color: #555; box-shadow: 0 1px 4px rgba(0,0,0,.12); max-height: 42vh; overflow:auto; }
+  #legend div { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .leg-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  #hint { position: absolute; bottom: 16px; right: 16px; font-size: 10px; color: #999; background: rgba(255,255,255,.85); padding: 5px 10px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<div id="title">8Orders — System Knowledge Graph</div>
+<div id="controls">
+  <button id="btn-apps" class="active">Applications</button>
+  <button id="btn-cycles">Cycles</button>
+  <button id="btn-entities">Entities</button>
+</div>
+<svg id="graph"></svg>
+<div id="legend"></div>
+<div id="hint">Drag nodes · click an entity to open its note · toggle views top-left</div>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+const DATA = {"applications": [{"id": "admin", "label": "Admin", "color": "#4a90d9"}, {"id": "customer-ordering", "label": "Customer Ordering", "color": "#e8603c"}, {"id": "delivery", "label": "Delivery", "color": "#50c878"}, {"id": "identity-and-access", "label": "Identity & Access", "color": "#9b59b6"}, {"id": "restaurant-portal", "label": "Restaurant Portal", "color": "#e0a800"}, {"id": "version-api", "label": "Version API", "color": "#16a2b8"}], "cycles": [{"id": "admin-admin-back-office", "label": "Admin Back-Office", "application": "admin"}, {"id": "admin-catalog-and-content-administration", "label": "Catalog & Content Administration", "application": "admin"}, {"id": "admin-chat-administration", "label": "Chat Administration", "application": "admin"}, {"id": "admin-city-and-geography-administration", "label": "City & Geography Administration", "application": "admin"}, {"id": "admin-delivery-administration", "label": "Delivery Administration", "application": "admin"}, {"id": "admin-erp-and-integrations", "label": "ERP & Integrations", "application": "admin"}, {"id": "admin-merchant-administration", "label": "Merchant Administration", "application": "admin"}, {"id": "admin-order-and-customer-administration", "label": "Order & Customer Administration", "application": "admin"}, {"id": "customer-ordering-cart-and-checkout", "label": "Cart & Checkout", "application": "customer-ordering"}, {"id": "customer-ordering-customer-account", "label": "Customer Account", "application": "customer-ordering"}, {"id": "customer-ordering-discounts-and-coupons", "label": "Discounts & Coupons", "application": "customer-ordering"}, {"id": "customer-ordering-marketing-and-content", "label": "Marketing & Content", "application": "customer-ordering"}, {"id": "customer-ordering-ops-and-infra", "label": "Ops & Infra", "application": "customer-ordering"}, {"id": "customer-ordering-order-and-fulfilment", "label": "Order & Fulfilment", "application": "customer-ordering"}, {"id": "customer-ordering-payments", "label": "Payments", "application": "customer-ordering"}, {"id": "customer-ordering-restaurant-and-menu-discovery", "label": "Restaurant & Menu Discovery", "application": "customer-ordering"}, {"id": "customer-ordering-support-and-chat", "label": "Support & Chat", "application": "customer-ordering"}, {"id": "customer-ordering-tiered-discount", "label": "Tiered Discount", "application": "customer-ordering"}, {"id": "delivery-delivery-man-operations", "label": "Delivery Man Operations", "application": "delivery"}, {"id": "delivery-delivery-support-and-chat", "label": "Delivery Support & Chat", "application": "delivery"}, {"id": "delivery-driver-cash-and-compensation", "label": "Driver Cash & Compensation", "application": "delivery"}, {"id": "delivery-ops-and-infra", "label": "Ops & Infra", "application": "delivery"}, {"id": "identity-and-access-authentication-and-tokens", "label": "Authentication & Tokens", "application": "identity-and-access"}, {"id": "identity-and-access-customer-identity", "label": "Customer Identity", "application": "identity-and-access"}, {"id": "identity-and-access-delivery-man-identity", "label": "Delivery Man Identity", "application": "identity-and-access"}, {"id": "identity-and-access-ops-and-infra", "label": "Ops & Infra", "application": "identity-and-access"}, {"id": "identity-and-access-restaurant-and-admin-user-identity", "label": "Restaurant & Admin User Identity", "application": "identity-and-access"}, {"id": "restaurant-portal-menu-and-order-management", "label": "Menu & Order Management", "application": "restaurant-portal"}, {"id": "restaurant-portal-merchant-account-and-access", "label": "Merchant Account & Access", "application": "restaurant-portal"}, {"id": "restaurant-portal-merchant-finance-and-reporting", "label": "Merchant Finance & Reporting", "application": "restaurant-portal"}, {"id": "restaurant-portal-ops-and-infra", "label": "Ops & Infra", "application": "restaurant-portal"}], "entities": [{"id": "ApiKey", "label": "Api\nKey", "type": "transaction", "module": "admin", "cycles": ["admin-admin-back-office"], "note": "../Admin/Admin Back-Office/ApiKey.md", "r": 28}, {"id": "Audiance", "label": "Audiance", "type": "transaction", "module": "customer-ordering", "cycles": ["customer-ordering-marketing-and-content"], "note": "../Admin/Catalog & Content Administration/Audiance.md", "r": 28}, {"id": "BlockedUsersFromCOD", "label": "Blocked\nUsers\nFrom\nCOD", "type": "master", "module": "customer-ordering", "cycles": ["customer-ordering-cart-and-checkout"], "note": "../Customer Ordering/Cart & Checkout/BlockedUsersFromCOD.md", "r": 28}, {"id": "CartItem", "label": "Cart\nItem", "type": "transaction", "module": "customer-ordering", "cycles": ["customer-ordering-cart-and-checkout"], "note": "../Customer Ordering/Cart & Checkout/CartItem.md", "r": 28}, {"id": "City", "label": "City", "type": "master", "module": "admin", "cycles": ["admin-city-and-geography-administration"], "note": "../Admin/City & Geography Administration/City/City.technical.md", "r": 28}, {"id": "CityBreakConfiguration", "label": "City\nBreak\nConfiguration", "type": "master", "module": "admin", "cycles": ["admin-city-and-geography-administration"], "note": "../Admin/City & Geography Administration/CityBreakConfiguration.md", "r": 28}, {"id": "CityRushTimeConfiguration", "label": "City\nRush\nTime\nConfiguration", "type": "master", "module": "admin", "cycles": ["admin-city-and-geography-administration"], "note": "../Admin/City & Geography Administration/CityRushTimeConfiguration/CityRushTimeConfiguration.technical.md", "r": 28}, {"id": "Compensation", "label": "Compensation", "type": "financial", "module": "delivery", "cycles": ["delivery-driver-cash-and-compensation"], "note": "../Delivery/Driver Cash & Compensation/Compensation.md", "r": 28}, {"id": "Configuration", "label": "Configuration", "type": "master", "module": "admin", "cycles": ["admin-admin-back-office"], "note": "../Admin/Admin Back-Office/Configuration/Configuration.technical.md", "r": 28}, {"id": "Customer", "label": "Customer", "type": "master", "module": "identity-and-access", "cycles": ["identity-and-access-customer-identity"], "note": "../Identity & Access/Customer Identity/Customer/Customer.technical.md", "r": 28}, {"id": "CustomerAddresses", "label": "Customer\nAddresses", "type": "transaction", "module": "identity-and-access", "cycles": ["identity-and-access-customer-identity"], "note": "../Identity & Access/Customer Identity/Customer/CustomerAddresses.md", "r": 28}, {"id": "CustomerCart", "label": "Customer\nCart", "type": "master", "module": "customer-ordering", "cycles": ["customer-ordering-cart-and-checkout"], "note": "../Customer Ordering/Cart & Checkout/CustomerCart/CustomerCart.technical.md", "r": 28}, {"id": "DeliveryBouns", "label": "Delivery\nBouns", "type": "financial", "module": "delivery", "cycles": ["delivery-driver-cash-and-compensation"], "note": "../Delivery/Driver Cash & Compensation/DeliveryBouns/DeliveryBouns.technical.md", "r": 28}, {"id": "DeliveryMen", "label": "Delivery\nMen", "type": "transaction", "module": "delivery", "cycles": ["delivery-delivery-man-operations"], "note": "../Identity & Access/Delivery Man Identity/DeliveryMen/DeliveryMen.technical.md", "r": 28}, {"id": "DeliveryZone", "label": "Delivery\nZone", "type": "transaction", "module": "delivery", "cycles": ["delivery-delivery-man-operations"], "note": "../Delivery/Delivery Man Operations/DeliveryZone.md", "r": 28}, {"id": "DeliverymanTransaction", "label": "Deliveryman\nTransaction", "type": "financial", "module": "delivery", "cycles": ["delivery-delivery-man-operations"], "note": "../Delivery/Driver Cash & Compensation/DeliverymanTransaction/DeliverymanTransaction.technical.md", "r": 28}, {"id": "LoyaltyPoints", "label": "Loyalty\nPoints", "type": "financial", "module": "customer-ordering", "cycles": ["customer-ordering-discounts-and-coupons"], "note": "../Identity & Access/Customer Identity/Customer/LoyaltyPoints.md", "r": 28}, {"id": "MenuItem", "label": "Menu\nItem", "type": "transaction", "module": "customer-ordering", "cycles": ["customer-ordering-restaurant-and-menu-discovery"], "note": "../Customer Ordering/Restaurant & Menu Discovery/MenuItem/MenuItem.technical.md", "r": 28}, {"id": "MenuItemPrice", "label": "Menu\nItem\nPrice", "type": "transaction", "module": "customer-ordering", "cycles": ["customer-ordering-restaurant-and-menu-discovery"], "note": "../Customer Ordering/Restaurant & Menu Discovery/MenuItem/MenuItemPrice.technical.md", "r": 28}, {"id": "Offers", "label": "Offers", "type": "transaction", "module": "customer-ordering", "cycles": ["customer-ordering-discounts-and-coupons"], "note": "../Customer Ordering/Restaurant & Menu Discovery/Offers/Offers.technical.md", "r": 28}, {"id": "Order", "label": "Order", "type": "transaction", "module": "customer-ordering", "cycles": ["customer-ordering-order-and-fulfilment"], "note": "../Customer Ordering/Order & Fulfilment/Order/Order.technical.md", "r": 28}, {"id": "OrderDelivery", "label": "Order\nDelivery", "type": "transaction", "module": "customer-ordering", "cycles": ["customer-ordering-order-and-fulfilment"], "note": "../Delivery/Delivery Man Operations/OrderDelivery/OrderDelivery.technical.md", "r": 28}, {"id": "OrderDetails", "label": "Order\nDetails", "type": "transaction", "module": "customer-ordering", "cycles": ["customer-ordering-order-and-fulfilment"], "note": "../Customer Ordering/Order & Fulfilment/OrderDetails.technical.md", "r": 28}, {"id": "OrderRestaurantDetails", "label": "Order\nRestaurant\nDetails", "type": "transaction", "module": "customer-ordering", "cycles": ["customer-ordering-order-and-fulfilment"], "note": "../Customer Ordering/Order & Fulfilment/OrderRestaurantDetails.md", "r": 28}, {"id": "PaymentMethod", "label": "Payment\nMethod", "type": "financial", "module": "customer-ordering", "cycles": ["customer-ordering-payments"], "note": "../Admin/Order & Customer Administration/PaymentMethod.md", "r": 28}, {"id": "Permission", "label": "Permission", "type": "master", "module": "identity-and-access", "cycles": ["identity-and-access-restaurant-and-admin-user-identity"], "note": "../Identity & Access/Restaurant & Admin User Identity/Permission/Permission.technical.md", "r": 28}, {"id": "PromoCodes", "label": "Promo\nCodes", "type": "master", "module": "customer-ordering", "cycles": ["customer-ordering-discounts-and-coupons"], "note": "../Customer Ordering/Discounts & Coupons/PromoCodes/PromoCodes.technical.md", "r": 28}, {"id": "Restaurant", "label": "Restaurant", "type": "transaction", "module": "customer-ordering", "cycles": ["customer-ordering-restaurant-and-menu-discovery"], "note": "../Customer Ordering/Restaurant & Menu Discovery/Restaurant/Restaurant.technical.md", "r": 28}, {"id": "RestaurantReview", "label": "Restaurant\nReview", "type": "transaction", "module": "customer-ordering", "cycles": ["customer-ordering-restaurant-and-menu-discovery"], "note": "../Customer Ordering/Restaurant & Menu Discovery/RestaurantReview.md", "r": 28}, {"id": "StoreTypes", "label": "Store\nTypes", "type": "transaction", "module": "customer-ordering", "cycles": ["customer-ordering-restaurant-and-menu-discovery"], "note": "../Admin/Catalog & Content Administration/StoreTypes/StoreTypes.technical.md", "r": 28}, {"id": "Vouchers", "label": "Vouchers", "type": "financial", "module": "customer-ordering", "cycles": ["customer-ordering-discounts-and-coupons"], "note": "../Customer Ordering/Discounts & Coupons/Vouchers/Vouchers.technical.md", "r": 28}, {"id": "WalletTransaction", "label": "Wallet\nTransaction", "type": "financial", "module": "customer-ordering", "cycles": ["customer-ordering-payments"], "note": "../Identity & Access/Customer Identity/Customer/WalletTransaction.md", "r": 28}, {"id": "TieredDiscount", "label": "Tiered\nDiscount", "type": "transaction", "module": "customer-ordering", "cycles": ["customer-ordering-tiered-discount"], "note": "../Customer Ordering/Tiered Discount/TieredDiscount/TieredDiscount.technical.md", "r": 28}, {"id": "TieredDiscountTier", "label": "Tiered\nDiscount\nTier", "type": "transaction", "module": "customer-ordering", "cycles": ["customer-ordering-tiered-discount"], "note": "../Customer Ordering/Tiered Discount/TieredDiscountTier.md", "r": 28}, {"id": "OrderComplaint", "label": "Order\nComplaint", "type": "transaction", "module": "customer-ordering", "cycles": ["customer-ordering-order-and-fulfilment"], "note": "../Customer Ordering/Order & Fulfilment/OrderComplaint.md", "r": 28}, {"id": "DeliveryAnnouncement", "label": "Delivery\nAnnouncement", "type": "transaction", "module": "delivery", "cycles": ["delivery-delivery-man-operations"], "note": "../Delivery/Delivery Man Operations/DeliveryAnnouncement/DeliveryAnnouncement.technical.md", "r": 28}, {"id": "DeliveryManNotification", "label": "Delivery\nMan\nNotification", "type": "transaction", "module": "delivery", "cycles": ["delivery-delivery-man-operations"], "note": "../Delivery/Delivery Man Operations/DeliveryManNotification/DeliveryManNotification.technical.md", "r": 28}], "links": [{"source": "TieredDiscount", "target": "TieredDiscountTier", "label": "HAS MANY", "cross": false}, {"source": "CustomerCart", "target": "CartItem", "label": "HAS MANY", "cross": false}, {"source": "CustomerCart", "target": "TieredDiscount", "label": "LOCKS", "cross": true}, {"source": "CartItem", "target": "TieredDiscount", "label": "SELECTS", "cross": true}, {"source": "CustomerCart", "target": "PromoCodes", "label": "CHECKOUT READS", "cross": true}, {"source": "CustomerCart", "target": "Vouchers", "label": "CHECKOUT READS", "cross": true}, {"source": "CustomerCart", "target": "Order", "label": "BECOMES", "cross": true}, {"source": "Order", "target": "OrderRestaurantDetails", "label": "HAS MANY", "cross": false}, {"source": "PromoCodes", "target": "Order", "label": "APPLIED TO", "cross": true}, {"source": "Vouchers", "target": "Order", "label": "APPLIED TO", "cross": true}, {"source": "TieredDiscount", "target": "OrderRestaurantDetails", "label": "APPLIED TO", "cross": true}, {"source": "Restaurant", "target": "MenuItem", "label": "HAS MENU", "cross": false}, {"source": "MenuItem", "target": "CartItem", "label": "SNAPSHOTTED INTO", "cross": true}, {"source": "Restaurant", "target": "CartItem", "label": "SNAPSHOTTED INTO", "cross": true}, {"source": "TieredDiscount", "target": "Restaurant", "label": "OPTIONALLY SCOPES TO", "cross": true}], "integrations": [{"source": "customer-ordering", "target": "restaurant-portal", "label": "new-order notification (SignalR); order confirm/cook (shared Order entity)"}, {"source": "customer-ordering", "target": "admin", "label": "order/review/chat relay (SignalR); compensation/ERP sync (shared Order entity)"}, {"source": "customer-ordering", "target": "delivery", "label": "delivery-man assignment/delivery (shared Order entity)"}, {"source": "identity-and-access", "target": "customer-ordering", "label": "token issuance/validation"}, {"source": "identity-and-access", "target": "restaurant-portal", "label": "token issuance/validation"}, {"source": "identity-and-access", "target": "delivery", "label": "token issuance/validation"}, {"source": "identity-and-access", "target": "admin", "label": "token issuance/validation"}, {"source": "admin", "target": "customer-ordering", "label": "Tiered Discount campaigns (shared DB, no HTTP)"}]};
+const PALETTE = ['#4a90d9','#e8603c','#50c878','#9b59b6','#e0a800','#16a2b8','#d6336c','#6f42c1','#2f8f4e','#c0562a'];
+(DATA.applications||[]).forEach((a,i)=>{ if(!a.color) a.color = PALETTE[i%PALETTE.length]; });
+(DATA.cycles||[]).forEach((c,i)=>{ if(!c.color) c.color = PALETTE[(i+3)%PALETTE.length]; });
+const appColor = Object.fromEntries((DATA.applications||[]).map(a=>[a.id,a.color]));
+const cycleColor = Object.fromEntries((DATA.cycles||[]).map(c=>[c.id,c.color]));
+const TYPE_COLOR = { transaction:'#4a90d9', master:'#e8603c', financial:'#50c878', cross:'#9b59b6' };
+
+let W = window.innerWidth, H = window.innerHeight;
+const svg = d3.select('#graph').attr('width', W).attr('height', H);
+const defs = svg.append('defs');
+[['arrow','#bbb'],['arrow-cross','#e07a2f'],['arrow-int','#9b59b6']].forEach(([id,col])=>{
+  defs.append('marker').attr('id',id).attr('viewBox','0 -4 10 8').attr('refX',10).attr('refY',0)
+    .attr('markerWidth',6).attr('markerHeight',6).attr('orient','auto')
+    .append('path').attr('d','M0,-4L10,0L0,4').attr('fill',col);
+});
+
+const clusterG = svg.append('g');
+const intG     = svg.append('g');
+const memberG  = svg.append('g');
+const linkG    = svg.append('g');
+const labelG   = svg.append('g');
+const nodeG    = svg.append('g');
+
+const nodes = DATA.entities.map(e => ({...e, shared:(e.cycles||[]).length>1}));
+const nodeById = Object.fromEntries(nodes.map(n=>[n.id,n]));
+const links = (DATA.links||[]).map(l => ({...l,
+  cross: l.cross || ((nodeById[l.source]?.cycles?.[0]) !== (nodeById[l.target]?.cycles?.[0]))}));
+const integrations = (DATA.integrations||[]).map(i => ({...i}));
+
+// anchors, recomputed on resize
+let appAnchors = {}, cycleAnchors = {};
+function circleLayout(items){
+  const R = Math.min(W,H)*0.32, cx=W/2, cy=H/2, out={};
+  items.forEach((it,i)=>{ const a=(i/Math.max(items.length,1))*2*Math.PI - Math.PI/2;
+    out[it.id]={x:cx+Math.cos(a)*R, y:cy+Math.sin(a)*R, label:it.label, color:it.color}; });
+  return out;
+}
+function layoutAnchors(){ appAnchors=circleLayout(DATA.applications||[]); cycleAnchors=circleLayout(DATA.cycles||[]); }
+layoutAnchors();
+
+let mode = 'apps';
+function grouping(){ return mode==='apps' ? DATA.applications : DATA.cycles; }
+function anchorsFor(){ return mode==='apps' ? appAnchors : cycleAnchors; }
+
+// memberships depend on mode; rebuilt each setMode
+let memberships = [];
+function rebuildMemberships(){
+  memberships = [];
+  if (mode==='apps') nodes.forEach(n=>{ if(n.module && appAnchors[n.module]) memberships.push({node:n, aid:n.module}); });
+  else if (mode==='cycles') nodes.forEach(n=>(n.cycles||[]).forEach(cid=>{ if(cycleAnchors[cid]) memberships.push({node:n, aid:cid}); }));
+}
+
+const sim = d3.forceSimulation(nodes)
+  .force('link', d3.forceLink(links).id(d=>d.id).distance(d=>d.cross?170:120).strength(0.35))
+  .force('charge', d3.forceManyBody().strength(-450))
+  .force('collide', d3.forceCollide(d=>(d.r||26)+14))
+  .on('tick', tick);
+
+function applyForces(){
+  const anc = anchorsFor();
+  if (mode==='entities'){
+    sim.force('x', d3.forceX(W/2).strength(0.04));
+    sim.force('y', d3.forceY(H/2).strength(0.04));
+    sim.force('center', d3.forceCenter(W/2,H/2));
+  } else {
+    sim.force('center', null);
+    sim.force('x', d3.forceX(d=>{
+      const ids = mode==='apps' ? (d.module?[d.module]:[]) : (d.cycles||[]);
+      const pts = ids.map(id=>anc[id]).filter(Boolean);
+      return pts.length ? d3.mean(pts,p=>p.x) : W/2;
+    }).strength(0.4));
+    sim.force('y', d3.forceY(d=>{
+      const ids = mode==='apps' ? (d.module?[d.module]:[]) : (d.cycles||[]);
+      const pts = ids.map(id=>anc[id]).filter(Boolean);
+      return pts.length ? d3.mean(pts,p=>p.y) : H/2;
+    }).strength(0.4));
+  }
+  sim.alpha(0.9).restart();
+}
+
+let clusterEl, clusterLabelEl, memberEl;
+function drawClusters(){
+  const g = grouping()||[];
+  const anc = anchorsFor();
+  const cr = Math.min(W,H)*0.15;
+  clusterEl = clusterG.selectAll('circle').data(g, d=>d.id).join('circle')
+    .attr('class','cluster').attr('r',cr).attr('fill',d=>d.color).attr('stroke',d=>d.color)
+    .attr('cx',d=>anc[d.id].x).attr('cy',d=>anc[d.id].y);
+  clusterLabelEl = clusterG.selectAll('text').data(g, d=>d.id).join('text')
+    .attr('class','cluster-label').attr('fill',d=>d.color).text(d=>d.label)
+    .attr('x',d=>anc[d.id].x).attr('y',d=>anc[d.id].y - cr - 6);
+  rebuildMemberships();
+  memberEl = memberG.selectAll('line').data(memberships).join('line').attr('class','member');
+}
+
+// integration edges (apps mode only)
+const intEl = intG.selectAll('path').data(integrations).join('path').attr('class','integration');
+const intLabelEl = intG.selectAll('text').data(integrations).join('text')
+  .attr('class','integration-label').text(d=>d.label||'');
+
+const linkEl = linkG.selectAll('path').data(links).join('path').attr('class',d=>d.cross?'link cross':'link');
+const linkLabelEl = labelG.selectAll('text').data(links).join('text').attr('class','link-label').text(d=>d.label||'');
+
+const nodeEl = nodeG.selectAll('g').data(nodes).join('g')
+  .attr('class', d=>d.shared?'node shared':'node')
+  .on('click',(e,d)=>{ if(d.note) window.open(d.note,'_blank'); })
+  .call(d3.drag()
+    .on('start',(e,d)=>{ if(!e.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+    .on('drag',(e,d)=>{ d.fx=e.x; d.fy=e.y; })
+    .on('end',(e,d)=>{ if(!e.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }));
+nodeEl.append('circle').attr('r', d=>d.r||26);
+nodeEl.each(function(d){
+  const lines=String(d.label).split('\n'), g=d3.select(this);
+  if(lines.length===1) g.append('text').text(lines[0]);
+  else { const dy0=-(lines.length-1)*5.5; lines.forEach((ln,i)=>g.append('text').attr('dy',dy0+i*11).text(ln).classed('sub',i>0)); }
+});
+nodeEl.append('title').text(d=>`${d.id}\nmodule: ${d.module||'—'}\ncycles: ${(d.cycles||[]).join(', ')}`);
+
+function colorFor(d){
+  if (mode==='apps') return appColor[d.module]||'#888';
+  if (mode==='cycles') return cycleColor[(d.cycles||[])[0]]||'#888';
+  return TYPE_COLOR[d.type]||'#888';
+}
+function paint(){ nodeEl.select('circle').attr('fill', colorFor); }
+
+function edgePath(sx,sy,tx,ty,bow){
+  const dx=tx-sx, dy=ty-sy, dist=Math.sqrt(dx*dx+dy*dy)||1, ux=dx/dist, uy=dy/dist;
+  const mx=(sx+tx)/2-uy*bow, my=(sy+ty)/2+ux*bow;
+  return `M${sx},${sy} Q${mx},${my} ${tx},${ty}`;
+}
+
+function tick(){
+  if (memberEl) memberEl.attr('x1',m=>m.node.x).attr('y1',m=>m.node.y)
+    .attr('x2',m=>anchorsFor()[m.aid].x).attr('y2',m=>anchorsFor()[m.aid].y);
+  linkEl.attr('d', d=>{
+    const sr=(d.source.r||26)+3, tr=(d.target.r||26)+8;
+    const dx=d.target.x-d.source.x, dy=d.target.y-d.source.y, dist=Math.sqrt(dx*dx+dy*dy)||1, ux=dx/dist, uy=dy/dist;
+    return edgePath(d.source.x+ux*sr, d.source.y+uy*sr, d.target.x-ux*tr, d.target.y-uy*tr, 14);
+  });
+  linkLabelEl.attr('x',d=>(d.source.x+d.target.x)/2).attr('y',d=>(d.source.y+d.target.y)/2);
+  // integration edges between app anchors
+  intEl.attr('d', d=>{
+    const s=appAnchors[d.source], t=appAnchors[d.target]; if(!s||!t) return '';
+    const cr=Math.min(W,H)*0.15+4;
+    const dx=t.x-s.x, dy=t.y-s.y, dist=Math.sqrt(dx*dx+dy*dy)||1, ux=dx/dist, uy=dy/dist;
+    return edgePath(s.x+ux*cr, s.y+uy*cr, t.x-ux*cr, t.y-uy*cr, 40);
+  });
+  intLabelEl.attr('x', d=>{ const s=appAnchors[d.source],t=appAnchors[d.target]; if(!s||!t) return -99; 
+    const dx=t.x-s.x,dy=t.y-s.y,dist=Math.sqrt(dx*dx+dy*dy)||1; return (s.x+t.x)/2 - (dy/dist)*40; })
+   .attr('y', d=>{ const s=appAnchors[d.source],t=appAnchors[d.target]; if(!s||!t) return -99; 
+    const dx=t.x-s.x,dy=t.y-s.y,dist=Math.sqrt(dx*dx+dy*dy)||1; return (s.y+t.y)/2 + (dx/dist)*40; });
+  nodeEl.attr('transform', d=>`translate(${d.x},${d.y})`);
+}
+
+function setMode(m){
+  mode=m;
+  ['apps','cycles','entities'].forEach(x=>d3.select('#btn-'+x).classed('active', x===m));
+  layoutAnchors();
+  drawClusters();
+  const showClusters = m!=='entities';
+  clusterG.style('display', showClusters?null:'none');
+  memberG.style('display', showClusters?null:'none');
+  intG.style('display', m==='apps'?null:'none');
+  renderLegend(); paint(); applyForces();
+}
+d3.select('#btn-apps').on('click',()=>setMode('apps'));
+d3.select('#btn-cycles').on('click',()=>setMode('cycles'));
+d3.select('#btn-entities').on('click',()=>setMode('entities'));
+
+function renderLegend(){
+  const box=d3.select('#legend'); box.html('');
+  if (mode==='apps'){ (DATA.applications||[]).forEach(a=>box.append('div').html(`<span class="leg-dot" style="background:${a.color}"></span> ${a.label}`));
+    box.append('div').html(`<span style="width:22px;height:3px;background:#9b59b6;display:inline-block"></span> integration`); }
+  else if (mode==='cycles'){ (DATA.cycles||[]).forEach(c=>box.append('div').html(`<span class="leg-dot" style="background:${c.color}"></span> ${c.label}`));
+    box.append('div').html(`<span class="leg-dot" style="background:#fff;border:3px solid #888"></span> shared entity`); }
+  else { Object.entries(TYPE_COLOR).forEach(([k,v])=>box.append('div').html(`<span class="leg-dot" style="background:${v}"></span> ${k}`)); }
+  box.append('div').html(`<span style="width:22px;height:2px;background:#e07a2f;display:inline-block"></span> cross-cycle link`);
+}
+
+setMode('apps');
+window.addEventListener('resize', ()=>{ W=window.innerWidth; H=window.innerHeight; svg.attr('width',W).attr('height',H); setMode(mode); });
+</script>
+</body>
+</html>

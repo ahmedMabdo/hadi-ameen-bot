@@ -1,0 +1,555 @@
+# entity	source_path	class	shape	context	feature	evidence
+#
+# THE ENTITY DENOMINATOR. Until this file existed, "how many entities still need notes?" had no
+# answer, so "finished" was a claim rather than a measurement, and it was wrong every time it was
+# made. Every candidate class file in the domain layer is here exactly once.
+#
+# class  — the skill's four documented types (aggregate-root, legacy-poco-root, child, lookup) plus
+#          the classes that legitimately are NOT knowledge-graph entities (projection, join-table,
+#          enum-only, identity-framework, keyless-view, dto, infrastructure).
+# shape  — pair (business + technical note) | single (one note) | covered-by:<canonical note>
+#          | none (excluded classes only).
+# evidence — REQUIRED on every excluded row. An exclusion without a stated reason is how a blind
+#          spot enters a graph that reports itself complete; _depth-ledger.tsv enforces the same rule
+#          on depth claims, for the same reason.
+#
+# verify-notes.js checks this file in four directions: a candidate file with no row FAILS, a row
+# whose file left git FAILS, a row whose note is missing FAILS, and a note claiming an entity with no
+# row FAILS. Expectation therefore comes from code and observation from disk - never both from the
+# same place, which is the error that produced two false "all clear" results in this project.
+AboutApp	Shared/TalabatkLogic/TalabatkModels/AboutApp.cs	lookup	covered-by:Notification-Delivery	Customer Ordering	Marketing & Content	lookup; documented inside the Notification-Delivery note
+AdCard	Shared/TalabatkLogic/TalabatkModels/AdCard.cs	legacy-poco-root	covered-by:Notification-Delivery	Customer Ordering	Marketing & Content	legacy-poco-root; documented inside the Notification-Delivery note
+AdReservation	Shared/TalabatkLogic/TalabatkModels/AdReservation.cs	child	covered-by:Notification-Delivery	Customer Ordering	Marketing & Content	child owned by AdCard; documented inside the Notification-Delivery note
+AdminOrderHistoryStoredProcure	Shared/TalabatkLogic/TalabatkModels/AdminOrderHistoryStoredProcure.cs	keyless-view	none	-	-	registered `.HasNoKey().ToView(null)` in Shared/TalabatkData/Talabatk_Context/TalabatkContext.cs:97-121 — a query shape, not a table
+AdminOrderList	Shared/TalabatkLogic/TalabatkModels/AdminOrderList.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+Ads	Shared/TalabatkLogic/TalabatkModels/Ads.cs	legacy-poco-root	covered-by:Notification-Delivery	Customer Ordering	Marketing & Content	legacy-poco-root; documented inside the Notification-Delivery note
+Announcement	Shared/TalabatkLogic/TalabatkModels/Announcement.cs	legacy-poco-root	covered-by:Notification-Delivery	Customer Ordering	Marketing & Content	legacy-poco-root; documented inside the Notification-Delivery note
+AnnouncementDescription	Shared/TalabatkLogic/TalabatkModels/AnnouncementDescription.cs	child	covered-by:Notification-Delivery	Customer Ordering	Marketing & Content	child owned by Announcement; documented inside the Notification-Delivery note
+ApiKey	Shared/TalabatkLogic/TalabatkModels/ApiKey.cs	child	single	Admin	Admin Back-Office	existing canonical note ApiKey.md
+Application	Shared/TalabatkLogic/TalabatkModels/Application.cs	lookup	covered-by:Identity	Identity & Access	Authentication & Tokens	lookup; documented inside the Identity note
+Area	Shared/TalabatkLogic/TalabatkModels/Area.cs	child	covered-by:Area-and-Country	Admin	City & Geography Administration	child owned by CityRushTimeConfiguration/RushTimeAreaPriority; documented inside the Area-and-Country note
+AreaDecription	Shared/TalabatkLogic/TalabatkModels/AreaDecription.cs	child	covered-by:Area-and-Country	Admin	City & Geography Administration	child owned by Area; documented inside the Area-and-Country note
+AspNetRole	Shared/TalabatkLogic/TalabatkModels/AspNetRole.cs	identity-framework	none	-	-	ASP.NET Identity plumbing subclass — no business invariants (pathA-A-models-batch04-final.md "Checked and clean")
+AspNetRoleClaims	Shared/TalabatkLogic/TalabatkModels/AspNetRoleClaims.cs	identity-framework	none	-	-	ASP.NET Identity plumbing subclass — no business invariants (pathA-A-models-batch04-final.md "Checked and clean")
+AspNetUser	Shared/TalabatkLogic/TalabatkModels/AspNetUser.cs	child	covered-by:Identity	Identity & Access	Restaurant & Admin User Identity	child owned by AspNetUserShift; documented inside the Identity note
+AspNetUserAttendance	Shared/TalabatkLogic/TalabatkModels/AspNetUserAttendance.cs	legacy-poco-root	covered-by:Identity	Identity & Access	Restaurant & Admin User Identity	legacy-poco-root; documented inside the Identity note
+AspNetUserClaim	Shared/TalabatkLogic/TalabatkModels/AspNetUserClaim.cs	identity-framework	none	-	-	ASP.NET Identity plumbing subclass — no business invariants (pathA-A-models-batch04-final.md "Checked and clean")
+AspNetUserLogin	Shared/TalabatkLogic/TalabatkModels/AspNetUserLogin.cs	identity-framework	none	-	-	ASP.NET Identity plumbing subclass — no business invariants (pathA-A-models-batch04-final.md "Checked and clean")
+AspNetUserRestaurant	Shared/TalabatkLogic/TalabatkModels/AspNetUserRestaurant.cs	child	covered-by:Identity	Identity & Access	Restaurant & Admin User Identity	child owned by AspNetUser; documented inside the Identity note
+AspNetUserRole	Shared/TalabatkLogic/TalabatkModels/AspNetUserRole.cs	identity-framework	none	-	-	ASP.NET Identity plumbing subclass — no business invariants (pathA-A-models-batch04-final.md "Checked and clean")
+AspNetUserShift	Shared/TalabatkLogic/TalabatkModels/AspNetUserShift.cs	legacy-poco-root	covered-by:Identity	Identity & Access	Restaurant & Admin User Identity	legacy-poco-root; documented inside the Identity note
+AspNetUserTokens	Shared/TalabatkLogic/TalabatkModels/AspNetUserTokens.cs	identity-framework	none	-	-	ASP.NET Identity plumbing subclass — no business invariants (pathA-A-models-batch04-final.md "Checked and clean")
+Audiance	Shared/TalabatkLogic/TalabatkModels/Audiance.cs	child	single	Customer Ordering	Marketing & Content	existing canonical note Audiance.md
+AudianceFilter	Shared/TalabatkLogic/TalabatkModels/AudianceFilter.cs	child	covered-by:Notification-Delivery	Customer Ordering	Marketing & Content	child owned by Audiance; documented inside the Notification-Delivery note
+AudienceCustomer	Shared/TalabatkLogic/TalabatkModels/AudienceCustomer.cs	child	covered-by:Notification-Delivery	Customer Ordering	Marketing & Content	child owned by Audiance; documented inside the Notification-Delivery note
+AudienceCustomerAds	Shared/TalabatkLogic/TalabatkModels/AudienceCustomerAds.cs	child	covered-by:Notification-Delivery	Customer Ordering	Marketing & Content	child owned by CustomerAds; documented inside the Notification-Delivery note
+Audit	Shared/TalabatkLogic/TalabatkModels/Audit.cs	lookup	covered-by:Configuration	Admin	Admin Back-Office	lookup; documented inside the Configuration note
+AutoAssignRequest	Shared/TalabatkLogic/TalabatkModels/AutoAssignRequest.cs	child	covered-by:Delivery-Assignment-Strategies	Delivery	Delivery Man Operations	child owned by OrderDelivery; documented inside the Delivery-Assignment-Strategies note
+AutoCompensationEvidenceRule	Shared/TalabatkLogic/TalabatkModels/AutoCompensation/AutoCompensationEvidenceRule.cs	legacy-poco-root	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	legacy-poco-root; documented inside the Order-Lifecycle note
+AutoCompensationQuestion	Shared/TalabatkLogic/TalabatkModels/AutoCompensation/AutoCompensationQuestion.cs	child	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	child owned by AutoCompensationReason; documented inside the Order-Lifecycle note
+AutoCompensationQuestionOption	Shared/TalabatkLogic/TalabatkModels/AutoCompensation/AutoCompensationQuestionOption.cs	child	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	child owned by AutoCompensationQuestion; documented inside the Order-Lifecycle note
+AutoCompensationReason	Shared/TalabatkLogic/TalabatkModels/AutoCompensation/AutoCompensationReason.cs	legacy-poco-root	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	legacy-poco-root; documented inside the Order-Lifecycle note
+AutoCompensationRulesAuditLog	Shared/TalabatkLogic/TalabatkModels/AutoCompensation/AutoCompensationRulesAuditLog.cs	legacy-poco-root	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	legacy-poco-root; documented inside the Order-Lifecycle note
+AutoCompensationSettings	Shared/TalabatkLogic/TalabatkModels/AutoCompensation/AutoCompensationSettings.cs	legacy-poco-root	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	legacy-poco-root; documented inside the Order-Lifecycle note
+AvalibleAds	Shared/TalabatkLogic/TalabatkModels/AvalibleAds.cs	keyless-view	none	-	-	registered `.HasNoKey().ToView(null)` in Shared/TalabatkData/Talabatk_Context/TalabatkContext.cs:97-121 — a query shape, not a table
+AvilableDeliveryMan	Shared/TalabatkLogic/TalabatkModels/AvilableDeliveryMan.cs	lookup	covered-by:Delivery-Assignment-Strategies	Delivery	Delivery Man Operations	lookup; documented inside the Delivery-Assignment-Strategies note
+BitirixLeadStatus	Shared/TalabatkLogic/TalabatkModels/BitirixLeadStatus.cs	legacy-poco-root	covered-by:Configuration	Admin	ERP & Integrations	legacy-poco-root; documented inside the Configuration note
+BlockedUsersFromCOD	Shared/TalabatkLogic/TalabatkModels/BlockedUsersFromCOD.cs	legacy-poco-root	single	Customer Ordering	Cart & Checkout	existing canonical note BlockedUsersFromCOD.md
+BotPerformanceReportRow	Shared/TalabatkLogic/TalabatkModels/BotPerformanceReportRow.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+Brand	Shared/TalabatkLogic/TalabatkModels/Brand.cs	legacy-poco-root	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	legacy-poco-root; documented inside the Discovery-Utilities note
+BrandDescription	Shared/TalabatkLogic/TalabatkModels/BrandDescription.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by Brand; documented inside the Discovery-Utilities note
+CSTAppItemsCount	Shared/TalabatkLogic/TalabatkModels/CSTAppItemsCount.cs	keyless-view	none	-	-	registered `.HasNoKey().ToView(null)` in Shared/TalabatkData/Talabatk_Context/TalabatkContext.cs:97-121 — a query shape, not a table
+CartItem	Shared/TalabatkLogic/TalabatkModels/CartItem.cs	child	single	Customer Ordering	Cart & Checkout	existing canonical note CartItem.md
+CartItemOptions	Shared/TalabatkLogic/TalabatkModels/CartItemOptions.cs	child	covered-by:CartItem	Customer Ordering	Cart & Checkout	child owned by CartItem/OrderDetailsOptions; documented inside the CartItem note
+CategoriesCountsResult	Shared/TalabatkLogic/TalabatkModels/CategoriesCountsResult.cs.cs	keyless-view	none	-	-	registered `.HasNoKey().ToView(null)` in Shared/TalabatkData/Talabatk_Context/TalabatkContext.cs:97-121 — a query shape, not a table
+ChatMessage	Shared/TalabatkLogic/TalabatkModels/ChatMessage.cs	child	covered-by:Support-and-Chat	Customer Ordering	Support & Chat	child owned by OrderChat; documented inside the Support-and-Chat note
+ChatReportRow	Shared/TalabatkLogic/TalabatkModels/ChatReportRow.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+ChatSetting	Shared/TalabatkLogic/TalabatkModels/ChatSetting.cs	legacy-poco-root	covered-by:Support-and-Chat	Customer Ordering	Support & Chat	legacy-poco-root; documented inside the Support-and-Chat note
+City	Shared/TalabatkLogic/TalabatkModels/City.cs	legacy-poco-root	pair	Admin	City & Geography Administration	existing canonical pair City.business.md + City.technical.md
+CityBreakConfiguration	Shared/TalabatkLogic/TalabatkModels/CityBreakConfiguration.cs	legacy-poco-root	single	Admin	City & Geography Administration	existing canonical note CityBreakConfiguration.md
+CityDailyPickupTagCounter	Shared/TalabatkLogic/TalabatkModels/CityDailyPickupTagCounter.cs	legacy-poco-root	covered-by:Area-and-Country	Admin	City & Geography Administration	legacy-poco-root; documented inside the Area-and-Country note
+CityDescription	Shared/TalabatkLogic/TalabatkModels/CityDescription.cs	child	covered-by:Area-and-Country	Admin	City & Geography Administration	child owned by City; documented inside the Area-and-Country note
+CityRushTimeConfigHistory	Shared/TalabatkLogic/TalabatkModels/CityRushTimeConfigHistory.cs	child	covered-by:Area-and-Country	Admin	City & Geography Administration	child owned by CityRushTimeConfiguration; documented inside the Area-and-Country note
+CityRushTimeConfiguration	Shared/TalabatkLogic/TalabatkModels/CityRushTimeConfiguration.cs	legacy-poco-root	pair	Admin	City & Geography Administration	existing canonical pair CityRushTimeConfiguration.business.md + CityRushTimeConfiguration.technical.md
+CitySuggestions	Shared/TalabatkLogic/TalabatkModels/CitySuggestions.cs	legacy-poco-root	covered-by:Area-and-Country	Admin	City & Geography Administration	legacy-poco-root; documented inside the Area-and-Country note
+Compensation	Shared/TalabatkLogic/TalabatkModels/Compensation.cs	child	single	Delivery	Driver Cash & Compensation	existing canonical note Compensation.md
+ComplaintsAndSuggestions	Shared/TalabatkLogic/TalabatkModels/ComplaintsAndSuggestions.cs	legacy-poco-root	covered-by:Support-and-Chat	Customer Ordering	Support & Chat	legacy-poco-root; documented inside the Support-and-Chat note
+Configuration	Shared/TalabatkLogic/TalabatkModels/Configuration.cs	legacy-poco-root	pair	Admin	Admin Back-Office	existing canonical pair Configuration.business.md + Configuration.technical.md
+CookingTimeCategory	Shared/TalabatkLogic/TalabatkModels/CookingTimeCategory.cs	legacy-poco-root	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	legacy-poco-root; documented inside the Discovery-Utilities note
+Country	Shared/TalabatkLogic/TalabatkModels/Country.cs	legacy-poco-root	covered-by:Area-and-Country	Admin	City & Geography Administration	legacy-poco-root; documented inside the Area-and-Country note
+Customer	Shared/TalabatkLogic/TalabatkModels/Customer.cs	legacy-poco-root	pair	Identity & Access	Customer Identity	hub entity: 14 inbound references, event-raising; existing canonical pair Customer.business.md + Customer.technical.md
+CustomerActionsHistory	Shared/TalabatkLogic/TalabatkModels/CustomerActionsHistory.cs	child	covered-by:Customer	Identity & Access	Customer Identity	child owned by Customer; documented inside the Customer note
+CustomerAddresses	Shared/TalabatkLogic/TalabatkModels/CustomerAddresses.cs	child	single	Identity & Access	Customer Identity	existing canonical note CustomerAddresses.md
+CustomerAdminChat	Shared/TalabatkLogic/TalabatkModels/CustomerAdminChat.cs	legacy-poco-root	covered-by:Support-and-Chat	Customer Ordering	Support & Chat	legacy-poco-root; documented inside the Support-and-Chat note
+CustomerAdminChatMessage	Shared/TalabatkLogic/TalabatkModels/CustomerAdminChatMessage.cs	child	covered-by:Support-and-Chat	Customer Ordering	Support & Chat	child owned by CustomerAdminChat; documented inside the Support-and-Chat note
+CustomerAds	Shared/TalabatkLogic/TalabatkModels/CustomerAds.cs	legacy-poco-root	covered-by:Customer	Identity & Access	Customer Identity	legacy-poco-root; documented inside the Customer note
+CustomerCard	Shared/TalabatkLogic/TalabatkModels/CustomerCard.cs	child	covered-by:Customer	Identity & Access	Customer Identity	child owned by Customer; documented inside the Customer note
+CustomerCart	Shared/TalabatkLogic/TalabatkModels/CustomerCart.cs	legacy-poco-root	pair	Customer Ordering	Cart & Checkout	cart root, event-raising; existing canonical pair under Cart & Checkout
+CustomerDeliveryChat	Shared/TalabatkLogic/TalabatkModels/CustomerDeliveryChat.cs	legacy-poco-root	covered-by:Support-and-Chat	Customer Ordering	Support & Chat	legacy-poco-root; documented inside the Support-and-Chat note
+CustomerDeliveryChatMessage	Shared/TalabatkLogic/TalabatkModels/CustomerDeliveryChatMessage.cs	child	covered-by:Support-and-Chat	Customer Ordering	Support & Chat	child owned by CustomerDeliveryChat; documented inside the Support-and-Chat note
+CustomerDeliveryInstruction	Shared/TalabatkLogic/TalabatkModels/CustomerDeliveryInstruction.cs	child	covered-by:Customer	Identity & Access	Customer Identity	child owned by Customer; documented inside the Customer note
+CustomerInfoStoredProcure	Shared/TalabatkLogic/TalabatkModels/CustomerInfoStoredProcure.cs	keyless-view	none	-	-	registered `.HasNoKey().ToView(null)` in Shared/TalabatkData/Talabatk_Context/TalabatkContext.cs:97-121 — a query shape, not a table
+CustomerItemNotificationRequest	Shared/TalabatkLogic/TalabatkModels/CustomerItemNotificationRequest.cs	legacy-poco-root	covered-by:Customer	Identity & Access	Customer Identity	legacy-poco-root; documented inside the Customer note
+CustomerItemOrderStats	Shared/TalabatkLogic/TalabatkModels/CustomerItemOrderStats.cs	child	covered-by:Customer	Identity & Access	Customer Identity	child owned by MenuItem; documented inside the Customer note
+CustomerNotification	Shared/TalabatkLogic/TalabatkModels/CustomerNotification.cs	child	covered-by:Customer	Identity & Access	Customer Identity	child owned by Customer; documented inside the Customer note
+CustomerNotificationCustomersData	Shared/TalabatkLogic/TalabatkModels/CustomerNotificationCustomersData.cs	child	covered-by:Customer	Identity & Access	Customer Identity	child owned by CustomerNotificationNewVersion; documented inside the Customer note
+CustomerNotificationNewVersion	Shared/TalabatkLogic/TalabatkModels/CustomerNotificationNewVersion.cs	legacy-poco-root	covered-by:Customer	Identity & Access	Customer Identity	legacy-poco-root; documented inside the Customer note
+CustomerOrderWithReview	Shared/TalabatkLogic/TalabatkModels/CustomerOrderWithReview.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+CustomerSavedTipsConfiguration	Shared/TalabatkLogic/TalabatkModels/CustomerSavedTipsConfiguration.cs	legacy-poco-root	covered-by:Customer	Identity & Access	Customer Identity	legacy-poco-root; documented inside the Customer note
+CustomerMultiSearchKeyword	Shared/TalabatkLogic/TalabatkModels/CustomerSearchKeyword.cs	legacy-poco-root	covered-by:Customer	Identity & Access	Customer Identity	legacy-poco-root; documented inside the Customer note
+CustomerTag	Shared/TalabatkLogic/TalabatkModels/CustomerTag.cs	child	covered-by:Customer	Identity & Access	Customer Identity	child owned by Customer; documented inside the Customer note
+CustomerTipsConfig	Shared/TalabatkLogic/TalabatkModels/CustomerTipsConfig.cs	legacy-poco-root	covered-by:Customer	Identity & Access	Customer Identity	legacy-poco-root; documented inside the Customer note
+CustomerWalletHistory	Shared/TalabatkLogic/TalabatkModels/CustomerWalletHistory.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+DeletedOrderDetailsItemsHistory	Shared/TalabatkLogic/TalabatkModels/DeletedOrderDetailsItemsHistory.cs	child	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	child owned by Order; documented inside the Order-Lifecycle note
+DeliveryAsset	Shared/TalabatkLogic/TalabatkModels/DeliveryAsset.cs	legacy-poco-root	covered-by:Delivery-Requests-and-Suppliers	Delivery	Delivery Man Operations	legacy-poco-root; documented inside the Delivery-Requests-and-Suppliers note
+DeliveryAssetDeliveryMan	Shared/TalabatkLogic/TalabatkModels/DeliveryAssetDeliveryMan.cs	child	covered-by:Delivery-Requests-and-Suppliers	Delivery	Delivery Man Operations	child owned by DeliveryAsset; documented inside the Delivery-Requests-and-Suppliers note
+DeliveryBouns	Shared/TalabatkLogic/TalabatkModels/DeliveryBouns.cs	legacy-poco-root	pair	Delivery	Driver Cash & Compensation	existing canonical pair DeliveryBouns.business.md + DeliveryBouns.technical.md
+DeliveryBounsTier	Shared/TalabatkLogic/TalabatkModels/DeliveryBounsTier.cs	child	covered-by:Driver-Cash-Cycle	Delivery	Driver Cash & Compensation	child owned by DeliveryBouns; documented inside the Driver-Cash-Cycle note
+DeliveryBoxUnitSize	Shared/TalabatkLogic/TalabatkModels/DeliveryBoxUnitSize.cs	legacy-poco-root	covered-by:Delivery-Requests-and-Suppliers	Delivery	Delivery Man Operations	legacy-poco-root; documented inside the Delivery-Requests-and-Suppliers note
+DeliveryComment	Shared/TalabatkLogic/TalabatkModels/DeliveryComment.cs	child	covered-by:Delivery-Requests-and-Suppliers	Delivery	Delivery Man Operations	child owned by Order; documented inside the Delivery-Requests-and-Suppliers note
+DeliveryInstruction	Shared/TalabatkLogic/TalabatkModels/DeliveryInstruction.cs	legacy-poco-root	covered-by:Delivery-Requests-and-Suppliers	Delivery	Delivery Man Operations	legacy-poco-root; documented inside the Delivery-Requests-and-Suppliers note
+DeliveryInstructionDescription	Shared/TalabatkLogic/TalabatkModels/DeliveryInstructionDescription.cs	child	covered-by:Delivery-Requests-and-Suppliers	Delivery	Delivery Man Operations	child owned by DeliveryInstruction; documented inside the Delivery-Requests-and-Suppliers note
+DeliveryInterval	Shared/TalabatkLogic/TalabatkModels/DeliveryInterval.cs	legacy-poco-root	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	legacy-poco-root; documented inside the Order-Lifecycle note
+DeliveryInterval_Area	Shared/TalabatkLogic/TalabatkModels/DeliveryInterval_Area.cs	child	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	child owned by Area/DeliveryInterval; documented inside the Order-Lifecycle note
+DeliveryIntervalsDescription	Shared/TalabatkLogic/TalabatkModels/DeliveryIntervalsDescription.cs	child	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	child owned by DeliveryInterval; documented inside the Order-Lifecycle note
+DeliveryManAdminChat	Shared/TalabatkLogic/TalabatkModels/DeliveryManAdminChat.cs	legacy-poco-root	covered-by:Driver-Operations	Delivery	Delivery Man Operations	legacy-poco-root; documented inside the Driver-Operations note
+DeliveryManAdminChatMessage	Shared/TalabatkLogic/TalabatkModels/DeliveryManAdminChatMessage.cs	child	covered-by:Driver-Operations	Delivery	Delivery Man Operations	child owned by DeliveryManAdminChat; documented inside the Driver-Operations note
+DeliveryManDaily	Shared/TalabatkLogic/TalabatkModels/DeliveryManDaily.cs	legacy-poco-root	covered-by:Driver-Operations	Delivery	Delivery Man Operations	legacy-poco-root; documented inside the Driver-Operations note
+DeliveryManLastLocationView	Shared/TalabatkLogic/TalabatkModels/DeliveryManLastLocationView.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+DeliveryManLowRateReasons	Shared/TalabatkLogic/TalabatkModels/DeliveryManLowRateReasons.cs	child	covered-by:Driver-Operations	Delivery	Delivery Man Operations	child owned by DeliveryManReview; documented inside the Driver-Operations note
+DeliveryManOfflineLog	Shared/TalabatkLogic/TalabatkModels/DeliveryManOfflineLog.cs	legacy-poco-root	covered-by:Driver-Operations	Delivery	Delivery Man Operations	legacy-poco-root; documented inside the Driver-Operations note
+DeliveryManOrderStoredProcure	Shared/TalabatkLogic/TalabatkModels/DeliveryManOrderStoredProcure.cs	keyless-view	none	-	-	registered `.HasNoKey().ToView(null)` in Shared/TalabatkData/Talabatk_Context/TalabatkContext.cs:97-121 — a query shape, not a table
+DeliveryManOrders	Shared/TalabatkLogic/TalabatkModels/DeliveryManOrders.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+DeliveryManPayments	Shared/TalabatkLogic/TalabatkModels/DeliveryManPayments.cs	legacy-poco-root	covered-by:Driver-Operations	Delivery	Delivery Man Operations	legacy-poco-root; documented inside the Driver-Operations note
+DeliveryManPrice	Shared/TalabatkLogic/TalabatkModels/DeliveryManPrice.cs	child	covered-by:Driver-Operations	Delivery	Delivery Man Operations	child owned by City; documented inside the Driver-Operations note
+DeliveryManPriceData	Shared/TalabatkLogic/TalabatkModels/DeliveryManPriceData.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+DeliveryManReview	Shared/TalabatkLogic/TalabatkModels/DeliveryManReview.cs	child	covered-by:Driver-Operations	Delivery	Delivery Man Operations	child owned by DeliveryMen; documented inside the Driver-Operations note
+DeliveryManReviewMap	Shared/TalabatkLogic/TalabatkModels/DeliveryManReviewMap.cs	infrastructure	none	-	-	not an entity: it is an EF `IEntityTypeConfiguration<DeliveryManReview>` (`DeliveryManReviewMap.cs:12`, `Configure` at `:14`) misfiled in the domain-models folder instead of Shared/TalabatkData/Mapping. It was classified as a lookup because a folder-based entity scan cannot tell the difference; the interface it implements can. Confirmed the only such case — one grep for IEntityTypeConfiguration under Shared/TalabatkLogic returns this file and nothing else
+DeliverymanShiftLog	Shared/TalabatkLogic/TalabatkModels/DeliveryManShiftLog.cs	child	covered-by:Driver-Operations	Delivery	Delivery Man Operations	child owned by DeliveryMen; documented inside the Driver-Operations note
+DeliveryManStates	Shared/TalabatkLogic/TalabatkModels/DeliveryManStates.cs	lookup	covered-by:Driver-Operations	Delivery	Delivery Man Operations	lookup; documented inside the Driver-Operations note
+DeliveryManWorkingHours	Shared/TalabatkLogic/TalabatkModels/DeliveryManWorkingHours.cs	legacy-poco-root	covered-by:Driver-Operations	Delivery	Delivery Man Operations	legacy-poco-root; documented inside the Driver-Operations note
+DeliveryMen	Shared/TalabatkLogic/TalabatkModels/DeliveryMen.cs	child	pair	Delivery	Delivery Man Operations	existing canonical pair DeliveryMen.business.md + DeliveryMen.technical.md
+DeliveryMenAttendance	Shared/TalabatkLogic/TalabatkModels/DeliveryMenAttendance.cs	legacy-poco-root	covered-by:Driver-Operations	Delivery	Delivery Man Operations	legacy-poco-root; documented inside the Driver-Operations note
+DeliveryMenLocations	Shared/TalabatkLogic/TalabatkModels/DeliveryMenLocations.cs	legacy-poco-root	covered-by:Driver-Operations	Delivery	Delivery Man Operations	legacy-poco-root; documented inside the Driver-Operations note
+DeliveryMenMoneyRequest	Shared/TalabatkLogic/TalabatkModels/DeliveryMenMoneyRequest.cs	legacy-poco-root	covered-by:Driver-Operations	Delivery	Delivery Man Operations	legacy-poco-root; documented inside the Driver-Operations note
+DeliveryMenReport	Shared/TalabatkLogic/TalabatkModels/DeliveryMenReport.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+DeliveryMenShifts	Shared/TalabatkLogic/TalabatkModels/DeliveryMenShifts.cs	legacy-poco-root	covered-by:Driver-Operations	Delivery	Delivery Man Operations	legacy-poco-root; documented inside the Driver-Operations note
+DeliveryMenTotalReport	Shared/TalabatkLogic/TalabatkModels/DeliveryMenTotalReport.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+DeliveryOrderRestaurant	Shared/TalabatkLogic/TalabatkModels/DeliveryOrderRestaurant.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+DeliveryReason	Shared/TalabatkLogic/TalabatkModels/DeliveryReason.cs	legacy-poco-root	covered-by:Delivery-Requests-and-Suppliers	Delivery	Delivery Man Operations	legacy-poco-root; documented inside the Delivery-Requests-and-Suppliers note
+DeliveryRoundOrderList	Shared/TalabatkLogic/TalabatkModels/DeliveryRoundOrderList.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+DeliverySupplier	Shared/TalabatkLogic/TalabatkModels/DeliverySupplier.cs	child	covered-by:Delivery-Requests-and-Suppliers	Delivery	Delivery Man Operations	child owned by City; documented inside the Delivery-Requests-and-Suppliers note
+DeliverySuppliersCities	Shared/TalabatkLogic/TalabatkModels/DeliverySuppliersCities.cs	child	covered-by:Delivery-Requests-and-Suppliers	Delivery	Delivery Man Operations	child owned by City/DeliverySupplier; documented inside the Delivery-Requests-and-Suppliers note
+DeliveryZone	Shared/TalabatkLogic/TalabatkModels/DeliveryZone.cs	child	single	Delivery	Delivery Man Operations	existing canonical note DeliveryZone.md
+DeliveryZoneArea	Shared/TalabatkLogic/TalabatkModels/DeliveryZoneArea.cs	child	covered-by:Delivery-Requests-and-Suppliers	Delivery	Delivery Man Operations	child owned by DeliveryZone; documented inside the Delivery-Requests-and-Suppliers note
+DeliverymanBreakLog	Shared/TalabatkLogic/TalabatkModels/DeliverymanBreakLog.cs	child	covered-by:Driver-Operations	Delivery	Delivery Man Operations	child owned by DeliveryMen; documented inside the Driver-Operations note
+DeliverymanTransaction	Shared/TalabatkLogic/TalabatkModels/DeliverymanTransaction.cs	child	pair	Delivery	Delivery Man Operations	existing canonical pair DeliverymanTransaction.business.md + DeliverymanTransaction.technical.md
+DeliverymanZone	Shared/TalabatkLogic/TalabatkModels/DeliverymanZone.cs	child	covered-by:Driver-Operations	Delivery	Delivery Man Operations	child owned by DeliveryMen/DeliveryZone; documented inside the Driver-Operations note
+DriverDismissalLog	Shared/TalabatkLogic/TalabatkModels/DriverDismissalLog.cs	child	covered-by:Driver-Operations	Delivery	Delivery Man Operations	child owned by DeliveryMen; documented inside the Driver-Operations note
+DriverPerformanceReportDto	Shared/TalabatkLogic/TalabatkModels/DriverPerformanceReportDto.cs	keyless-view	none	-	-	registered `.HasNoKey().ToView(null)` in Shared/TalabatkData/Talabatk_Context/TalabatkContext.cs:97-121 — a query shape, not a table
+EntityBase	Shared/TalabatkLogic/TalabatkModels/EntityBase.cs	infrastructure	none	-	-	base/abstract type, not a persisted entity (pathA-A-models-batch04-final.md: EntityBase has zero derived types in the live project)
+EntityChangeHistory	Shared/TalabatkLogic/TalabatkModels/EntityChangeHistory.cs	legacy-poco-root	covered-by:Configuration	Admin	Admin Back-Office	legacy-poco-root; documented inside the Configuration note
+ErpJournalLog	Shared/TalabatkLogic/TalabatkModels/ErpJournalLog.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+ErpOrderStatuses	Shared/TalabatkLogic/Constants/ErpOrderStatuses.cs	infrastructure	none	-	-	not an entity: a static class exposing one `int[]` of order-status ids that the ERP sales-order sync treats as "expected" (`ErpOrderStatuses.cs:7-14`); no state and no invariants
+ErpRushOrderLog	Shared/TalabatkLogic/TalabatkModels/ErpRushOrderLog.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+ExclusiveOfferItem	Shared/TalabatkLogic/TalabatkModels/ExclusiveOfferItem.cs	legacy-poco-root	covered-by:Discount-Resolution	Customer Ordering	Discounts & Coupons	legacy-poco-root; documented inside the Discount-Resolution note
+ExcutionHistory	Shared/TalabatkLogic/TalabatkModels/ExcutionHistory.cs	child	covered-by:Configuration	Admin	Admin Back-Office	child owned by JournalSubuscriptions; documented inside the Configuration note
+ExternalCustomer	Shared/TalabatkLogic/TalabatkModels/ExternalCustomer.cs	legacy-poco-root	covered-by:Order.ExternalDelivery	Customer Ordering	Order & Fulfilment	legacy-poco-root; documented inside the Order.ExternalDelivery note
+ExternalCustomerAdress	Shared/TalabatkLogic/TalabatkModels/ExternalCustomerAdress.cs	child	covered-by:Order.ExternalDelivery	Customer Ordering	Order & Fulfilment	child owned by ExternalCustomer; documented inside the Order.ExternalDelivery note
+ExternalDeliveryRequests	Shared/TalabatkLogic/TalabatkModels/ExternalDeliveryRequests.cs	legacy-poco-root	covered-by:Order.ExternalDelivery	Customer Ordering	Order & Fulfilment	legacy-poco-root; documented inside the Order.ExternalDelivery note
+FAQItem	Shared/TalabatkLogic/TalabatkModels/FAQItem.cs	legacy-poco-root	covered-by:Notification-Delivery	Customer Ordering	Marketing & Content	legacy-poco-root; documented inside the Notification-Delivery note
+Favourites	Shared/TalabatkLogic/TalabatkModels/Favourites.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by Customer; documented inside the Discovery-Utilities note
+FawryCashCollectionTransaction	Shared/TalabatkLogic/TalabatkModels/FawryCashCollectionTransaction.cs	legacy-poco-root	covered-by:Money-Path	Customer Ordering	Payments	legacy-poco-root; documented inside the Money-Path note
+FawryTransaction	Shared/TalabatkLogic/TalabatkModels/FawryTransaction.cs	legacy-poco-root	covered-by:Money-Path	Customer Ordering	Payments	legacy-poco-root; documented inside the Money-Path note
+FoodType	Shared/TalabatkLogic/TalabatkModels/FoodType.cs	legacy-poco-root	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	legacy-poco-root; documented inside the Discovery-Utilities note
+FoodTypesDescription	Shared/TalabatkLogic/TalabatkModels/FoodTypesDescription.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by FoodType; documented inside the Discovery-Utilities note
+HomeSearchDefaultRestaurantRow	Shared/TalabatkLogic/TalabatkModels/HomeSearchDefaultRestaurantRow.cs	keyless-view	none	-	-	registered `.HasNoKey().ToView(null)` in Shared/TalabatkData/Talabatk_Context/TalabatkContext.cs:97-121 — a query shape, not a table
+ImageBank	Shared/TalabatkLogic/TalabatkModels/ImageBank.cs	legacy-poco-root	covered-by:Mart-and-Reference-Entities	Admin	Catalog & Content Administration	legacy-poco-root; documented inside the Mart-and-Reference-Entities note
+ItemDescription	Shared/TalabatkLogic/TalabatkModels/ItemDescription.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by MenuItem; documented inside the Discovery-Utilities note
+ItemReplacementItemSpRow	Shared/TalabatkLogic/TalabatkModels/ItemReplacementItemSpRow.cs	projection	none	-	-	stored-procedure result shape — its own summary says "one replaced item as sp_GetItemReplacementItems returns it" (`ItemReplacementItemSpRow.cs:5-8`); public setters, no invariants
+ItemReplacementReport	Shared/TalabatkLogic/TalabatkModels/ItemReplacementReport.cs	legacy-poco-root	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	legacy-poco-root; documented inside the Order-Lifecycle note
+ItemReplacementReportSpRow	Shared/TalabatkLogic/TalabatkModels/ItemReplacementReportSpRow.cs	keyless-view	none	-	-	registered `.HasNoKey().ToView(null)` in Shared/TalabatkData/Talabatk_Context/TalabatkContext.cs:97-121 — a query shape, not a table
+ItemReplacementResultStatusSpRow	Shared/TalabatkLogic/TalabatkModels/ItemReplacementResultStatusSpRow.cs	keyless-view	none	-	-	registered `.HasNoKey().ToView(null)` in Shared/TalabatkData/Talabatk_Context/TalabatkContext.cs:97-121 — a query shape, not a table
+ItemReplacementTopItemSpRow	Shared/TalabatkLogic/TalabatkModels/ItemReplacementTopItemSpRow.cs	keyless-view	none	-	-	registered `.HasNoKey().ToView(null)` in Shared/TalabatkData/Talabatk_Context/TalabatkContext.cs:97-121 — a query shape, not a table
+ItemsByCategory	Shared/TalabatkLogic/TalabatkModels/ItemsByCategory.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+JournalSubuscriptions	Shared/TalabatkLogic/TalabatkModels/JournalSubuscriptions.cs	legacy-poco-root	covered-by:Driver-Cash-Cycle	Delivery	Driver Cash & Compensation	legacy-poco-root; documented inside the Driver-Cash-Cycle note
+LanGuage	Shared/TalabatkLogic/TalabatkModels/LanGuage.cs	lookup	covered-by:Configuration	Admin	Admin Back-Office	lookup; documented inside the Configuration note
+LastTaskUserView	Shared/TalabatkLogic/TalabatkModels/LastTaskUserView.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+LoyaltyConfigAuditLog	Shared/TalabatkLogic/TalabatkModels/LoyaltyConfigAuditLog.cs	legacy-poco-root	covered-by:Discount-Resolution	Customer Ordering	Discounts & Coupons	legacy-poco-root; documented inside the Discount-Resolution note
+LoyaltyPoints	Shared/TalabatkLogic/TalabatkModels/LoyaltyPoints.cs	child	single	Customer Ordering	Discounts & Coupons	existing canonical note LoyaltyPoints.md
+LoyaltyPointsSrc	Shared/TalabatkLogic/TalabatkModels/LoyaltyPointsSrc.cs	child	covered-by:Discount-Resolution	Customer Ordering	Discounts & Coupons	child owned by LoyaltyPoints; documented inside the Discount-Resolution note
+MainCategory	Shared/TalabatkLogic/TalabatkModels/MainCategory.cs	lookup	covered-by:MenuStructure	Customer Ordering	Restaurant & Menu Discovery	lookup; documented inside the MenuStructure note
+MartBrandOffers	Shared/TalabatkLogic/TalabatkModels/MartBrandOffers.cs	keyless-view	none	-	-	registered `.HasNoKey().ToView(null)` in Shared/TalabatkData/Talabatk_Context/TalabatkContext.cs:97-121 — a query shape, not a table
+MartMainCategory	Shared/TalabatkLogic/TalabatkModels/MartMainCategory.cs	legacy-poco-root	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	legacy-poco-root; documented inside the Discovery-Utilities note
+MartMainCategoryDto	Shared/TalabatkLogic/TalabatkModels/MartMainCategoryDto.cs	keyless-view	none	-	-	registered `.HasNoKey().ToView(null)` in Shared/TalabatkData/Talabatk_Context/TalabatkContext.cs:97-121 — a query shape, not a table
+MartProductCategoryDto	Shared/TalabatkLogic/TalabatkModels/MartProductCategoryDto.cs	keyless-view	none	-	-	registered `.HasNoKey().ToView(null)` in Shared/TalabatkData/Talabatk_Context/TalabatkContext.cs:97-121 — a query shape, not a table
+MartSubCategoryDto	Shared/TalabatkLogic/TalabatkModels/MartSubCategoryDto.cs	keyless-view	none	-	-	registered `.HasNoKey().ToView(null)` in Shared/TalabatkData/Talabatk_Context/TalabatkContext.cs:97-121 — a query shape, not a table
+MenuCategory	Shared/TalabatkLogic/TalabatkModels/MenuCategory.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by MainCategory/Restaurant; documented inside the Discovery-Utilities note
+MenuCategoryDescription	Shared/TalabatkLogic/TalabatkModels/MenuCategoryDescription.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by MenuCategory; documented inside the Discovery-Utilities note
+MenuItem	Shared/TalabatkLogic/TalabatkModels/MenuItem.cs	child	pair	Customer Ordering	Restaurant & Menu Discovery	existing canonical pair MenuItem.business.md + MenuItem.technical.md
+MenuItemActivationActorType	Shared/TalabatkLogic/Enum/MenuItemActivationActorType.cs	enum-only	none	-	-	file declares 1 enum(s) and no class; enum values are documented with the entity that uses them
+MenuItemActivationChangedEvent	Shared/TalabatkLogic/DomainEvents/MenuItemEvents/MenuItemActivationChangedEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate — a `PreEvent` raised by `MenuItem` when `Active` actually changes (`MenuItemActivationChangedEvent.cs:21`)
+MenuItemActivationHistory	Shared/TalabatkLogic/TalabatkModels/MenuItemActivationHistory.cs	child	covered-by:MenuItem	Customer Ordering	Restaurant & Menu Discovery	child owned by MenuItem (FK `MenuItemId`, `MenuItemActivationHistory.cs:26`; mapped by `Shared/TalabatkData/Mapping/MenuItemActivationHistoryMap.cs`); append-only activation audit row, private ctor and private setters; documented inside the MenuItem note
+MenuItemActivationSource	Shared/TalabatkLogic/Enum/MenuItemActivationSource.cs	enum-only	none	-	-	file declares 1 enum(s) and no class; enum values are documented with the entity that uses them
+MenuItemImage	Shared/TalabatkLogic/TalabatkModels/MenuItemImage.cs	child	covered-by:MenuItem	Customer Ordering	Restaurant & Menu Discovery	child owned by MenuItem (FK `MenuItemId`, `MenuItemImage.cs:26`; mapped by `Shared/TalabatkData/Mapping/MenuItemImageMap.cs`); gallery row joining the existing ImageBank; documented inside the MenuItem note
+MenuItemOptionCategoryDescription	Shared/TalabatkLogic/TalabatkModels/MenuItemOptionCategoryDescription.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by MenuItemOptionsCategories/MenuItemPrice; documented inside the Discovery-Utilities note
+MenuItemOptionGroup	Shared/TalabatkLogic/TalabatkModels/MenuItemOptionGroup.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by MenuItemPrice/Restaurant; documented inside the Discovery-Utilities note
+MenuItemOptionGroupDescription	Shared/TalabatkLogic/TalabatkModels/MenuItemOptionGroupDescription.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by MenuItemOptionGroup; documented inside the Discovery-Utilities note
+MenuItemOptionGroupItem	Shared/TalabatkLogic/TalabatkModels/MenuItemOptionGroupItem.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by MenuItemOptionGroup; documented inside the Discovery-Utilities note
+MenuItemOptionGroupItemDescription	Shared/TalabatkLogic/TalabatkModels/MenuItemOptionGroupItemDescription.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by MenuItemOptionGroupItem; documented inside the Discovery-Utilities note
+MenuItemOptions	Shared/TalabatkLogic/TalabatkModels/MenuItemOptions.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by CartItem/CustomerCart/MenuItem; documented inside the Discovery-Utilities note
+MenuItemOptionsCategories	Shared/TalabatkLogic/TalabatkModels/MenuItemOptionsCategories.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by MenuItemOptionGroup/MenuItemPrice; documented inside the Discovery-Utilities note
+MenuItemPrice	Shared/TalabatkLogic/TalabatkModels/MenuItemPrice.cs	child	single	Customer Ordering	Restaurant & Menu Discovery	existing canonical note MenuItemPrice.technical.md
+MenuItemPriceDescription	Shared/TalabatkLogic/TalabatkModels/MenuItemPriceDescription.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by MenuItem/MenuItemPrice; documented inside the Discovery-Utilities note
+MenuItemPriceSku	Shared/TalabatkLogic/TalabatkModels/MenuItemPriceSku.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by MenuItemPrice; documented inside the Discovery-Utilities note
+MenuItemReplacement	Shared/TalabatkLogic/TalabatkModels/MenuItemReplacement.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by MenuItem; documented inside the Discovery-Utilities note
+MerchantAcceptanceReport	Shared/TalabatkLogic/TalabatkModels/MerchantAcceptanceReport.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+MerchantCapacityHours	Shared/TalabatkLogic/TalabatkModels/MerchantCapacityHours.cs	child	covered-by:Merchant-Menu-and-Orders	Restaurant Portal	Merchant Account & Access	child owned by Restaurant; documented inside the Merchant-Menu-and-Orders note
+MerchantInstructionsVideos	Shared/TalabatkLogic/TalabatkModels/MerchantInstructionsVideos.cs	legacy-poco-root	covered-by:Merchant-Menu-and-Orders	Restaurant Portal	Merchant Account & Access	legacy-poco-root; documented inside the Merchant-Menu-and-Orders note
+MerchantLoyaltyConfig	Shared/TalabatkLogic/TalabatkModels/MerchantLoyaltyConfig.cs	legacy-poco-root	covered-by:Merchant-Menu-and-Orders	Restaurant Portal	Merchant Account & Access	legacy-poco-root; documented inside the Merchant-Menu-and-Orders note
+MerchantPerformanceReport	Shared/TalabatkLogic/TalabatkModels/MerchantPerformanceReport.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+MerchantReceivement	Shared/TalabatkLogic/TalabatkModels/MerchantReceivement.cs	legacy-poco-root	covered-by:Merchant-Menu-and-Orders	Restaurant Portal	Merchant Account & Access	legacy-poco-root; documented inside the Merchant-Menu-and-Orders note
+MerchantRejectedReport	Shared/TalabatkLogic/TalabatkModels/MerchantRejectedReport.cs	keyless-view	none	-	-	registered `.HasNoKey().ToView(null)` in Shared/TalabatkData/Talabatk_Context/TalabatkContext.cs:97-121 — a query shape, not a table
+MerchantRejectionReasons	Shared/TalabatkLogic/TalabatkModels/MerchantRejectionReasons.cs	legacy-poco-root	covered-by:Merchant-Menu-and-Orders	Restaurant Portal	Merchant Account & Access	legacy-poco-root; documented inside the Merchant-Menu-and-Orders note
+MerchantStatementTransaction	Shared/TalabatkLogic/TalabatkModels/MerchantStatementTransaction.cs	child	covered-by:Merchant-Menu-and-Orders	Restaurant Portal	Merchant Account & Access	child owned by Restaurant; documented inside the Merchant-Menu-and-Orders note
+NonDeliveryReason	Shared/TalabatkLogic/TalabatkModels/NonDeliveryReason.cs	legacy-poco-root	covered-by:Delivery-Requests-and-Suppliers	Delivery	Delivery Man Operations	legacy-poco-root; documented inside the Delivery-Requests-and-Suppliers note
+Notification	Shared/TalabatkLogic/TalabatkModels/Notification.cs	lookup	covered-by:Notification-Delivery	Customer Ordering	Marketing & Content	lookup; documented inside the Notification-Delivery note
+NotificationExecutionHistory	Shared/TalabatkLogic/TalabatkModels/NotificationExecutionHistory.cs	child	covered-by:Notification-Delivery	Customer Ordering	Marketing & Content	child owned by ScheduledNotification; documented inside the Notification-Delivery note
+NotificationTarget	Shared/TalabatkLogic/TalabatkModels/NotificationTargets.cs	legacy-poco-root	covered-by:Notification-Delivery	Customer Ordering	Marketing & Content	legacy-poco-root; documented inside the Notification-Delivery note
+OfferItem	Shared/TalabatkLogic/TalabatkModels/OfferItem.cs	child	covered-by:Discount-Resolution	Customer Ordering	Discounts & Coupons	child owned by MenuItemPrice/Offers/Order; documented inside the Discount-Resolution note
+Offers	Shared/TalabatkLogic/TalabatkModels/Offers.cs	child	pair	Customer Ordering	Discounts & Coupons	existing canonical pair Offers.business.md + Offers.technical.md
+OffersDescriptions	Shared/TalabatkLogic/TalabatkModels/OffersDescriptions.cs	child	covered-by:Discount-Resolution	Customer Ordering	Discounts & Coupons	child owned by Offers; documented inside the Discount-Resolution note
+Order	Shared/TalabatkLogic/TalabatkModels/Order.Partial.cs	child	pair	Customer Ordering	Order & Fulfilment	existing canonical pair Order.business.md + Order.technical.md
+Order	Shared/TalabatkLogic/TalabatkModels/Order.cs	child	pair	Customer Ordering	Order & Fulfilment	existing canonical pair Order.business.md + Order.technical.md
+OrderAgentAssignment	Shared/TalabatkLogic/TalabatkModels/OrderAgentAssignment.cs	child	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	child owned by Order; documented inside the Order-Lifecycle note
+OrderChat	Shared/TalabatkLogic/TalabatkModels/OrderChat.cs	legacy-poco-root	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	legacy-poco-root; documented inside the Order-Lifecycle note
+OrderComment	Shared/TalabatkLogic/TalabatkModels/OrderComment.cs	child	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	child owned by Order; documented inside the Order-Lifecycle note
+OrderCostHolder	Shared/TalabatkLogic/TalabatkModels/OrderCostHolder.cs	legacy-poco-root	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	legacy-poco-root; documented inside the Order-Lifecycle note
+OrderCostHolderRestaurant	Shared/TalabatkLogic/TalabatkModels/OrderCostHolderRestaurant.cs	child	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	child owned by OrderCostHolder; documented inside the Order-Lifecycle note
+OrderCountTracking	Shared/TalabatkLogic/TalabatkModels/OrderCountTracking.cs	legacy-poco-root	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	legacy-poco-root; documented inside the Order-Lifecycle note
+OrderDelivery	Shared/TalabatkLogic/TalabatkModels/OrderDelivery.cs	child	pair	Customer Ordering	Order & Fulfilment	existing canonical pair OrderDelivery.business.md + OrderDelivery.technical.md
+OrderDeliveryRequest	Shared/TalabatkLogic/TalabatkModels/OrderDeliveryRequest.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+OrderDetailReplacement	Shared/TalabatkLogic/TalabatkModels/OrderDetailReplacement.cs	child	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	child owned by OrderDetails; documented inside the Order-Lifecycle note
+OrderDetails	Shared/TalabatkLogic/TalabatkModels/OrderDetails.cs	child	single	Customer Ordering	Order & Fulfilment	existing canonical note OrderDetails.technical.md
+OrderDetailsOptions	Shared/TalabatkLogic/TalabatkModels/OrderDetailsOptions.cs	child	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	child owned by OrderDetails; documented inside the Order-Lifecycle note
+OrderList	Shared/TalabatkLogic/TalabatkModels/OrderList.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+OrderPayment	Shared/TalabatkLogic/TalabatkModels/OrderPayment.cs	child	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	child owned by Order/OrderPaymentStates; documented inside the Order-Lifecycle note
+OrderPaymentStates	Shared/TalabatkLogic/TalabatkModels/OrderPaymentStates.cs	lookup	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	lookup; documented inside the Order-Lifecycle note
+OrderRejectedReason	Shared/TalabatkLogic/TalabatkModels/OrderRejectedReason.cs	legacy-poco-root	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	legacy-poco-root; documented inside the Order-Lifecycle note
+OrderRestaurant	Shared/TalabatkLogic/TalabatkModels/OrderRestaurant.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+OrderRestaurantDelivery	Shared/TalabatkLogic/TalabatkModels/OrderRestaurantDelivery.cs	child	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	child owned by OrderDelivery/OrderRestaurantDetails; documented inside the Order-Lifecycle note
+OrderRestaurantDetails	Shared/TalabatkLogic/TalabatkModels/OrderRestaurantDetails.cs	child	single	Customer Ordering	Order & Fulfilment	existing canonical note OrderRestaurantDetails.md
+OrderStates	Shared/TalabatkLogic/TalabatkModels/OrderStates.cs	lookup	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	lookup; documented inside the Order-Lifecycle note
+OrderStatusHistory	Shared/TalabatkLogic/TalabatkModels/OrderStatusHistory.cs	child	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	child owned by Order; documented inside the Order-Lifecycle note
+CartItemOptionPoco	Shared/TalabatkLogic/TalabatkModels/POCOs/CartItemOptionPoco.cs	dto	none	-	-	input/output DTO under a POCOs folder — carries no invariants of its own
+CustomerOrdersReport	Shared/TalabatkLogic/TalabatkModels/POCOs/CustomerOrdersReport.cs	dto	none	-	-	input/output DTO under a POCOs folder — carries no invariants of its own
+DeliveryBounsTierSpec	Shared/TalabatkLogic/TalabatkModels/POCOs/DeliveryBounsTierSpec.cs	dto	none	-	-	input/output DTO under a POCOs folder — carries no invariants of its own
+ExternalCustomerAdressPoco	Shared/TalabatkLogic/TalabatkModels/POCOs/ExternalCustomerAdressPoco.cs	dto	none	-	-	input/output DTO under a POCOs folder — carries no invariants of its own
+PayMobTransaction	Shared/TalabatkLogic/TalabatkModels/PayMobTransaction.cs	child	covered-by:Money-Path	Customer Ordering	Payments	child owned by OrderPayment; documented inside the Money-Path note
+PaymentMethod	Shared/TalabatkLogic/TalabatkModels/PaymentMethod.cs	legacy-poco-root	single	Customer Ordering	Payments	existing canonical note PaymentMethod.md
+PaymentMethodCountries	Shared/TalabatkLogic/TalabatkModels/PaymentMethodCountries.cs	child	covered-by:Money-Path	Customer Ordering	Payments	child owned by Country/PaymentMethod; documented inside the Money-Path note
+Permission	Shared/TalabatkLogic/TalabatkModels/Permission.cs	lookup	pair	Identity & Access	Restaurant & Admin User Identity	existing canonical pair Permission.business.md + Permission.technical.md
+PrivacyPolicy	Shared/TalabatkLogic/TalabatkModels/PrivacyPolicy.cs	legacy-poco-root	covered-by:Notification-Delivery	Customer Ordering	Marketing & Content	legacy-poco-root; documented inside the Notification-Delivery note
+PromoCodeArea	Shared/TalabatkLogic/TalabatkModels/PromoCodeArea.cs	child	covered-by:Discount-Resolution	Customer Ordering	Discounts & Coupons	child owned by PromoCodes; documented inside the Discount-Resolution note
+PromoCodeAudience	Shared/TalabatkLogic/TalabatkModels/PromoCodeAudience.cs	child	covered-by:Discount-Resolution	Customer Ordering	Discounts & Coupons	child owned by PromoCodes; documented inside the Discount-Resolution note
+PromoCodeCity	Shared/TalabatkLogic/TalabatkModels/PromoCodeCity.cs	child	covered-by:Discount-Resolution	Customer Ordering	Discounts & Coupons	child owned by PromoCodes; documented inside the Discount-Resolution note
+PromoCodeCustomer	Shared/TalabatkLogic/TalabatkModels/PromoCodeCustomer.cs	child	covered-by:Discount-Resolution	Customer Ordering	Discounts & Coupons	child owned by PromoCodes; documented inside the Discount-Resolution note
+PromoCodeReportResponse	Shared/TalabatkLogic/TalabatkModels/PromoCodeReportResponse.cs	keyless-view	none	-	-	registered `.HasNoKey().ToView(null)` in Shared/TalabatkData/Talabatk_Context/TalabatkContext.cs:97-121 — a query shape, not a table
+PromoCodes	Shared/TalabatkLogic/TalabatkModels/PromoCodes.cs	legacy-poco-root	pair	Customer Ordering	Discounts & Coupons	existing canonical pair PromoCodes.business.md + PromoCodes.technical.md
+PromoOrdersReportResponse	Shared/TalabatkLogic/TalabatkModels/PromoOrdersReportResponse.cs	keyless-view	none	-	-	registered `.HasNoKey().ToView(null)` in Shared/TalabatkData/Talabatk_Context/TalabatkContext.cs:97-121 — a query shape, not a table
+ReadyOrder	Shared/TalabatkLogic/TalabatkModels/ReadyOrder.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+ReadyToPickOrdersForDeliveryMenStoredProcure	Shared/TalabatkLogic/TalabatkModels/ReadyToPickOrdersForDeliveryMenStoredProcure.cs	keyless-view	none	-	-	registered `.HasNoKey().ToView(null)` in Shared/TalabatkData/Talabatk_Context/TalabatkContext.cs:97-121 — a query shape, not a table
+RecommendationEventType	Shared/TalabatkLogic/TalabatkModels/RecommendationEventType.cs	enum-only	none	-	-	file declares 1 enum(s) and no class; enum values are documented with the entity that uses them
+RecommendationInteractionEvent	Shared/TalabatkLogic/TalabatkModels/RecommendationInteractionEvent.cs	legacy-poco-root	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	legacy-poco-root; documented inside the Discovery-Utilities note
+RefreshToken	Shared/TalabatkLogic/TalabatkModels/RefreshToken.cs	lookup	covered-by:Identity	Identity & Access	Authentication & Tokens	lookup; documented inside the Identity note
+Request	Shared/TalabatkLogic/TalabatkModels/Request.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+Restaurant	Shared/TalabatkLogic/TalabatkModels/Restaurant.cs	child	pair	Customer Ordering	Restaurant & Menu Discovery	existing canonical pair Restaurant.business.md + Restaurant.technical.md
+RestaurantActiveForSearch	Shared/TalabatkLogic/TalabatkModels/RestaurantActiveForSearch.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+RestaurantArea	Shared/TalabatkLogic/TalabatkModels/RestaurantArea.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by Area/Restaurant; documented inside the Discovery-Utilities note
+RestaurantDescription	Shared/TalabatkLogic/TalabatkModels/RestaurantDescription.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by Restaurant; documented inside the Discovery-Utilities note
+RestaurantFinalScoreRate	Shared/TalabatkLogic/TalabatkModels/RestaurantFinalScoreRate.cs	lookup	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	lookup; documented inside the Discovery-Utilities note
+RestaurantJournalSubuscriptions	Shared/TalabatkLogic/TalabatkModels/RestaurantJournalSubuscriptions.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by JournalSubuscriptions; documented inside the Discovery-Utilities note
+RestaurantPayment	Shared/TalabatkLogic/TalabatkModels/RestaurantPayment.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+RestaurantPaymentBalance	Shared/TalabatkLogic/TalabatkModels/RestaurantPaymentBalance.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+RestaurantPromoCode	Shared/TalabatkLogic/TalabatkModels/RestaurantPromoCode.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by PromoCodes; documented inside the Discovery-Utilities note
+RestaurantReview	Shared/TalabatkLogic/TalabatkModels/RestaurantReview.cs	child	single	Customer Ordering	Restaurant & Menu Discovery	existing canonical note RestaurantReview.md
+RestaurantZone	Shared/TalabatkLogic/TalabatkModels/RestaurantZone .cs	legacy-poco-root	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	legacy-poco-root; documented inside the Discovery-Utilities note
+RestaurantZoneArea	Shared/TalabatkLogic/TalabatkModels/RestaurantZoneArea.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by Area/Order/RestaurantZone ; documented inside the Discovery-Utilities note
+Restaurant_FoodTypes	Shared/TalabatkLogic/TalabatkModels/Restaurant_FoodTypes.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by FoodType/Restaurant; documented inside the Discovery-Utilities note
+ResturantBusyHistory	Shared/TalabatkLogic/TalabatkModels/ResturantBusyHistory.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by Restaurant; documented inside the Discovery-Utilities note
+ResturantList	Shared/TalabatkLogic/TalabatkModels/ResturantList.cs	projection	none	-	-	stored-procedure / report result shape named in _inbox/pathA-A-models-batch04-final.md — no invariants
+RoboCall	Shared/TalabatkLogic/TalabatkModels/RoboCall.cs	legacy-poco-root	covered-by:Delivery-Requests-and-Suppliers	Delivery	Delivery Man Operations	legacy-poco-root; documented inside the Delivery-Requests-and-Suppliers note
+RoboCallOrder	Shared/TalabatkLogic/TalabatkModels/RoboCallOrder.cs	child	covered-by:Delivery-Requests-and-Suppliers	Delivery	Delivery Man Operations	child owned by RoboCall; documented inside the Delivery-Requests-and-Suppliers note
+RolePermission	Shared/TalabatkLogic/TalabatkModels/RolePermission.cs	child	covered-by:Identity	Identity & Access	Restaurant & Admin User Identity	child owned by AspNetRole/Permission; documented inside the Identity note
+RushTimeAreaPriority	Shared/TalabatkLogic/TalabatkModels/RushTimeAreaPriority.cs	child	covered-by:Area-and-Country	Admin	City & Geography Administration	child owned by CityRushTimeConfiguration; documented inside the Area-and-Country note
+SalesDaily	Shared/TalabatkLogic/TalabatkModels/SalesDaily.cs	legacy-poco-root	covered-by:Configuration	Admin	Order & Customer Administration	legacy-poco-root; documented inside the Configuration note
+ScheduledNotification	Shared/TalabatkLogic/TalabatkModels/ScheduledNotification.cs	legacy-poco-root	covered-by:Notification-Delivery	Customer Ordering	Marketing & Content	legacy-poco-root; documented inside the Notification-Delivery note
+ScheduledNotificationCustomerGroupType	Shared/TalabatkLogic/TalabatkModels/ScheduledNotificationCustomerGroupType.cs	child	covered-by:Notification-Delivery	Customer Ordering	Marketing & Content	child owned by ScheduledNotification; documented inside the Notification-Delivery note
+SearchHistory	Shared/TalabatkLogic/TalabatkModels/SearchHistory.cs	legacy-poco-root	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	legacy-poco-root; documented inside the Discovery-Utilities note
+ShiftLocation	Shared/TalabatkLogic/TalabatkModels/ShiftLocation.cs	child	covered-by:Driver-Operations	Delivery	Delivery Man Operations	child owned by DeliveryMenShifts; documented inside the Driver-Operations note
+SliderHome	Shared/TalabatkLogic/TalabatkModels/SliderHome.cs	legacy-poco-root	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	legacy-poco-root; documented inside the Discovery-Utilities note
+SpecialMartCategorySetting	Shared/TalabatkLogic/TalabatkModels/SpecialMartCategorySetting.cs	legacy-poco-root	covered-by:Mart	Customer Ordering	Restaurant & Menu Discovery	legacy-poco-root; documented inside the Mart note
+StoreTypeCities	Shared/TalabatkLogic/TalabatkModels/StoreTypeCities.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by City/StoreTypes; documented inside the Discovery-Utilities note
+StoreTypes	Shared/TalabatkLogic/TalabatkModels/StoreTypes.cs	child	single	Customer Ordering	Restaurant & Menu Discovery	existing canonical note StoreTypes.technical.md
+StoreTypesDescription	Shared/TalabatkLogic/TalabatkModels/StoreTypesDescription.cs	child	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	child owned by StoreTypes; documented inside the Discovery-Utilities note
+Tag	Shared/TalabatkLogic/TalabatkModels/Tag.cs	lookup	covered-by:Discovery-Utilities	Customer Ordering	Restaurant & Menu Discovery	lookup; documented inside the Discovery-Utilities note
+TaskType	Shared/TalabatkLogic/TalabatkModels/TaskType.cs	legacy-poco-root	covered-by:Configuration	Admin	Admin Back-Office	legacy-poco-root; documented inside the Configuration note
+Tasks	Shared/TalabatkLogic/TalabatkModels/Tasks.cs	child	covered-by:Configuration	Admin	Admin Back-Office	child owned by AspNetUser; documented inside the Configuration note
+TermsAndConditions	Shared/TalabatkLogic/TalabatkModels/TermsAndConditions.cs	legacy-poco-root	covered-by:Notification-Delivery	Customer Ordering	Marketing & Content	legacy-poco-root; documented inside the Notification-Delivery note
+UnRegesteredCustomers	Shared/TalabatkLogic/TalabatkModels/UnRegesteredCustomers.cs	legacy-poco-root	covered-by:Customer	Identity & Access	Customer Identity	legacy-poco-root; documented inside the Customer note
+UnRevisedItem	Shared/TalabatkLogic/TalabatkModels/UnRevisedItem.cs	legacy-poco-root	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	legacy-poco-root; documented inside the Order-Lifecycle note
+UnbanReason	Shared/TalabatkLogic/TalabatkModels/UnbanReasons.cs	legacy-poco-root	covered-by:Delivery-Requests-and-Suppliers	Delivery	Delivery Man Operations	legacy-poco-root; documented inside the Delivery-Requests-and-Suppliers note
+UpSellingCartItems	Shared/TalabatkLogic/TalabatkModels/UpSellingCartItems.cs	keyless-view	none	-	-	registered `.HasNoKey().ToView(null)` in Shared/TalabatkData/Talabatk_Context/TalabatkContext.cs:97-121 — a query shape, not a table
+UserShift	Shared/TalabatkLogic/TalabatkModels/UserShift.cs	legacy-poco-root	covered-by:Identity	Identity & Access	Restaurant & Admin User Identity	legacy-poco-root; documented inside the Identity note
+UserShiftDetails	Shared/TalabatkLogic/TalabatkModels/UserShiftDetails.cs	child	covered-by:Identity	Identity & Access	Restaurant & Admin User Identity	child owned by UserShift; documented inside the Identity note
+Vouchers	Shared/TalabatkLogic/TalabatkModels/Vouchers.cs	legacy-poco-root	pair	Customer Ordering	Discounts & Coupons	existing canonical pair Vouchers.business.md + Vouchers.technical.md
+WalletTransaction	Shared/TalabatkLogic/TalabatkModels/WalletTransaction.cs	child	single	Customer Ordering	Payments	existing canonical note WalletTransaction.md
+WalletTransactionRechargeReason	Shared/TalabatkLogic/TalabatkModels/WalletTransactionRechargeReason.cs	legacy-poco-root	covered-by:Money-Path	Customer Ordering	Payments	legacy-poco-root; documented inside the Money-Path note
+Webhook	Shared/TalabatkLogic/TalabatkModels/Webhook.cs	legacy-poco-root	covered-by:Configuration	Admin	Admin Back-Office	legacy-poco-root; documented inside the Configuration note
+WebhookEvent	Shared/TalabatkLogic/TalabatkModels/WebhookEvent.cs	lookup	covered-by:Configuration	Admin	Admin Back-Office	lookup; documented inside the Configuration note
+WebhookSubscription	Shared/TalabatkLogic/TalabatkModels/WebhookSubscription.cs	child	covered-by:Configuration	Admin	Admin Back-Office	child owned by Webhook/WebhookEvent; documented inside the Configuration note
+WorkUsDelivery	Shared/TalabatkLogic/TalabatkModels/WorkUsDelivery.cs	child	covered-by:Driver-Operations	Delivery	Delivery Man Operations	child owned by WorkUsDeliveryStatus; documented inside the Driver-Operations note
+WorkUsDeliveryHistory	Shared/TalabatkLogic/TalabatkModels/WorkUsDeliveryHistory.cs	child	covered-by:Driver-Operations	Delivery	Delivery Man Operations	child owned by WorkUsDelivery/WorkUsDeliveryStatus; documented inside the Driver-Operations note
+WorkUsDeliveryStatus	Shared/TalabatkLogic/TalabatkModels/WorkUsDeliveryStatus.cs	legacy-poco-root	covered-by:Driver-Operations	Delivery	Delivery Man Operations	legacy-poco-root; documented inside the Driver-Operations note
+WorkUsRestaurant	Shared/TalabatkLogic/TalabatkModels/WorkUsRestaurant.cs	legacy-poco-root	covered-by:Driver-Operations	Delivery	Delivery Man Operations	legacy-poco-root; documented inside the Driver-Operations note
+WorkUsRestaurantComment	Shared/TalabatkLogic/TalabatkModels/WorkUsRestaurantComment.cs	child	covered-by:Driver-Operations	Delivery	Delivery Man Operations	child owned by WorkUsRestaurant; documented inside the Driver-Operations note
+WorkingDay	Shared/TalabatkLogic/TalabatkModels/WorkingDay.cs	child	covered-by:Area-and-Country	Admin	City & Geography Administration	child owned by Restaurant; documented inside the Area-and-Country note
+TieredDiscountTierPoco	Shared/TalabatkLogic/TieredDiscountAggregate/POCOs/TieredDiscountTierPoco.cs	dto	none	-	-	input/output DTO under a POCOs folder — carries no invariants of its own
+TieredDiscount	Shared/TalabatkLogic/TieredDiscountAggregate/TieredDiscount.cs	aggregate-root	pair	Customer Ordering	Tiered Discount	existing canonical pair TieredDiscount.business.md + TieredDiscount.technical.md
+TieredDiscountCustomer	Shared/TalabatkLogic/TieredDiscountAggregate/TieredDiscountCustomer.cs	child	covered-by:TieredDiscountTier	Customer Ordering	Tiered Discount	child owned by TieredDiscount; documented inside the TieredDiscountTier note
+TieredDiscountRestaurant	Shared/TalabatkLogic/TieredDiscountAggregate/TieredDiscountRestaurant.cs	child	covered-by:TieredDiscountTier	Customer Ordering	Tiered Discount	child owned by TieredDiscount; documented inside the TieredDiscountTier note
+TieredDiscountSegment	Shared/TalabatkLogic/TieredDiscountAggregate/TieredDiscountSegment.cs	child	covered-by:TieredDiscountTier	Customer Ordering	Tiered Discount	child owned by TieredDiscount; documented inside the TieredDiscountTier note
+TieredDiscountTier	Shared/TalabatkLogic/TieredDiscountAggregate/TieredDiscountTier.cs	child	single	Customer Ordering	Tiered Discount	existing canonical note TieredDiscountTier.md
+TieredDiscountTypeEnum	Shared/TalabatkLogic/TieredDiscountAggregate/TieredDiscountTypeEnum.cs	enum-only	none	-	-	file declares 1 enum(s) and no class; enum values are documented with the entity that uses them
+MerchantKpiScoreConfiguration	Shared/TalabatkLogic/OrderComplaintAggregate/MerchantKpiScoreConfiguration.cs	child	covered-by:Merchant-Menu-and-Orders	Restaurant Portal	Merchant Account & Access	child; documented inside the Merchant-Menu-and-Orders note
+OrderComplaint	Shared/TalabatkLogic/OrderComplaintAggregate/OrderComplaint.cs	aggregate-root	single	Customer Ordering	Order & Fulfilment	existing canonical note OrderComplaint.md
+OrderComplaintReason	Shared/TalabatkLogic/OrderComplaintAggregate/OrderComplaintReason.cs	child	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	child; documented inside the Order-Lifecycle note
+OrderComplaintReasonType	Shared/TalabatkLogic/OrderComplaintAggregate/OrderComplaintReasonType.cs	child	covered-by:Order-Lifecycle	Customer Ordering	Order & Fulfilment	child; documented inside the Order-Lifecycle note
+DeliveryAnnouncement	Shared/TalabatkLogic/DeliveryAnnouncementAggregate/DeliveryAnnouncement.cs	aggregate-root	pair	Delivery	Delivery Man Operations	DDD aggregate root — private ctor + Create factory + Result guards; the skill requires a business+technical pair
+DeliveryManNotification	Shared/TalabatkLogic/DeliveryManNotificationAggregate/DeliveryManNotification.cs	aggregate-root	pair	Delivery	Delivery Man Operations	DDD aggregate root — private ctor + Create factory + Result guards; the skill requires a business+technical pair
+DeliveryManNotificationDetail	Shared/TalabatkLogic/DeliveryManNotificationAggregate/DeliveryManNotificationDetail.cs	child	covered-by:Driver-Operations	Delivery	Delivery Man Operations	child owned by DeliveryManNotification; documented inside the Driver-Operations note
+DeliveryManNotificationStatusEnum	Shared/TalabatkLogic/DeliveryManNotificationAggregate/DeliveryManNotificationStatusEnum.cs	enum-only	none	-	-	file declares 1 enum(s) and no class; enum values are documented with the entity that uses them
+IBitrixService	Shared/TalabatkLogic/Abstractions/IBitrixService.cs	infrastructure	none	-	-	abstraction/interface, no persisted state
+ICentrifugoTokenGenerator	Shared/TalabatkLogic/Abstractions/ICentrifugoTokenGenerator.cs	infrastructure	none	-	-	abstraction/interface, no persisted state
+IEalsticSearchServices	Shared/TalabatkLogic/Abstractions/IEalsticSearchServices.cs	infrastructure	none	-	-	abstraction/interface, no persisted state
+IEmbeddingService	Shared/TalabatkLogic/Abstractions/IEmbeddingService.cs	infrastructure	none	-	-	abstraction/interface, no persisted state
+IFeatureFlagCache	Shared/TalabatkLogic/Abstractions/IFeatureFlagCache.cs	infrastructure	none	-	-	abstraction/interface, no persisted state
+IFeatureManager	Shared/TalabatkLogic/Abstractions/IFeatureManager.cs	infrastructure	none	-	-	abstraction/interface, no persisted state
+IGoogleMapService	Shared/TalabatkLogic/Abstractions/IGoogleMapService.cs	infrastructure	none	-	-	abstraction/interface, no persisted state
+IMerchantSearchScoringService	Shared/TalabatkLogic/Abstractions/IMerchantSearchScoringService.cs	infrastructure	none	-	-	abstraction/interface, no persisted state
+RestaurantSearchSignalHit	Shared/TalabatkLogic/Abstractions/UnifiedSearchScoringModels.cs	infrastructure	none	-	-	abstraction/interface, no persisted state
+AccountingEntry	Shared/TalabatkLogic/AccountingEntry.cs	legacy-poco-root	covered-by:Money-Path	Customer Ordering	Payments	keyed entity mapped to TA_AccountingEntry (Shared/TalabatkData/Mapping/AccountingEntryMap.cs:16-17); the AccFlex GL journal link, documented in Fawry.technical.md Rule 7. Was invisible to the entity denominator until it was widened - it sits at the Shared/TalabatkLogic/ root, outside TalabatkModels/
+AuditableEntity	Shared/TalabatkLogic/AuditableEntity/AuditableEntity.cs	infrastructure	none	-	-	abstract base supplying created/modified stamps and the PropertyChange trail
+PropertyChange	Shared/TalabatkLogic/AuditableEntity/PropertyChange.cs	dto	none	-	-	one recorded field change in the audit trail
+BitrixLeadCreateResponse	Shared/TalabatkLogic/Bitirix/BitrixLeadCreateResponse.cs	dto	none	-	-	Bitrix CRM response shape (folder misspelt "Bitirix")
+BitrixLeadResponse	Shared/TalabatkLogic/Bitirix/BitrixLeadResponse.cs	dto	none	-	-	Bitrix CRM response shape (folder misspelt "Bitirix")
+BitrixLeadStatusDto	Shared/TalabatkLogic/Bitirix/BitrixLeadStatusDto.cs	dto	none	-	-	Bitrix CRM response shape (folder misspelt "Bitirix")
+CustomerAdminChatMessageTypes	Shared/TalabatkLogic/Constants/CustomerAdminChatMessageTypes.cs	infrastructure	none	-	-	string constants for admin-chat message kinds; the values are matched on in the chat handlers
+Features	Shared/TalabatkLogic/Constants/Features.cs	infrastructure	none	-	-	the authoritative Esquio feature-flag name list; flags themselves documented in _integrations.md
+OrderActionComments	Shared/TalabatkLogic/Constants/OrderActionComments.cs	infrastructure	none	-	-	canned comment strings written to order history
+PermissionNames	Shared/TalabatkLogic/Constants/PermissionNames.cs	infrastructure	none	-	-	the authoritative permission-name list checked by UserPermissions gates
+WalletTransactionDescriptions	Shared/TalabatkLogic/Constants/WalletTransactionDescriptions.cs	infrastructure	none	-	-	canned description strings written to wallet ledger rows
+DistributedOrderDeliveryStrategy	Shared/TalabatkLogic/CreateOrderDeliveryRequestStrategies/DistributedOrderDeliveryStrategy.cs	domain-behaviour	none	-	-	order-to-delivery-request strategy; dispatch rules documented in [[Delivery/Delivery Man Operations/Delivery-Assignment-Strategies]]
+IOrderDeliveryStrategy	Shared/TalabatkLogic/CreateOrderDeliveryRequestStrategies/IOrderDeliveryStrategy.cs	domain-behaviour	none	-	-	order-to-delivery-request strategy; dispatch rules documented in [[Delivery/Delivery Man Operations/Delivery-Assignment-Strategies]]
+NotSupporterNorPrimmaryOrderDeliveryStrategy	Shared/TalabatkLogic/CreateOrderDeliveryRequestStrategies/NotSupporterNorPrimmaryOrderDeliveryStrategy.cs	domain-behaviour	none	-	-	order-to-delivery-request strategy; dispatch rules documented in [[Delivery/Delivery Man Operations/Delivery-Assignment-Strategies]]
+ParentOrderDeliveryStrategy	Shared/TalabatkLogic/CreateOrderDeliveryRequestStrategies/ParentOrderDeliveryStrategy.cs	domain-behaviour	none	-	-	order-to-delivery-request strategy; dispatch rules documented in [[Delivery/Delivery Man Operations/Delivery-Assignment-Strategies]]
+PrimmaryOrderDeliveryStrategy	Shared/TalabatkLogic/CreateOrderDeliveryRequestStrategies/PrimmaryOrderDeliveryStrategy.cs	domain-behaviour	none	-	-	order-to-delivery-request strategy; dispatch rules documented in [[Delivery/Delivery Man Operations/Delivery-Assignment-Strategies]]
+SupporterOrderDeliveryStrategy	Shared/TalabatkLogic/CreateOrderDeliveryRequestStrategies/SupporterOrderDeliveryStrategy.cs	domain-behaviour	none	-	-	order-to-delivery-request strategy; dispatch rules documented in [[Delivery/Delivery Man Operations/Delivery-Assignment-Strategies]]
+DeliveryAssignementStrategyFactory	Shared/TalabatkLogic/DeliveryRequestAssignementStratgies/DeliveryAssignementStrategyFactory.cs	domain-behaviour	none	-	-	driver-assignment strategy (folder misspelt "Assignement"/"Stratgies"); rules documented in [[Delivery/Delivery Man Operations/Delivery-Assignment-Strategies]]
+IDeliveryAssignmentStrategy	Shared/TalabatkLogic/DeliveryRequestAssignementStratgies/IDeliveryAssignmentStrategy .cs	domain-behaviour	none	-	-	driver-assignment strategy (folder misspelt "Assignement"/"Stratgies"); rules documented in [[Delivery/Delivery Man Operations/Delivery-Assignment-Strategies]]
+NotSupportNotPrimmaryDeliveryAssignementStrategy	Shared/TalabatkLogic/DeliveryRequestAssignementStratgies/NotSupportNotPrimmaryDeliveryAssignementStrategy.cs	domain-behaviour	none	-	-	driver-assignment strategy (folder misspelt "Assignement"/"Stratgies"); rules documented in [[Delivery/Delivery Man Operations/Delivery-Assignment-Strategies]]
+ParentDeliveryManAssignementStrategy	Shared/TalabatkLogic/DeliveryRequestAssignementStratgies/ParentDeliveryManAssignementStrategy.cs	domain-behaviour	none	-	-	driver-assignment strategy (folder misspelt "Assignement"/"Stratgies"); rules documented in [[Delivery/Delivery Man Operations/Delivery-Assignment-Strategies]]
+PrimmaryDeliveryAssignementStrategy	Shared/TalabatkLogic/DeliveryRequestAssignementStratgies/PrimmaryDeliveryAssignementStrategy.cs	domain-behaviour	none	-	-	driver-assignment strategy (folder misspelt "Assignement"/"Stratgies"); rules documented in [[Delivery/Delivery Man Operations/Delivery-Assignment-Strategies]]
+RestaurantWithDeliveryZone	Shared/TalabatkLogic/DeliveryRequestAssignementStratgies/RestaurantWithDeliveryZone.cs	domain-behaviour	none	-	-	driver-assignment strategy (folder misspelt "Assignement"/"Stratgies"); rules documented in [[Delivery/Delivery Man Operations/Delivery-Assignment-Strategies]]
+SupporterDeliveryManAssignementStrategy	Shared/TalabatkLogic/DeliveryRequestAssignementStratgies/SupporterDeliveryManAssignementStrategy.cs	domain-behaviour	none	-	-	driver-assignment strategy (folder misspelt "Assignement"/"Stratgies"); rules documented in [[Delivery/Delivery Man Operations/Delivery-Assignment-Strategies]]
+Entity	Shared/TalabatkLogic/DomainEventHelpers/Entity.cs	infrastructure	none	-	-	base entity type holding the pending-domain-event list
+Event	Shared/TalabatkLogic/DomainEventHelpers/Event.cs	infrastructure	none	-	-	base domain-event type
+IEntity	Shared/TalabatkLogic/DomainEventHelpers/IEntity.cs	infrastructure	none	-	-	marker interface for Entity
+PostEvent	Shared/TalabatkLogic/DomainEventHelpers/PostEvent.cs	infrastructure	none	-	-	base for events dispatched after SaveChanges
+PreEvent	Shared/TalabatkLogic/DomainEventHelpers/PreEvent.cs	infrastructure	none	-	-	base for events dispatched before SaveChanges
+AdReservationDeletedEvent	Shared/TalabatkLogic/DomainEvents/AdsEvents/AdReservationDeletedEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+AdReservationMadeEvent	Shared/TalabatkLogic/DomainEvents/AdsEvents/AdReservationMadeEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+CompensationApprovedEvent	Shared/TalabatkLogic/DomainEvents/CompensationEvents/CompensationApprovedEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+CostHolderCreatedEvent	Shared/TalabatkLogic/DomainEvents/CostHolderEvents/CostHolderCreatedEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+AddToShiftEvent	Shared/TalabatkLogic/DomainEvents/DeliveryManEvents/AddToShiftEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+BreakEndedEvent	Shared/TalabatkLogic/DomainEvents/DeliveryManEvents/BreakEndedEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+BreakStartedEvent	Shared/TalabatkLogic/DomainEvents/DeliveryManEvents/BreakStartedEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+ChangeActivationEvent	Shared/TalabatkLogic/DomainEvents/DeliveryManEvents/ChangeActivationEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+DeliveryManFinancialSettingsChangedEvent	Shared/TalabatkLogic/DomainEvents/DeliveryManEvents/DeliveryManFinancialSettingsChangedEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+RemoveFromShiftEvent	Shared/TalabatkLogic/DomainEvents/DeliveryManEvents/RemoveFromShiftEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+DeliveryZoneModeChangedEvent	Shared/TalabatkLogic/DomainEvents/DeliveryZoneEvents/DeliveryZoneModeChangedEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+AddDeliveryManStatementEvent	Shared/TalabatkLogic/DomainEvents/FawryEvents/AddDeliveryManStatementEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+NotifyDeliveryManFawryStatusEvent	Shared/TalabatkLogic/DomainEvents/FawryEvents/NotifyDeliveryManFawryStatusEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+ItemBecameInStockEvent	Shared/TalabatkLogic/DomainEvents/ItemBecameInStockEvent/ItemBecameInStockEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+MenuItemValidityChangedEvent	Shared/TalabatkLogic/DomainEvents/MenuItemEvents/MenuItemValidityChangedEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+UpdateMenuItemDocumentsInElasticSerachEvent	Shared/TalabatkLogic/DomainEvents/MenuItemEvents/UpdateMenuItemDocumentsInElasticSerachEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+AllRestaurantAreReadyToPickNotificationEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/AllRestaurantAreReadyToPickNotificationEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+AutoBusyForRestaurantEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/AutoBusyForRestaurantEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+CalculateDeliveryShiftBounsEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/CalculateDeliveryShiftBounsEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+CalculateGoogleMapDeliveryTimeEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/CalculateGoogleMapDeliveryTimeEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+ChangeCartItemOptionPriceEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/ChangeCartItemOptionPriceEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+ChangeCartItemPriceEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/ChangeCartItemPriceEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+CreateLogisticsRushOrderEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/CreateLogisticsRushOrderEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+CreateLogisticsSalesReturnEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/CreateLogisticsSalesReturnEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+ExternalDeliveryMerchantLogisticsNotificationEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/ExternalDeliveryMerchantLogisticsNotificationEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+FirstCustomerOrderEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/FirstCustomerOrderEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+FirstCustomerOrderReferralEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/FirstCustomerOrderReferralEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+IOrderCodeEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/IOrderCodeEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+LoyaltyPointsEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/LoyaltyPointsEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+MangeRushTimeEvnet	Shared/TalabatkLogic/DomainEvents/OrderEvents/MangeRushTimeEvnet.cs	domain-event	none	-	-	domain event record raised by an aggregate
+MerchantCollectMoneyEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/MerchantCollectMoneyEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+NorifiyRestaurantForNewOrderEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/NorifiyRestaurantForNewOrderEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+NotifiyCustomerForCapturedPaymentEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/NotifiyCustomerForCapturedPaymentEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+NotifyAdminForNewDeliveryRequestEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/NotifyAdminForNewDeliveryRequestEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+NotifyCustomerForExecutedBankRefundEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/NotifyCustomerForExecutedBankRefundEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+NotifyCustomerForFallbackWalletRefundEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/NotifyCustomerForFallbackWalletRefundEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+NotifyCustomerForPriceChangingWhenAddingToCartEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/NotifyCustomerForPriceChangingWhenAddingToCartEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+NotifyPrimmaryDeliveryManForRequestAssignementsEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/NotifyPrimmaryDeliveryManForRequestAssignementsEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+NotifyRestaurantForStartCookingEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/NotifyRestaurantForStartCookingEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+OrderAddressChangedEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/OrderAddressChangedEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+OrderDeliveredEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/OrderDeliveredEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+OrderDeliveryMethodEligibilityCalculatedEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/OrderDeliveryMethodEligibilityCalculatedEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+OrderNotificationsEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/OrderNotificationsEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+OrderRejectedEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/OrderRejectedEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+OrderRejectionRoboCallEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/OrderRejectionRoboCallEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+OrderStatusNotificationEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/OrderStatusNotificationEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+ReSendOrderToRestaurantEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/ReSendOrderToRestaurantEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+ReassignOrderEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/ReassignOrderEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+RequestDeliveryManForExternalDeliveryOrder	Shared/TalabatkLogic/DomainEvents/OrderEvents/RequestDeliveryManForExternalDeliveryOrder.cs	domain-event	none	-	-	domain event record raised by an aggregate
+RequestDeliveryManForOutGoingDeliveryOrder	Shared/TalabatkLogic/DomainEvents/OrderEvents/RequestDeliveryManForOutGoingDeliveryOrder.cs	domain-event	none	-	-	domain event record raised by an aggregate
+RequestNewDeliveryManAfterConfirmingOrderEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/RequestNewDeliveryManAfterConfirmingOrderEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+RestaurantAreReadyToPickNotificationEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/RestaurantAreReadyToPickNotificationEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+TotalAmountPaidToRestaurantAfterDeliveryPickUpRestaurnatOrderEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/TotalAmountPaidToRestaurantAfterDeliveryPickUpRestaurnatOrderEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+WantToRejectOrderAfterPaymentProcessEvent	Shared/TalabatkLogic/DomainEvents/OrderEvents/WantToRejectOrderAfterPaymentProcessEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+RecordEntityChangeEvent	Shared/TalabatkLogic/DomainEvents/RecordEntityChangeEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+NewRegistrationEvent	Shared/TalabatkLogic/DomainEvents/RegistrationEvents/NewRegistrationEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+RestauarntReviewCommentEvent	Shared/TalabatkLogic/DomainEvents/RestauarntReviewEvents/RestauarntReviewCommentEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+UpdateElasticSerachRestaurantDocumentsEvent	Shared/TalabatkLogic/DomainEvents/RestaurantEvents/UpdateElasticSerachRestaurantDocumentsEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+VoucherCreatedEvent	Shared/TalabatkLogic/DomainEvents/VoucherEvents/VoucherCreatedEvent.cs	domain-event	none	-	-	domain event record raised by an aggregate
+CompanyProfitCalculator	Shared/TalabatkLogic/DomainServices/CompanyProfitCalculator.cs	domain-behaviour	none	-	-	computes the platform share of an order; money rules documented in [[Delivery/Driver Cash & Compensation/_knowledge-graph]]
+DeliverymenProfitCalculator	Shared/TalabatkLogic/DomainServices/DeliverymenProfitCalculator.cs	domain-behaviour	none	-	-	computes the driver share of an order; money rules documented in [[Delivery/Driver Cash & Compensation/_knowledge-graph]]
+IDeliveryManPricingCalculator	Shared/TalabatkLogic/DomainServices/IDeliveryManPricingCalculator.cs	infrastructure	none	-	-	interface the two profit calculators implement
+AccountingEntriesTypes	Shared/TalabatkLogic/Enum/AccountingEntriesTypes.cs	enum-only	none	-	-	file declares only enum types
+AdTier	Shared/TalabatkLogic/Enum/AdTier.cs	enum-only	none	-	-	file declares only enum types
+AppIconTypes	Shared/TalabatkLogic/Enum/AppIconTypes.cs	enum-only	none	-	-	file declares only enum types
+ApplicationEnum	Shared/TalabatkLogic/Enum/ApplicationEnum.cs	enum-only	none	-	-	file declares only enum types
+ApplicationType	Shared/TalabatkLogic/Enum/ApplicationType.cs	enum-only	none	-	-	file declares only enum types
+ApplicationTypes	Shared/TalabatkLogic/Enum/ApplicationTypes.cs	enum-only	none	-	-	file declares only enum types
+AssignOrderTaskStatus	Shared/TalabatkLogic/Enum/AssignOrderTaskStatus.cs	enum-only	none	-	-	file declares only enum types
+AudianceFilterType	Shared/TalabatkLogic/Enum/AudianceFilterType.cs	enum-only	none	-	-	file declares only enum types
+AutoAssignRequestStatus	Shared/TalabatkLogic/Enum/AutoAssignRequestStatus.cs	enum-only	none	-	-	file declares only enum types
+AutoCompensationEvidenceRequirement	Shared/TalabatkLogic/Enum/AutoCompensationEvidenceRequirement.cs	enum-only	none	-	-	file declares only enum types
+AutoCompensationQuestionType	Shared/TalabatkLogic/Enum/AutoCompensationQuestionType.cs	enum-only	none	-	-	file declares only enum types
+AvoidableWaitCategory	Shared/TalabatkLogic/Enum/AvoidableWaitCategory.cs	enum-only	none	-	-	file declares only enum types
+StatusSemanticId	Shared/TalabatkLogic/Enum/BitrixStatusSemantic.cs	enum-only	none	-	-	file declares only enum types
+BotEscalationReason	Shared/TalabatkLogic/Enum/BotEscalationReason.cs	enum-only	none	-	-	file declares only enum types
+BotPerformanceReportType	Shared/TalabatkLogic/Enum/BotPerformanceReportType.cs	enum-only	none	-	-	file declares only enum types
+BreakTypeEnum	Shared/TalabatkLogic/Enum/BreakTypeEnum.cs	enum-only	none	-	-	file declares only enum types
+BusyHistoryReasonType	Shared/TalabatkLogic/Enum/BusyHistoryReasonType.cs	enum-only	none	-	-	file declares only enum types
+CartValidationReasonsEnum	Shared/TalabatkLogic/Enum/CartValidationReasonsEnum.cs	enum-only	none	-	-	file declares only enum types
+ChartIntervalType	Shared/TalabatkLogic/Enum/ChartIntervalType.cs	enum-only	none	-	-	file declares only enum types
+ChatBotType	Shared/TalabatkLogic/Enum/ChatBotType.cs	enum-only	none	-	-	file declares only enum types
+ChatModuleType	Shared/TalabatkLogic/Enum/ChatModuleType.cs	enum-only	none	-	-	file declares only enum types
+ChatRatingEnum	Shared/TalabatkLogic/Enum/ChatRatingEnum.cs	enum-only	none	-	-	file declares only enum types
+ChatReportDateType	Shared/TalabatkLogic/Enum/ChatReportDateType.cs	enum-only	none	-	-	file declares only enum types
+ChatReportInterval	Shared/TalabatkLogic/Enum/ChatReportInterval.cs	enum-only	none	-	-	file declares only enum types
+ChatReportType	Shared/TalabatkLogic/Enum/ChatReportType.cs	enum-only	none	-	-	file declares only enum types
+ChatSatisfactionBucket	Shared/TalabatkLogic/Enum/ChatSatisfactionBucket.cs	enum-only	none	-	-	file declares only enum types
+ChatSearchType	Shared/TalabatkLogic/Enum/ChatSearchType.cs	enum-only	none	-	-	file declares only enum types
+ChatStatus	Shared/TalabatkLogic/Enum/ChatStatus.cs	enum-only	none	-	-	file declares only enum types
+ClientType	Shared/TalabatkLogic/Enum/ClientType.cs	enum-only	none	-	-	file declares only enum types
+CompensationPaymentEnum	Shared/TalabatkLogic/Enum/CompensationPaymentEnum.cs	enum-only	none	-	-	file declares only enum types
+CompensationStateEnum	Shared/TalabatkLogic/Enum/CompensationStateEnum.cs	enum-only	none	-	-	file declares only enum types
+CompensationToType	Shared/TalabatkLogic/Enum/CompensationToType.cs	enum-only	none	-	-	file declares only enum types
+ComplaintsAndSuggestionsType	Shared/TalabatkLogic/Enum/ComplaintsAndSuggestionsType.cs	enum-only	none	-	-	file declares only enum types
+CustomerAdminChatBotPhase	Shared/TalabatkLogic/Enum/CustomerAdminChatBotPhase.cs	enum-only	none	-	-	file declares only enum types
+CustomerAdminChatEntryPoint	Shared/TalabatkLogic/Enum/CustomerAdminChatEntryPoint.cs	enum-only	none	-	-	file declares only enum types
+CustomerAdminChatSessionType	Shared/TalabatkLogic/Enum/CustomerAdminChatSessionType.cs	enum-only	none	-	-	file declares only enum types
+CustomerAdsType	Shared/TalabatkLogic/Enum/CustomerAdsType.cs	enum-only	none	-	-	file declares only enum types
+CustomerNotificationGroupType	Shared/TalabatkLogic/Enum/CustomerNotificationGroupType.cs	enum-only	none	-	-	file declares only enum types
+CustomerNotificationType	Shared/TalabatkLogic/Enum/CustomerNotificationType.cs	enum-only	none	-	-	file declares only enum types
+DailyOfferType	Shared/TalabatkLogic/Enum/DailyOfferType.cs	enum-only	none	-	-	file declares only enum types
+DashboardFilterTypes	Shared/TalabatkLogic/Enum/DashboardFilterTypes.cs	enum-only	none	-	-	file declares only enum types
+DeliveryLowRateEnum	Shared/TalabatkLogic/Enum/DeliveryLowRateEnum.cs	enum-only	none	-	-	file declares only enum types
+DeliveryManStatus	Shared/TalabatkLogic/Enum/DeliveryManStatus.cs	enum-only	none	-	-	file declares only enum types
+DeliveryMethodType	Shared/TalabatkLogic/Enum/DeliveryMethodType.cs	enum-only	none	-	-	file declares only enum types
+DeliveryWebSitePermissions	Shared/TalabatkLogic/Enum/DeliveryWebSitePermissions.cs	enum-only	none	-	-	file declares only enum types
+DeliverymanTransactionTypeEnum	Shared/TalabatkLogic/Enum/DeliverymanTransactionEnum.cs	enum-only	none	-	-	file declares only enum types
+DifferenceTotalAfterOderUpdate	Shared/TalabatkLogic/Enum/DifferenceTotalAfterOderUpdate.cs	enum-only	none	-	-	file declares only enum types
+EntityAction	Shared/TalabatkLogic/Enum/EntityAction.cs	enum-only	none	-	-	file declares only enum types
+EntityChangeType	Shared/TalabatkLogic/Enum/EntityChangeType.cs	enum-only	none	-	-	file declares only enum types
+EntityState	Shared/TalabatkLogic/Enum/EntityState.cs	enum-only	none	-	-	file declares only enum types
+EnumExtensions	Shared/TalabatkLogic/Enum/EnumExtensions.cs	infrastructure	none	-	-	List/ListLocalized reflection helpers projecting an enum into EnumType rows for dropdowns; NOT the same class as the identically-named one under Enum/NewFolder/
+ErpIntegrationOperationTypeEnum	Shared/TalabatkLogic/Enum/ErpIntegrationOperationTypeEnum.cs	enum-only	none	-	-	file declares only enum types
+ErpIntegrationStatusEnum	Shared/TalabatkLogic/Enum/ErpIntegrationStatusEnum.cs	enum-only	none	-	-	file declares only enum types
+ExclusiveOfferItemStatus	Shared/TalabatkLogic/Enum/ExclusiveOfferItemStatus.cs	enum-only	none	-	-	file declares only enum types
+ExclusiveOfferMenuItemStatus	Shared/TalabatkLogic/Enum/ExclusiveOfferMenuItemStatus.cs	enum-only	none	-	-	file declares only enum types
+ExternalDeliveryPaymentMethod	Shared/TalabatkLogic/Enum/ExternalDeliveryPaymentMethod.cs	enum-only	none	-	-	file declares only enum types
+FavouriteType	Shared/TalabatkLogic/Enum/FavouriteType.cs	enum-only	none	-	-	file declares only enum types
+FawryCashCollectionStatusCode	Shared/TalabatkLogic/Enum/FawryCashCollectionStatusCode.cs	enum-only	none	-	-	file declares only enum types
+FawryMethod	Shared/TalabatkLogic/Enum/FawryMethod.cs	enum-only	none	-	-	file declares only enum types
+FawryPaymentStatus	Shared/TalabatkLogic/Enum/FawryPaymentStatus.cs	enum-only	none	-	-	file declares only enum types
+HangfireJobQueue	Shared/TalabatkLogic/Enum/HangfireJobQueue.cs	infrastructure	none	-	-	the Hangfire queue-name enum plus the StringValueAttribute it is decorated with; the attribute is why this file is not enum-only
+HelperEnumDto	Shared/TalabatkLogic/Enum/HelperEnumDto.cs	dto	none	-	-	id/name pair used to ship enum values to clients
+ImageBankType	Shared/TalabatkLogic/Enum/ImageBankType.cs	enum-only	none	-	-	file declares only enum types
+ItemAvalibiltyPeriodEnum	Shared/TalabatkLogic/Enum/ItemAvalibiltyPeriodEnum.cs	enum-only	none	-	-	file declares only enum types
+ItemReplacementStatus	Shared/TalabatkLogic/Enum/ItemReplacementStatus.cs	enum-only	none	-	-	file declares only enum types
+Language	Shared/TalabatkLogic/Enum/Language.cs	enum-only	none	-	-	file declares only enum types
+LoyaltyPointsTransactionTypeEnum	Shared/TalabatkLogic/Enum/LoyaltyPointsTransactionTypeEnum.cs	enum-only	none	-	-	file declares only enum types
+MerchantNotificationType	Shared/TalabatkLogic/Enum/MerchantNotificationType.cs	enum-only	none	-	-	file declares only enum types
+MerchantStatementTransactionEnum	Shared/TalabatkLogic/Enum/MerchantStatementTransactionEnum.cs	enum-only	none	-	-	file declares only enum types
+EnumExtensions.NewFolder	Shared/TalabatkLogic/Enum/NewFolder/EnumExtensions.cs	infrastructure	none	-	-	a SECOND static class also named EnumExtensions, in namespace TalabatkLogic.Enum.NewFolder, supplying GetDescription only; live - used by GetAllScheduledNotificationsQuery.cs:16. Folder is literally named "NewFolder"
+NotificationStatus	Shared/TalabatkLogic/Enum/NotificationStatus.cs	enum-only	none	-	-	file declares only enum types
+NotificationIconType	Shared/TalabatkLogic/Enum/NotificationsIconType.cs	enum-only	none	-	-	file declares only enum types
+OnlinePaymentRefundPreference	Shared/TalabatkLogic/Enum/OnlinePaymentRefundPreference.cs	enum-only	none	-	-	file declares only enum types
+OrderActions	Shared/TalabatkLogic/Enum/OrderActions.cs	enum-only	none	-	-	file declares only enum types
+OrderDeliveryStatus	Shared/TalabatkLogic/Enum/OrderDeliveryStatus.cs	enum-only	none	-	-	file declares only enum types
+OrderDeliveryType	Shared/TalabatkLogic/Enum/OrderDeliveryType.cs	enum-only	none	-	-	file declares only enum types
+OrderDisplayStatus	Shared/TalabatkLogic/Enum/OrderDisplayStatus.cs	enum-only	none	-	-	file declares only enum types
+OrderPaymentStatus	Shared/TalabatkLogic/Enum/OrderPaymentStatus.cs	enum-only	none	-	-	file declares only enum types
+OrderStatus	Shared/TalabatkLogic/Enum/OrderStatus.cs	enum-only	none	-	-	file declares only enum types
+PaymentMethodFilter	Shared/TalabatkLogic/Enum/PaymentMethodFilter.cs	enum-only	none	-	-	file declares only enum types
+PaymentMethods	Shared/TalabatkLogic/Enum/PaymentMethods.cs	enum-only	none	-	-	file declares only enum types
+PromoCodeStatus	Shared/TalabatkLogic/Enum/PromoCodeStatus.cs	enum-only	none	-	-	file declares only enum types
+PromoCodeType	Shared/TalabatkLogic/Enum/PromoCodeType.cs	enum-only	none	-	-	file declares only enum types
+ReAssignedReasons	Shared/TalabatkLogic/Enum/ReAssignedReasons.cs	enum-only	none	-	-	file declares only enum types
+RefundExecutionDestination	Shared/TalabatkLogic/Enum/RefundExecutionDestination.cs	enum-only	none	-	-	file declares only enum types
+RestaurantOrderDetailsAvailability	Shared/TalabatkLogic/Enum/RestaurantOrderDetailsAvailability.cs	enum-only	none	-	-	file declares only enum types
+RestaurantOrderStatus	Shared/TalabatkLogic/Enum/RestaurantOrderStatus.cs	enum-only	none	-	-	file declares only enum types
+RestaurantProcessOrderViaEnum	Shared/TalabatkLogic/Enum/RestaurantProcessOrderViaEnum.cs	enum-only	none	-	-	file declares only enum types
+RestaurantRateEnglish	Shared/TalabatkLogic/Enum/RestaurantRateEnglish.cs	enum-only	none	-	-	file declares only enum types
+RestaurnatRateArabic	Shared/TalabatkLogic/Enum/RestaurnatRateArabic.cs	enum-only	none	-	-	file declares only enum types
+RoboCallStatus	Shared/TalabatkLogic/Enum/RoboCallStatus.cs	enum-only	none	-	-	file declares only enum types
+RoboCallType	Shared/TalabatkLogic/Enum/RoboCallType.cs	enum-only	none	-	-	file declares only enum types
+Role	Shared/TalabatkLogic/Enum/Role.cs	enum-only	none	-	-	file declares only enum types
+RecurrenceType	Shared/TalabatkLogic/Enum/Scheduled Notifications/RecurrenceType.cs	enum-only	none	-	-	file declares only enum types
+TargetType	Shared/TalabatkLogic/Enum/Scheduled Notifications/TargetType.cs	enum-only	none	-	-	file declares only enum types
+Screen	Shared/TalabatkLogic/Enum/Screen.cs	enum-only	none	-	-	file declares only enum types
+SearchFilterEnum	Shared/TalabatkLogic/Enum/SearchFilterEnum.cs	enum-only	none	-	-	file declares only enum types
+SearchTypeEnum	Shared/TalabatkLogic/Enum/SearchTypeEnum.cs	enum-only	none	-	-	file declares only enum types
+SliderType	Shared/TalabatkLogic/Enum/SliderType.cs	enum-only	none	-	-	file declares only enum types
+SpecialMartCategory	Shared/TalabatkLogic/Enum/SpecialMartCategory.cs	enum-only	none	-	-	file declares only enum types
+SubuscriptionRepetion	Shared/TalabatkLogic/Enum/SubuscriptionRepetion.cs	enum-only	none	-	-	file declares only enum types
+TaskStatus	Shared/TalabatkLogic/Enum/TaskStatus.cs	enum-only	none	-	-	file declares only enum types
+TaskTypes	Shared/TalabatkLogic/Enum/TaskTypes.cs	enum-only	none	-	-	file declares only enum types
+UnavailableItemsPreferences	Shared/TalabatkLogic/Enum/UnavailableItemsPreferences.cs	enum-only	none	-	-	file declares only enum types
+UserOfflineReasonEnum	Shared/TalabatkLogic/Enum/UserOfflineReasonEnum.cs	enum-only	none	-	-	file declares only enum types
+VoucherStateEnum	Shared/TalabatkLogic/Enum/VoucherStateEnum.cs	enum-only	none	-	-	file declares only enum types
+WalletTransactionType	Shared/TalabatkLogic/Enum/WalletTransactionType.cs	enum-only	none	-	-	file declares only enum types
+GeomeryFactoryCustom	Shared/TalabatkLogic/GeomeryFactoryCustom.cs	infrastructure	none	-	-	NetTopologySuite geometry factory wrapper (name misspelt "Geomery"); constructs Point values for delivery-zone maths, no state of its own
+UpdateHoldedOrderJob	Shared/TalabatkLogic/HangfireJobs/UpdateHoldedOrderJob.cs	domain-behaviour	none	-	-	Hangfire job that releases held orders ("Holded" is the codebase spelling); scheduling documented in [[Customer Ordering/Order & Fulfilment/_knowledge-graph]]
+IAuditable	Shared/TalabatkLogic/IAuditable.cs	infrastructure	none	-	-	marker interface implemented by AuditableEntity; no members of its own
+IScheduledJob	Shared/TalabatkLogic/IScheduledJob.cs	infrastructure	none	-	-	one-method interface for Hangfire job types
+IVoucherCodeGenerator	Shared/TalabatkLogic/IVoucherCodeGenerator.cs	infrastructure	none	-	-	one-method interface for voucher code generation; the generated code is validated on Voucher itself
+IDeliveryBounsService	Shared/TalabatkLogic/InterFaces/IDeliveryBounsService.cs	infrastructure	none	-	-	driver-bonus service interface (folder and type both misspelt: "InterFaces", "Bouns")
+LocationUtils	Shared/TalabatkLogic/LocationUtils.cs	domain-behaviour	none	-	-	static distance/bearing maths over coordinates; consumed by driver assignment - rules documented in [[Delivery/Delivery Man Operations/Delivery-Assignment-Strategies]]
+GoogleResponse	Shared/TalabatkLogic/ResponseHelper/GoogleResponse.cs	dto	none	-	-	Google Distance Matrix response shape
+OutGoingDeliverOrderRequest	Shared/TalabatkLogic/ResponseHelper/OutGoingDeliverOrderRequest.cs	dto	none	-	-	outbound payload for the external-delivery handover
+CallContent	Shared/TalabatkLogic/RoboCall/CallContent.cs	dto	none	-	-	Ziwo robo-call request/response/webhook payload shape
+Click2AudioRequest	Shared/TalabatkLogic/RoboCall/Click2AudioRequest.cs	dto	none	-	-	Ziwo robo-call request/response/webhook payload shape
+IRoboCallService	Shared/TalabatkLogic/RoboCall/IRoboCallService.cs	dto	none	-	-	Ziwo robo-call request/response/webhook payload shape
+RoboCallContent	Shared/TalabatkLogic/RoboCall/RoboCallContent.cs	dto	none	-	-	Ziwo robo-call request/response/webhook payload shape
+RoboCallResponse	Shared/TalabatkLogic/RoboCall/RoboCallResponse.cs	dto	none	-	-	Ziwo robo-call request/response/webhook payload shape
+RoboCallWebHook	Shared/TalabatkLogic/RoboCall/RoboCallWebHook.cs	dto	none	-	-	Ziwo robo-call request/response/webhook payload shape
+ZiwoSettings	Shared/TalabatkLogic/RoboCall/ZiwoSettings.cs	dto	none	-	-	Ziwo robo-call request/response/webhook payload shape
+ParseRequiredDate	Shared/TalabatkLogic/Shared/ParseRequiredDate.cs	infrastructure	none	-	-	date-string parsing helper shared by query handlers

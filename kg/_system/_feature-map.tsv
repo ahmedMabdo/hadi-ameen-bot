@@ -1,0 +1,215 @@
+# controller_path	context	feature	evidence
+#
+# THE FEATURE DENOMINATOR. Every HTTP entry point in the repo is here, mapped to the feature whose
+# notes must explain it. Enumeration is `git ls-files` over the six hosts' Controllers folders;
+# the context/feature assignment is human judgment, and the evidence column says on what basis.
+#
+# `context` is the context that OWNS the feature's notes, which is not always the host project:
+# AdminUi's TieredDiscountController manages a Customer Ordering feature, so it maps there.
+#
+# Rows whose feature is `excluded:<reason>` or `non-controller` must state a reason - the same
+# discipline _depth-ledger.tsv applies to a depth claim. A file that is not an endpoint (DTO,
+# attribute, options class) is recorded rather than deleted, so "unmapped" stays a real signal.
+#
+# Generated once from scratchpad/gen-feature-map.js, then maintained by hand. verify-notes.js checks
+# it in both directions: an endpoint with no row FAILS, a row whose file left git FAILS.
+AdminUi/Controllers/Ad/AdController.cs	Admin	Catalog & Content Administration	catalog reference data, content pages and customer messaging
+AdminUi/Controllers/AdCards/AdCardsController.cs	Admin	Catalog & Content Administration	catalog reference data, content pages and customer messaging
+AdminUi/Controllers/AiThirdPartyController/AiThirdPartyController.cs	Admin	ERP & Integrations	ERP sync, journals, search index, webhooks and third-party AI
+AdminUi/Controllers/Announcement/AnnouncementController.cs	Admin	Catalog & Content Administration	catalog reference data, content pages and customer messaging
+AdminUi/Controllers/Area/AreaController.cs	Admin	City & Geography Administration	cities, areas, countries and zone administration
+AdminUi/Controllers/AudianceController/AudianceController.cs	Admin	Catalog & Content Administration	catalog reference data, content pages and customer messaging
+AdminUi/Controllers/AutoCompensationSettings/AutoCompensationSettingsController.cs	Admin	Delivery Administration	driver bonuses, wallets, suppliers, announcements, shifts and compensation
+AdminUi/Controllers/Brand/BrandController.cs	Admin	Catalog & Content Administration	catalog reference data, content pages and customer messaging
+AdminUi/Controllers/ChatDashboard/ChatDashboardController.cs	Admin	Chat Administration	chat dashboards, history, settings, ratings and inbound contact-us messages
+AdminUi/Controllers/ChatHistory/ChatHistoryController.cs	Admin	Chat Administration	chat dashboards, history, settings, ratings and inbound contact-us messages
+AdminUi/Controllers/ChatRateController/ChatRateController.cs	Admin	Chat Administration	chat dashboards, history, settings, ratings and inbound contact-us messages
+AdminUi/Controllers/ChatReports/ChatReportsController.cs	Admin	Chat Administration	chat dashboards, history, settings, ratings and inbound contact-us messages
+AdminUi/Controllers/ChatSettings/ChatSettingsController.cs	Admin	Chat Administration	chat dashboards, history, settings, ratings and inbound contact-us messages
+AdminUi/Controllers/CityBreakConfigurationController/CityBreakConfigurationController.cs	Admin	City & Geography Administration	cities, areas, countries and zone administration
+AdminUi/Controllers/CityController.cs	Admin	City & Geography Administration	city administration
+AdminUi/Controllers/CityRushTimeConfigurationController/CityRushTimeConfigurationController.cs	Admin	City & Geography Administration	cities, areas, countries and zone administration
+AdminUi/Controllers/CitySuggestionsController/CitySuggestionsController.cs	Admin	City & Geography Administration	cities, areas, countries and zone administration
+AdminUi/Controllers/Compensation/CompensationController.cs	Admin	Delivery Administration	driver bonuses, wallets, suppliers, announcements, shifts and compensation
+AdminUi/Controllers/Complaints/ComplaintsController.cs	Admin	Merchant Administration	merchant onboarding, availability, complaints and merchant reports
+AdminUi/Controllers/Configuration/ConfigurationController.cs	Admin	Admin Back-Office	back-office users, permissions, configuration, dashboards and reports
+AdminUi/Controllers/ContactUsAdmin/ContactUsController.cs	Admin	Chat Administration	chat dashboards, history, settings, ratings and inbound contact-us messages
+AdminUi/Controllers/CookingTimeCategoryController/CookingTimeCategoryController.cs	Admin	Catalog & Content Administration	catalog reference data, content pages and customer messaging
+AdminUi/Controllers/Country/CountryController.cs	Admin	City & Geography Administration	cities, areas, countries and zone administration
+AdminUi/Controllers/CustomReportDesignerController.cs	Admin	Admin Back-Office	report designer host
+AdminUi/Controllers/CustomerAdminChat/CustomerAdminChatController.cs	Admin	Chat Administration	chat dashboards, history, settings, ratings and inbound contact-us messages
+AdminUi/Controllers/CustomerAds/InAppMessagingController.cs	Admin	Catalog & Content Administration	catalog reference data, content pages and customer messaging
+AdminUi/Controllers/CustomerController/CustomerController.cs	Admin	Order & Customer Administration	order oversight, customer records, promo/voucher and wallet administration
+AdminUi/Controllers/CustomerNotifications/CustomerNotificationsController.cs	Admin	Catalog & Content Administration	catalog reference data, content pages and customer messaging
+AdminUi/Controllers/DashboardController/DynamicDashboardController.cs	Admin	Admin Back-Office	back-office users, permissions, configuration, dashboards and reports
+AdminUi/Controllers/DelivaryZoneController/DeliveryZoneController.cs	Admin	City & Geography Administration	cities, areas, countries and zone administration
+AdminUi/Controllers/DeliveryAnnouncementController/DeliveryAnnouncementController.cs	Admin	Delivery Administration	driver bonuses, wallets, suppliers, announcements, shifts and compensation
+AdminUi/Controllers/DeliveryBouns/DeliveryBounsController.cs	Admin	Delivery Administration	driver bonuses, wallets, suppliers, announcements, shifts and compensation
+AdminUi/Controllers/DeliveryInstructionsController/DeliveryInstructionsController.cs	Admin	Delivery Administration	driver bonuses, wallets, suppliers, announcements, shifts and compensation
+AdminUi/Controllers/DeliveryManChat/DeliveryManChatController.cs	Admin	Chat Administration	chat dashboards, history, settings, ratings and inbound contact-us messages
+AdminUi/Controllers/DeliveryManNotificationController/DeliveryManNotificationController.cs	Admin	Delivery Administration	driver bonuses, wallets, suppliers, announcements, shifts and compensation
+AdminUi/Controllers/DeliveryMenController.cs	Admin	Delivery Administration	driver records administration
+AdminUi/Controllers/DeliverySupplier/DeliverySupplierController.cs	Admin	Delivery Administration	driver bonuses, wallets, suppliers, announcements, shifts and compensation
+AdminUi/Controllers/DeliverymanWallet/DeliverymanWalletController.cs	Admin	Delivery Administration	driver bonuses, wallets, suppliers, announcements, shifts and compensation
+AdminUi/Controllers/ElasticSerach/ElasticSerachController.cs	Admin	ERP & Integrations	ERP sync, journals, search index, webhooks and third-party AI
+AdminUi/Controllers/ErpController/ERPController.cs	Admin	ERP & Integrations	ERP sync, journals, search index, webhooks and third-party AI
+AdminUi/Controllers/ErpIntegrationTrackingController.cs	Admin	ERP & Integrations	ERP sync tracking
+AdminUi/Controllers/FAQController/FAQItemsController.cs	Admin	Catalog & Content Administration	catalog reference data, content pages and customer messaging
+AdminUi/Controllers/FeatureMangamentController/FeatureMangamentController.cs	Admin	Admin Back-Office	health and feature flags
+AdminUi/Controllers/FeaturesManagementController.cs	Admin	Admin Back-Office	feature flag administration
+AdminUi/Controllers/FoodTypeController.cs	Admin	Catalog & Content Administration	food type reference data
+AdminUi/Controllers/FoodTypesController/FoodTypesController.cs	Admin	Catalog & Content Administration	catalog reference data, content pages and customer messaging
+AdminUi/Controllers/HealthController/HealthController .cs	Admin	Admin Back-Office	health and feature flags
+AdminUi/Controllers/ItemController/ItemController.cs	Admin	Catalog & Content Administration	catalog reference data, content pages and customer messaging
+AdminUi/Controllers/JournalSubscriptionController/JournalSubscriptionController.cs	Admin	ERP & Integrations	ERP sync, journals, search index, webhooks and third-party AI
+AdminUi/Controllers/Langauge/LangaugeController.cs	Admin	Catalog & Content Administration	catalog reference data, content pages and customer messaging
+AdminUi/Controllers/MartCategory/MartCategoryController.cs	Admin	Catalog & Content Administration	catalog reference data, content pages and customer messaging
+AdminUi/Controllers/MartCategory/SpecialMartCategoryController.cs	Admin	Catalog & Content Administration	catalog reference data, content pages and customer messaging
+AdminUi/Controllers/MenuItemActivationTrackingController.cs	Admin	Catalog & Content Administration	back-office reads of per-item activation state and activation history (`MenuItemActivationTrackingController.cs:39`, `:77`); catalog-side item data, the same feature as ItemController
+AdminUi/Controllers/MerchantController/MerchantController.cs	Admin	Merchant Administration	merchant onboarding, availability, complaints and merchant reports
+AdminUi/Controllers/NonDeliveryReasonsController.cs	Admin	Delivery Administration	non-delivery reason catalogue
+AdminUi/Controllers/NotificationsController/NotificationsController.cs	Admin	Catalog & Content Administration	catalog reference data, content pages and customer messaging
+AdminUi/Controllers/Order/OrderController.cs	Admin	Order & Customer Administration	order oversight, customer records, promo/voucher and wallet administration
+AdminUi/Controllers/PaymentMethodController/PaymentMethodController.cs	Admin	Order & Customer Administration	order oversight, customer records, promo/voucher and wallet administration
+AdminUi/Controllers/Permission/PermissionController.cs	Admin	Admin Back-Office	back-office users, permissions, configuration, dashboards and reports
+AdminUi/Controllers/PrivacyPolicyController/PrivacyPolicyController.cs	Admin	Catalog & Content Administration	catalog reference data, content pages and customer messaging
+AdminUi/Controllers/PromoCodeController/PromoCodeController.cs	Admin	Order & Customer Administration	order oversight, customer records, promo/voucher and wallet administration
+AdminUi/Controllers/RejectedResoneController/RejectedReasonController.cs	Admin	Merchant Administration	merchant onboarding, availability, complaints and merchant reports
+AdminUi/Controllers/ReportController.cs	Admin	Admin Back-Office	report host endpoints
+AdminUi/Controllers/ReportsController/ReportsController.cs	Admin	Admin Back-Office	back-office users, permissions, configuration, dashboards and reports
+AdminUi/Controllers/RestaurantBusyController/RestaurantBusyController.cs	Admin	Merchant Administration	merchant onboarding, availability, complaints and merchant reports
+AdminUi/Controllers/RestaurantController/RestaurantController.cs	Admin	Merchant Administration	merchant onboarding, availability, complaints and merchant reports
+AdminUi/Controllers/RestaurantReport/ReportListController.cs	Admin	Merchant Administration	merchant onboarding, availability, complaints and merchant reports
+AdminUi/Controllers/RestaurantReport/ReportsListDTO.cs	-	non-controller	DTO class, not an endpoint
+AdminUi/Controllers/RestaurantZoneController/RestaurantZoneController.cs	Admin	City & Geography Administration	cities, areas, countries and zone administration
+AdminUi/Controllers/RoboCall/RoboCallController.cs	Admin	Delivery Administration	driver bonuses, wallets, suppliers, announcements, shifts and compensation
+AdminUi/Controllers/ScheduledNotificationController/ScheduledNotificationController.cs	Admin	Catalog & Content Administration	catalog reference data, content pages and customer messaging
+AdminUi/Controllers/Slider/Slider.cs	Admin	Catalog & Content Administration	catalog reference data, content pages and customer messaging
+AdminUi/Controllers/StoreType/StoreTypeController.cs	Admin	Catalog & Content Administration	catalog reference data, content pages and customer messaging
+AdminUi/Controllers/StoreTypesController.cs	Admin	Catalog & Content Administration	store type reference data
+AdminUi/Controllers/TawkTo/TawkToController.cs	Admin	ERP & Integrations	ERP sync, journals, search index, webhooks and third-party AI
+AdminUi/Controllers/TermsAndConditions/TermsAndConditionsController.cs	Admin	Catalog & Content Administration	catalog reference data, content pages and customer messaging
+AdminUi/Controllers/TieredDiscountController/TieredDiscountController.cs	Customer Ordering	Tiered Discount	management side of a Customer Ordering feature — the notes live under that feature
+AdminUi/Controllers/UnbanReasonsController.cs	Admin	Delivery Administration	driver unban reason catalogue
+AdminUi/Controllers/UserController/UserController.cs	Admin	Admin Back-Office	back-office users, permissions, configuration, dashboards and reports
+AdminUi/Controllers/UserShiftController/UserShiftController.cs	Admin	Delivery Administration	driver bonuses, wallets, suppliers, announcements, shifts and compensation
+AdminUi/Controllers/VoucherController/VoucherController.cs	Admin	Order & Customer Administration	order oversight, customer records, promo/voucher and wallet administration
+AdminUi/Controllers/WalletTransactionRechargeReasonController/WalletTransactionRechargeReasonController.cs	Admin	Order & Customer Administration	order oversight, customer records, promo/voucher and wallet administration
+AdminUi/Controllers/Webhook/WebhookController.cs	Admin	ERP & Integrations	ERP sync, journals, search index, webhooks and third-party AI
+AdminUi/Controllers/WorkUsDeliveryController.cs	Admin	Delivery Administration	driver applications
+AdminUi/Controllers/WorkUsRestaurantController.cs	Admin	Merchant Administration	merchant applications
+Talabatk.IDS/Controllers/Account/AccountController.cs	Identity & Access	Authentication & Tokens	IdentityServer login, consent and external providers
+Talabatk.IDS/Controllers/Account/AccountOptions.cs	-	non-controller	options/config class, not an endpoint
+Talabatk.IDS/Controllers/Account/ExternalController.cs	Identity & Access	Authentication & Tokens	IdentityServer login, consent and external providers
+Talabatk.IDS/Controllers/Account/ExternalProvider.cs	-	non-controller	view model, not an endpoint
+Talabatk.IDS/Controllers/Account/HomeController.cs	Identity & Access	Authentication & Tokens	IdentityServer login, consent and external providers
+Talabatk.IDS/Controllers/BackgroundJobsController.cs	Identity & Access	Ops & Infra	host maintenance, jobs and feature flags
+Talabatk.IDS/Controllers/CustomerController.cs	Identity & Access	Customer Identity	customer registration, OTP and password reset
+Talabatk.IDS/Controllers/DeliveryMenController.cs	Identity & Access	Delivery Man Identity	driver registration and password reset — holds finding #509
+Talabatk.IDS/Controllers/DeliveryMenController/DeliveryManController.cs	Identity & Access	Delivery Man Identity	driver identity endpoints
+Talabatk.IDS/Controllers/DeliveryMenController/DeliveryManTestController.cs	Identity & Access	Delivery Man Identity	driver identity endpoints
+Talabatk.IDS/Controllers/Extensions.cs	-	non-controller	extension methods, not an endpoint
+Talabatk.IDS/Controllers/FeatureMangamentController/FeatureMangamentController.cs	Identity & Access	Ops & Infra	health, feature flags and the host payment redirect pages
+Talabatk.IDS/Controllers/FeaturesController.cs	Identity & Access	Ops & Infra	host maintenance, jobs and feature flags
+Talabatk.IDS/Controllers/HealthController/HealthController.cs	Identity & Access	Ops & Infra	health, feature flags and the host payment redirect pages
+Talabatk.IDS/Controllers/MaintenanceController.cs	Identity & Access	Ops & Infra	host maintenance, jobs and feature flags
+Talabatk.IDS/Controllers/PaymentController/PaymentController.cs	Identity & Access	Ops & Infra	health, feature flags and the host payment redirect pages
+Talabatk.IDS/Controllers/RestaurantUserController/RestaurantUserController.cs	Identity & Access	Restaurant & Admin User Identity	merchant and back-office user identity
+Talabatk.IDS/Controllers/SecurityHeadersAttribute.cs	-	non-controller	action filter attribute, not an endpoint
+Talabatk.IDS/Controllers/UsersController/UsersController.cs	Identity & Access	Restaurant & Admin User Identity	merchant and back-office user identity
+Talabatk.VersionAPI/Controllers/AppVersionDto.cs	-	non-controller	DTO class, not an endpoint
+Talabatk.VersionAPI/Controllers/AppVersionFields.cs	Version API	excluded:out-of-scope-user-instruction	project is excluded:out-of-scope-user-instruction in _coverage-manifest.md; context hub documents the boundary. Also not actually an entry point: a plain value class naming the three Redis hash fields (`AppVersionFields.cs:13`), filed under Controllers/ where the folder-based entry-point scan cannot tell the difference
+Talabatk.VersionAPI/Controllers/VersionReader.cs	-	non-controller	helper class, not an endpoint
+Talabatk.VersionAPI/Controllers/VersionsController.cs	Version API	excluded:out-of-scope-user-instruction	project is excluded:out-of-scope-user-instruction in _coverage-manifest.md; context hub documents the boundary
+TalabatkAPIs/Controllers/AbouApp/AboutAppController.cs	Customer Ordering	Marketing & Content	in-app content, ads and announcements
+TalabatkAPIs/Controllers/Ads/AdsController.cs	Customer Ordering	Marketing & Content	in-app content, ads and announcements
+TalabatkAPIs/Controllers/Announcement/AnnouncementController.cs	Customer Ordering	Marketing & Content	in-app content, ads and announcements
+TalabatkAPIs/Controllers/AreaController/AreaController.cs	Customer Ordering	Ops & Infra	health, feature flags and reference geography for the customer app
+TalabatkAPIs/Controllers/AutoCompensation/AutoCompensationRulesController.cs	Customer Ordering	Order & Fulfilment	late-order compensation rules
+TalabatkAPIs/Controllers/Cart/CartController.cs	Customer Ordering	Cart & Checkout	cart lifecycle + checkout entry point
+TalabatkAPIs/Controllers/CentrifugoController.cs	Customer Ordering	Ops & Infra	realtime transport and host root
+TalabatkAPIs/Controllers/City/CityController.cs	Customer Ordering	Ops & Infra	health, feature flags and reference geography for the customer app
+TalabatkAPIs/Controllers/ContactUs/ContactUsController.cs	Customer Ordering	Support & Chat	customer support and chat channels
+TalabatkAPIs/Controllers/CustomerAdminChat/CustomerAdminChatController.cs	Customer Ordering	Support & Chat	customer support and chat channels
+TalabatkAPIs/Controllers/CustomerAds/CustomerAdsController.cs	Customer Ordering	Marketing & Content	in-app content, ads and announcements
+TalabatkAPIs/Controllers/CustomerDeliveryChat/CustomerDeliveryChatController.cs	Customer Ordering	Support & Chat	customer support and chat channels
+TalabatkAPIs/Controllers/CustomerUser/CustomerUserController.cs	Customer Ordering	Customer Account	customer profile and preferences
+TalabatkAPIs/Controllers/Deliveryintevral/DeliveryIntervalController.cs	Customer Ordering	Order & Fulfilment	delivery interval promised to the customer
+TalabatkAPIs/Controllers/FAQ/FaqController.cs	Customer Ordering	Marketing & Content	in-app content, ads and announcements
+TalabatkAPIs/Controllers/Favourite/FavouriteController.cs	Customer Ordering	Restaurant & Menu Discovery	browsing, search and menu discovery surface
+TalabatkAPIs/Controllers/FeatureMangamentController/FeatureMangamentController.cs	Customer Ordering	Ops & Infra	health, feature flags and reference geography for the customer app
+TalabatkAPIs/Controllers/FoodTypes/FoodTypesController.cs	Customer Ordering	Restaurant & Menu Discovery	browsing, search and menu discovery surface
+TalabatkAPIs/Controllers/HealthController/HealthController.cs	Customer Ordering	Ops & Infra	health, feature flags and reference geography for the customer app
+TalabatkAPIs/Controllers/HomeController.cs	Customer Ordering	Ops & Infra	realtime transport and host root
+TalabatkAPIs/Controllers/HomePage/HomePageController.cs	Customer Ordering	Restaurant & Menu Discovery	browsing, search and menu discovery surface
+TalabatkAPIs/Controllers/IRecycleRedeems/IRecycleRedeemsController.cs	Customer Ordering	Discounts & Coupons	recycle/redeem loyalty exchange
+TalabatkAPIs/Controllers/MVC/PaymentOnlineController.cs	Customer Ordering	Payments	online payment gateway redirect pages
+TalabatkAPIs/Controllers/Mart/BrandsController.cs	Customer Ordering	Restaurant & Menu Discovery	browsing, search and menu discovery surface
+TalabatkAPIs/Controllers/Mart/MartController.cs	Customer Ordering	Restaurant & Menu Discovery	browsing, search and menu discovery surface
+TalabatkAPIs/Controllers/MenuItem/CategoryController.cs	Customer Ordering	Restaurant & Menu Discovery	browsing, search and menu discovery surface
+TalabatkAPIs/Controllers/MenuItem/ItemController.cs	Customer Ordering	Restaurant & Menu Discovery	browsing, search and menu discovery surface
+TalabatkAPIs/Controllers/Order/OrderController.cs	Customer Ordering	Order & Fulfilment	customer order placement and tracking
+TalabatkAPIs/Controllers/PaymentMethod/PaymentMethodController.cs	Customer Ordering	Payments	payment method selection
+TalabatkAPIs/Controllers/PrivacyPolicy/PrivacyPolicyController.cs	Customer Ordering	Marketing & Content	in-app content, ads and announcements
+TalabatkAPIs/Controllers/PromoCode/PromoCodeController.cs	Customer Ordering	Discounts & Coupons	promo code redemption
+TalabatkAPIs/Controllers/Resturant/ResturantController.cs	Customer Ordering	Restaurant & Menu Discovery	browsing, search and menu discovery surface
+TalabatkAPIs/Controllers/Search/SearchController.cs	Customer Ordering	Restaurant & Menu Discovery	browsing, search and menu discovery surface
+TalabatkAPIs/Controllers/SearchHistory/SearchHistoryController.cs	Customer Ordering	Restaurant & Menu Discovery	browsing, search and menu discovery surface
+TalabatkAPIs/Controllers/StoreTypes/StoreTypesController.cs	Customer Ordering	Restaurant & Menu Discovery	browsing, search and menu discovery surface
+TalabatkAPIs/Controllers/TawkTo/TawkToController.cs	Customer Ordering	Support & Chat	customer support and chat channels
+TalabatkAPIs/Controllers/TermsAndConditions/TermsAndConditionsController.cs	Customer Ordering	Marketing & Content	in-app content, ads and announcements
+TalabatkAPIs/Controllers/UnRevisedItemController/UnRevisedItemController.cs	Customer Ordering	Order & Fulfilment	post-order item revision
+TalabatkAPIs/Controllers/UserPreferences/UserPreferencesController.cs	Customer Ordering	Customer Account	customer profile and preferences
+TalabatkAPIs/Controllers/Vouchers/VouchersController.cs	Customer Ordering	Discounts & Coupons	voucher redemption
+TalabatkAPIs/Controllers/Wallet/WalletController.cs	Customer Ordering	Payments	customer wallet balance and transactions
+TalabatkDelivery/Controllers/Apis/AutoAssignController.cs	Delivery	Delivery Man Operations	driver shift, assignment, location and non-delivery reason endpoints
+TalabatkDelivery/Controllers/Apis/CentrifugoController.cs	Delivery	Ops & Infra	realtime transport
+TalabatkDelivery/Controllers/Apis/ChatController.cs	Delivery	Delivery Support & Chat	driver chat channels
+TalabatkDelivery/Controllers/Apis/CustomerUser/CustomerUserController.cs	Delivery	Delivery Support & Chat	driver-to-customer contact and support widget
+TalabatkDelivery/Controllers/Apis/DeliveryManAdminChatController.cs	Delivery	Delivery Support & Chat	driver chat channels
+TalabatkDelivery/Controllers/Apis/DeliveryManController.cs	Delivery	Delivery Man Operations	driver shift, assignment, location and non-delivery reason endpoints
+TalabatkDelivery/Controllers/Apis/DeliveryManMaps/DeliveryManMapsController.cs	Delivery	Delivery Man Operations	driver shift, assignment, location and non-delivery reason endpoints
+TalabatkDelivery/Controllers/Apis/Fawry/FawryController.cs	Delivery	Driver Cash & Compensation	driver Fawry cash settlement
+TalabatkDelivery/Controllers/Apis/Fawry/FawryTransactionInitDto.cs	-	non-controller	DTO class, not an endpoint
+TalabatkDelivery/Controllers/Apis/FeatureMangamentController/FeatureMangamentController.cs	Delivery	Ops & Infra	health and feature flags
+TalabatkDelivery/Controllers/Apis/HealthController/HealthController.cs	Delivery	Ops & Infra	health and feature flags
+TalabatkDelivery/Controllers/Apis/NonDeliveryReasons/NonDeliveryReasonsController.cs	Delivery	Delivery Man Operations	driver shift, assignment, location and non-delivery reason endpoints
+TalabatkDelivery/Controllers/Apis/Restaurant/RestaurantController.cs	Delivery	Delivery Man Operations	driver shift, assignment, location and non-delivery reason endpoints
+TalabatkDelivery/Controllers/Apis/ShiftController.cs	Delivery	Delivery Man Operations	driver shift, assignment, location and non-delivery reason endpoints
+TalabatkDelivery/Controllers/Apis/TawkTo/TawkToController.cs	Delivery	Delivery Support & Chat	driver-to-customer contact and support widget
+TalabatkDelivery/Controllers/HomeController.cs	Delivery	Ops & Infra	host root
+TalabatkDelivery/Controllers/MVC/DeliveryManMaps/DeliveryManMapsController.cs	Delivery	Delivery Man Operations	driver shift, assignment, location and non-delivery reason endpoints
+TalabatkDelivery/Controllers/MVC/DeliveryManMaps/DeliveryManShiftController.cs	Delivery	Delivery Man Operations	driver shift, assignment, location and non-delivery reason endpoints
+TalabatkDelivery/Controllers/MVC/DeliveryManMaps/DeliveryMenLocationController.cs	Delivery	Delivery Man Operations	driver shift, assignment, location and non-delivery reason endpoints
+TalabatkDelivery/Controllers/MVC/DeliveryMenShift/DeliveryMenShiftController.cs	Delivery	Delivery Man Operations	driver shift, assignment, location and non-delivery reason endpoints
+TalabatkDelivery/Controllers/MVC/DeliveryReasons/DeliveryReasonsController.cs	Delivery	Delivery Man Operations	driver shift, assignment, location and non-delivery reason endpoints
+TalabatkRestaurants/Controllers/Ads/AdsController.cs	Restaurant Portal	Merchant Finance & Reporting	merchant settlement, dashboards and reports
+TalabatkRestaurants/Controllers/Category/CategoryController.cs	Restaurant Portal	Menu & Order Management	merchant menu structure, items, prices and options
+TalabatkRestaurants/Controllers/CategoryItemsPricesManagement/CategoryItemsPricesController.cs	Restaurant Portal	Menu & Order Management	merchant menu structure, items, prices and options
+TalabatkRestaurants/Controllers/CustomReportDesignerController .cs	Restaurant Portal	Merchant Finance & Reporting	report host endpoints
+TalabatkRestaurants/Controllers/ExportImportExcel/ExportImportExcelController.cs	Restaurant Portal	Merchant Finance & Reporting	merchant settlement, dashboards and reports
+TalabatkRestaurants/Controllers/ExternalDelivery/ExternalDeliveryRequestsController.cs	Restaurant Portal	Menu & Order Management	merchant incoming-order handling and delivery hand-off
+TalabatkRestaurants/Controllers/FeatureMangamentController/FeatureMangamentController.cs	Restaurant Portal	Ops & Infra	health, feature flags and support widget
+TalabatkRestaurants/Controllers/FeatureMangement/FeatureMangementController.cs	Restaurant Portal	Merchant Account & Access	store users, permissions and store profile — where the tenant-isolation findings sit
+TalabatkRestaurants/Controllers/HealthController/HealthController.cs	Restaurant Portal	Ops & Infra	health, feature flags and support widget
+TalabatkRestaurants/Controllers/ItemOption/ItemOptionController.cs	Restaurant Portal	Menu & Order Management	merchant menu structure, items, prices and options
+TalabatkRestaurants/Controllers/ItemPrice/ItemPriceController.cs	Restaurant Portal	Menu & Order Management	merchant menu structure, items, prices and options
+TalabatkRestaurants/Controllers/Language/LanguagesController.cs	Restaurant Portal	Menu & Order Management	merchant menu structure, items, prices and options
+TalabatkRestaurants/Controllers/MenuItems/MenuItemsController.cs	Restaurant Portal	Menu & Order Management	merchant menu structure, items, prices and options
+TalabatkRestaurants/Controllers/MerchantDashboardControllers/MerchantDashboardController.cs	Restaurant Portal	Merchant Finance & Reporting	merchant settlement, dashboards and reports
+TalabatkRestaurants/Controllers/OptionCategory/OptionCategoryController.cs	Restaurant Portal	Menu & Order Management	merchant menu structure, items, prices and options
+TalabatkRestaurants/Controllers/OptionGroup/MenuItemOptionGroupController.cs	Restaurant Portal	Menu & Order Management	merchant menu structure, items, prices and options
+TalabatkRestaurants/Controllers/Options/OptionsController.cs	Restaurant Portal	Menu & Order Management	merchant menu structure, items, prices and options
+TalabatkRestaurants/Controllers/Orders/OrdersController.cs	Restaurant Portal	Menu & Order Management	merchant incoming-order handling and delivery hand-off
+TalabatkRestaurants/Controllers/ReportController.cs	Restaurant Portal	Merchant Finance & Reporting	report host endpoints
+TalabatkRestaurants/Controllers/Reports/ReportController.cs	Restaurant Portal	Merchant Finance & Reporting	merchant settlement, dashboards and reports
+TalabatkRestaurants/Controllers/RestaurantNotification/RestaurantNotificationController.cs	Restaurant Portal	Menu & Order Management	merchant incoming-order handling and delivery hand-off
+TalabatkRestaurants/Controllers/RestaurantPayment/RestaurantPaymentController.cs	Restaurant Portal	Merchant Finance & Reporting	merchant settlement, dashboards and reports
+TalabatkRestaurants/Controllers/Restaurants/RestaurantsController.cs	Restaurant Portal	Merchant Account & Access	store users, permissions and store profile — where the tenant-isolation findings sit
+TalabatkRestaurants/Controllers/RestaurnatReport/ReportListController.cs	Restaurant Portal	Merchant Finance & Reporting	merchant settlement, dashboards and reports
+TalabatkRestaurants/Controllers/RestaurnatReport/ReportsListDTO.cs	-	non-controller	DTO class, not an endpoint
+TalabatkRestaurants/Controllers/ServerTime/ServerTimeController.cs	Restaurant Portal	Menu & Order Management	merchant incoming-order handling and delivery hand-off
+TalabatkRestaurants/Controllers/StoreManagement/StoreMenuItemsController.cs	Restaurant Portal	Menu & Order Management	merchant menu structure, items, prices and options
+TalabatkRestaurants/Controllers/StoreUsers/StoreUsersController.cs	Restaurant Portal	Merchant Account & Access	store users, permissions and store profile — where the tenant-isolation findings sit
+TalabatkRestaurants/Controllers/TawkTo/TawkToController.cs	Restaurant Portal	Ops & Infra	health, feature flags and support widget
+TalabatkRestaurants/Controllers/UserPermissions/UserPermissionsController.cs	Restaurant Portal	Merchant Account & Access	store users, permissions and store profile — where the tenant-isolation findings sit

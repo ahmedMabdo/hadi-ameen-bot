@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Order &amp; Fulfilment — Context Graph</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; overflow: hidden; }
+  #graph { width: 100vw; height: 100vh; }
+  .node circle { cursor: grab; stroke: #fff; stroke-width: 2.5px; filter: drop-shadow(0 2px 4px rgba(0,0,0,.18)); }
+  .node circle:active { cursor: grabbing; }
+  .node text { pointer-events: none; font-size: 11px; font-weight: 600; fill: #fff; text-anchor: middle; dominant-baseline: central; }
+  .node .sub { font-size: 9px; font-weight: 400; opacity: 0.85; }
+  .link { fill: none; stroke: #bbb; stroke-width: 1.5px; marker-end: url(#arrow); }
+  .link.cross { stroke: #aaa; stroke-dasharray: 5 3; }
+  .link-label { font-size: 9px; fill: #666; font-weight: 500; pointer-events: none; letter-spacing: 0.02em; }
+  #legend { position: absolute; bottom: 16px; left: 16px; background: rgba(255,255,255,.92); border-radius: 8px; padding: 10px 14px; font-size: 10px; color: #555; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+  #legend div { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  #legend div:last-child { margin-bottom: 0; }
+  .leg-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .leg-line { width: 22px; height: 2px; background: #bbb; flex-shrink: 0; }
+  .leg-dash { width: 22px; height: 2px; background: repeating-linear-gradient(90deg,#aaa 0,#aaa 4px,transparent 4px,transparent 7px); flex-shrink: 0; }
+  #title { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); font-size: 13px; font-weight: 700; color: #444; background: rgba(255,255,255,.88); padding: 5px 16px; border-radius: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.1); pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="title">Order &amp; Fulfilment — Context Graph</div>
+<svg id="graph"></svg>
+<div id="legend">
+  <div><span class="leg-dot" style="background:#4a90d9"></span> Core Transactional</div>
+  <div><span class="leg-dot" style="background:#e8603c"></span> Master Data</div>
+  <div><span class="leg-dot" style="background:#50c878"></span> Financial</div>
+  <div><span class="leg-dot" style="background:#9b59b6"></span> Cross-BC / Cross-side</div>
+  <div><span class="leg-line"></span> Internal relation</div>
+  <div><span class="leg-dash"></span> Cross-BC / cross-side relation</div>
+</div>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+const W = window.innerWidth, H = window.innerHeight;
+const svg = d3.select('#graph').attr('width', W).attr('height', H);
+
+const defs = svg.append('defs');
+['arrow','arrow-cross'].forEach((id, i) => {
+  defs.append('marker')
+    .attr('id', id).attr('viewBox', '0 -4 10 8')
+    .attr('refX', 10).attr('refY', 0)
+    .attr('markerWidth', 6).attr('markerHeight', 6)
+    .attr('orient', 'auto')
+    .append('path').attr('d', 'M0,-4L10,0L0,4')
+    .attr('fill', i === 0 ? '#bbb' : '#aaa');
+});
+
+const COLOR = { transaction: '#4a90d9', master: '#e8603c', financial: '#50c878', cross: '#9b59b6' };
+
+const nodes = [{"id": "Order", "label": "Order\n(HUB)", "type": "transaction", "r": 40}, {"id": "OrderRestaurantDetails", "label": "Order\nPortion", "type": "transaction", "r": 30}, {"id": "CustomerCart", "label": "Customer\nCart", "type": "cross", "r": 28}, {"id": "PromoCodes", "label": "Promo\nCodes", "type": "cross", "r": 24}, {"id": "Vouchers", "label": "Vouchers", "type": "cross", "r": 24}, {"id": "TieredDiscount", "label": "Tiered\nDiscount", "type": "cross", "r": 24}, {"id": "RestaurantPortal", "label": "Restaurant\nPortal (ctx)", "type": "master", "r": 26}, {"id": "Delivery", "label": "Delivery\n(ctx)", "type": "master", "r": 26}, {"id": "Admin", "label": "Admin\n(ctx)", "type": "master", "r": 26}];
+const links = [{"source": "CustomerCart", "target": "Order", "label": "BECOMES", "cross": true}, {"source": "Order", "target": "OrderRestaurantDetails", "label": "HAS MANY", "cross": false}, {"source": "PromoCodes", "target": "Order", "label": "APPLIED TO", "cross": true}, {"source": "Vouchers", "target": "Order", "label": "APPLIED TO", "cross": true}, {"source": "TieredDiscount", "target": "OrderRestaurantDetails", "label": "APPLIED TO", "cross": true}, {"source": "Order", "target": "RestaurantPortal", "label": "CONFIRMED/COOKED BY", "cross": true}, {"source": "Order", "target": "Delivery", "label": "ASSIGNED/DELIVERED BY", "cross": true}, {"source": "Order", "target": "Admin", "label": "COMPENSATION/ERP BY", "cross": true}];
+
+const cx = W / 2, cy = H / 2;
+// Initial layout: spread nodes on a circle so the simulation settles quickly.
+nodes.forEach((n, i) => {
+  const a = (i / nodes.length) * 2 * Math.PI;
+  n.x = cx + Math.cos(a) * Math.min(W, H) * 0.28;
+  n.y = cy + Math.sin(a) * Math.min(W, H) * 0.28;
+});
+
+const sim = d3.forceSimulation(nodes)
+  .force('link', d3.forceLink(links).id(d => d.id).distance(d => d.cross ? 180 : 155).strength(0.4))
+  .force('charge', d3.forceManyBody().strength(-600))
+  .force('center', d3.forceCenter(cx, cy))
+  .force('collide', d3.forceCollide(d => d.r + 20));
+
+const linkGroup = svg.append('g');
+const labelGroup = svg.append('g');
+const nodeGroup  = svg.append('g');
+
+const linkEl = linkGroup.selectAll('path')
+  .data(links).join('path')
+  .attr('class', d => d.cross ? 'link cross' : 'link')
+  .attr('marker-end', d => d.cross ? 'url(#arrow-cross)' : 'url(#arrow)');
+
+const labelEl = labelGroup.selectAll('text')
+  .data(links).join('text').attr('class', 'link-label').text(d => d.label);
+
+const nodeEl = nodeGroup.selectAll('g')
+  .data(nodes).join('g').attr('class', 'node')
+  .call(d3.drag()
+    .on('start', (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+    .on('drag',  (e, d) => { d.fx = e.x; d.fy = e.y; })
+    .on('end',   (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+nodeEl.append('circle').attr('r', d => d.r).attr('fill', d => COLOR[d.type] || '#888');
+
+nodeEl.each(function(d) {
+  const lines = String(d.label).split('\n');
+  const g = d3.select(this);
+  if (lines.length === 1) { g.append('text').text(lines[0]); }
+  else {
+    const dy0 = -(lines.length - 1) * 6;
+    lines.forEach((line, i) => {
+      g.append('text').attr('dy', dy0 + i * 13).text(line).classed('sub', i > 0);
+    });
+  }
+});
+
+function linkPath(d) {
+  const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist === 0) return '';
+  const ux = dx / dist, uy = dy / dist;
+  const sr = d.source.r + 3, tr = d.target.r + 8;
+  const sx = d.source.x + ux * sr, sy = d.source.y + uy * sr;
+  const tx = d.target.x - ux * tr, ty = d.target.y - uy * tr;
+  const mx = (sx + tx) / 2 - uy * 18, my = (sy + ty) / 2 + ux * 18;
+  return `M${sx},${sy} Q${mx},${my} ${tx},${ty}`;
+}
+
+sim.on('tick', () => {
+  linkEl.attr('d', linkPath);
+  labelEl.attr('x', d => {
+    const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    return (d.source.x + d.target.x) / 2 - (dy / dist) * 18;
+  }).attr('y', d => {
+    const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    return (d.source.y + d.target.y) / 2 + (dx / dist) * 18;
+  });
+  nodeEl.attr('transform', d => `translate(${d.x},${d.y})`);
+});
+
+sim.alphaDecay(0.02);
+
+window.addEventListener('resize', () => {
+  const w = window.innerWidth, h = window.innerHeight;
+  svg.attr('width', w).attr('height', h);
+  sim.force('center', d3.forceCenter(w / 2, h / 2)).alpha(0.3).restart();
+});
+</script>
+</body>
+</html>

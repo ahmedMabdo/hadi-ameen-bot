@@ -1,0 +1,69 @@
+# Depth ledger — the answer to "what evidence supports this file's coverage?"
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# `status` says what a phase was SUPPOSED to do with a file. `depth` says what the evidence actually
+# supports. Before this file, `depth` could only be carried forward from the previous manifest, so
+# there was no way to ASSERT a depth for a set of files — and no way to state a REASON. That is what
+# produced the contradiction Path A Step 4 exists to fix: 1,723 rows reading `status=read` next to
+# `depth=sweep-only`, one column claiming the file was read and the other denying it.
+#
+# The four depth values, and what each one is allowed to mean:
+#
+#   evidenced   Some note in the knowledge graph cites this file. The strongest claim. NOT set here —
+#               it is maintained in the manifest itself and carried across regeneration, because it
+#               follows the KG's citations rather than a path pattern.
+#   agent-read  A named report says an agent read this file in full. The report must exist in `_inbox/`.
+#   parsed      A deterministic parser processed this file and the ledger NAMES the parser and what it
+#               extracted. This is the value Step 3 adds. It is not weaker than `agent-read` — for
+#               generated files it is stronger, because it is reproducible.
+#   sweep-only  Covered by a bulk grep/pattern pass, with a stated reason below. An honest gap.
+#
+# FORMAT: <js-regex>  TAB  <depth>  TAB  <evidence — parser named, or report named, or reason>
+# First match wins. Order matters. Blank lines and `#` comments ignored.
+# Excluded files never reach here; they are `n/a` by construction.
+
+# ---------------------------------------------------------------------------
+# parsed — deterministic extraction, parser named (Path A Step 3)
+# ---------------------------------------------------------------------------
+/Migrations/.*\.Designer\.cs$	parsed	phase 1-4 designer parse: `[Migration]` attribute + target-model snapshot confirmed present in all 921 files; bodies are EF-generated and carry no hand-written rules
+/Migrations/TalabatkContextModelSnapshot\.cs$	parsed	phase 1-2 snapshot parse: authoritative current schema — tables, columns, relationships, delete behaviours, indexes. This is the file that retracted #4
+/Migrations/.*\.cs$	parsed	phase 1-1 migration-body parse: 935 `Up()`/`Down()` bodies parsed; 114 real `Up()` drops and 98 stored procedures inventoried
+^Shared/TalabatkLogic/Enum/.*\.cs$	parsed	phase 2-3 enum parse: every member and explicit value extracted. NOTE: incomplete as a claim about all enums — 4 enum declarations live outside this folder (RecommendationEventType.cs, DriverDismissalLog.cs:4,9, WorkUsDeliveryHistory.cs:188), see pathA-A-models-batch04-final
+^Shared/TalabatkApplication/DTO/.*\.cs$	parsed	phase 2-4 DTO parse: property names and types extracted for request/response shape mapping
+/Reports/.*\.Designer\.cs$	parsed	phase 2-5 report-designer parse: bands, controls, data bindings and expressions extracted; swept for embedded SQL — see pathA-B-reports
+\.vsrepx$	parsed	phase 4-1 report-layout parse: data sources and `Expression=` attributes extracted; 4 stored procedures found and each verified to exist in migrations — see pathA-B-reports
+/wwwroot/js/.*\.js$	parsed	phase 8-1 custom-JS parse: the 24 loose custom files in wwwroot/js, vendor bundles excluded
+\.bak$	parsed	phase 5-3 backup parse: diffed against the live file to establish what the .bak predates
+
+# ---------------------------------------------------------------------------
+# agent-read — Path A Step 1. Each line names the report that is the evidence.
+# ---------------------------------------------------------------------------
+^Shared/TalabatkLogic/TalabatkModels/.*\.cs$	agent-read	_inbox/pathA-A-models-batch00.md, -batch01, -batch02, -batch03, -batch04-final — all 212 files read in full; 11 infallible Result<T> factories tabulated, 38 files reclassified as stored-procedure projections
+^Shared/TalabatkLogic/DomainEvents/.*\.cs$	agent-read	_inbox/pathA-C-domainevents.md — all 57 read; raised-vs-handled cross-check over 66 handlers and 2,352 `new` sites found 3 orphans
+^Shared/TalabatkApplication/OrderBuilder/.*\.cs$	agent-read	_inbox/pathA-F-orderbuilder.md — all 14 read; 2 dropped parameters (#449's shape) and the CurrentUICulture leak
+^Shared/TalabatkData/Cassandra/.*\.cs$	agent-read	_inbox/pathA-G-cassandra.md — all 13 read; CassandraInitializer leak, created_at substitution, DDL-failure chain
+^Shared/TalabatkData/ElasticSerarchServices/.*\.(cs|md)$	agent-read	_inbox/pathA-E-elastic.md — 12 read in full, 5 largest pattern-swept then read around hits; SearchScoring.md bridged to code, single-char keyword-case bug found in both search paths
+/Helpers?/.*\.cs$	agent-read	_inbox/pathA-D-helpers.md — all 86 covered; 24 duplicate sets diffed, none byte-identical; 3 stale-shared-copy defects
+^Shared/TalabatkLogic/DomainEventHelpers/.*\.cs$	agent-read	_inbox/pathA-D-helpers.md — AddOrUpdateEvent never updates
+^(AdminUi|TalabatkRestaurants)/[Rr]eports/.*\.cs$	agent-read	_inbox/pathA-B-reports.md — 35 code-behind files read; all but two are a 9-line InitializeComponent template
+# The Path A remainder (group Z) is not a folder — it is 245 files scattered across ~40 directories,
+# so no regex is true of it. The work order's own file list is the record of what was covered, so it
+# is used directly. Placed last in the agent-read block: the specific patterns above claim their
+# files first, and this line picks up exactly the residue.
+@list:_pathA-filelist.txt	agent-read	_inbox/pathA-Z-remainder.md — the 245-file remainder read in full (181 .cs read line by line, 62 non-.cs swept by kind with the sweep target stated per kind, 2 root GeneratedClient files reclassified as excluded). This line also backs the other 503 Path A files, which the patterns above claim first
+
+\.cshtml$	agent-read	_inbox/pathA-views-cshtml.md — all 34 Razor views (3,380 lines) read/swept for server-side rules, permission gates and inline secrets. Found: the Delivery layouts inject ITalabatkContext and run permission queries in the view, failing CLOSED where CustomPermissionFilter fails OPEN on the same three permissions
+^Shared/TalabatkData/Scripts/.*\.sql$	agent-read	_inbox/pathA-views-cshtml.md — the one hand-written seed script read in full (test fixture for the dismissal-settlement flow)
+
+# ---------------------------------------------------------------------------
+# sweep-only — with a stated reason, which is the whole point of Step 4
+# ---------------------------------------------------------------------------
+^AdminUi/ClientApp/src/.*\.html$	sweep-only	phase 3-1 Angular template sweep: swept for validators, *ngIf permission gates and hardcoded rules; individually read only where the sweep flagged one
+^TalabatkRestaurants/ClientApp/src/.*\.html$	sweep-only	phase 3-2 Angular template sweep, same method as 3-1
+\.ts$	sweep-only	phase 3-1/3-2 TypeScript sweep: swept for client-side rule duplication; the Round 5 phase4-TS batches individually read the files the sweep flagged
+/assets/i18n/.*\.json$	sweep-only	phase 3-3: translation key/value pairs; no logic to read
+\.resx$	sweep-only	phase 5-1: resource strings; read only where a message encodes a rule (see WalletTransactionDescriptions for why that matters)
+\.(csproj|sln)$	sweep-only	phase 6-3: project references and target frameworks extracted; used for the group-D legacy-dependency check
+\.(yml|yaml)$	sweep-only	phase 6-1: pipeline steps and secrets scanned
+\.md$	sweep-only	phase 7-1: in-project docs swept for rules contradicting code

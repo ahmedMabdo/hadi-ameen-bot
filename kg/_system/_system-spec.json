@@ -1,0 +1,691 @@
+{
+  "applications": [
+    {
+      "id": "admin",
+      "label": "Admin"
+    },
+    {
+      "id": "customer-ordering",
+      "label": "Customer Ordering"
+    },
+    {
+      "id": "delivery",
+      "label": "Delivery"
+    },
+    {
+      "id": "identity-and-access",
+      "label": "Identity & Access"
+    },
+    {
+      "id": "restaurant-portal",
+      "label": "Restaurant Portal"
+    },
+    {
+      "id": "version-api",
+      "label": "Version API"
+    }
+  ],
+  "cycles": [
+    {
+      "id": "admin-admin-back-office",
+      "label": "Admin Back-Office",
+      "application": "admin"
+    },
+    {
+      "id": "admin-catalog-and-content-administration",
+      "label": "Catalog & Content Administration",
+      "application": "admin"
+    },
+    {
+      "id": "admin-chat-administration",
+      "label": "Chat Administration",
+      "application": "admin"
+    },
+    {
+      "id": "admin-city-and-geography-administration",
+      "label": "City & Geography Administration",
+      "application": "admin"
+    },
+    {
+      "id": "admin-delivery-administration",
+      "label": "Delivery Administration",
+      "application": "admin"
+    },
+    {
+      "id": "admin-erp-and-integrations",
+      "label": "ERP & Integrations",
+      "application": "admin"
+    },
+    {
+      "id": "admin-merchant-administration",
+      "label": "Merchant Administration",
+      "application": "admin"
+    },
+    {
+      "id": "admin-order-and-customer-administration",
+      "label": "Order & Customer Administration",
+      "application": "admin"
+    },
+    {
+      "id": "customer-ordering-cart-and-checkout",
+      "label": "Cart & Checkout",
+      "application": "customer-ordering"
+    },
+    {
+      "id": "customer-ordering-customer-account",
+      "label": "Customer Account",
+      "application": "customer-ordering"
+    },
+    {
+      "id": "customer-ordering-discounts-and-coupons",
+      "label": "Discounts & Coupons",
+      "application": "customer-ordering"
+    },
+    {
+      "id": "customer-ordering-marketing-and-content",
+      "label": "Marketing & Content",
+      "application": "customer-ordering"
+    },
+    {
+      "id": "customer-ordering-ops-and-infra",
+      "label": "Ops & Infra",
+      "application": "customer-ordering"
+    },
+    {
+      "id": "customer-ordering-order-and-fulfilment",
+      "label": "Order & Fulfilment",
+      "application": "customer-ordering"
+    },
+    {
+      "id": "customer-ordering-payments",
+      "label": "Payments",
+      "application": "customer-ordering"
+    },
+    {
+      "id": "customer-ordering-restaurant-and-menu-discovery",
+      "label": "Restaurant & Menu Discovery",
+      "application": "customer-ordering"
+    },
+    {
+      "id": "customer-ordering-support-and-chat",
+      "label": "Support & Chat",
+      "application": "customer-ordering"
+    },
+    {
+      "id": "customer-ordering-tiered-discount",
+      "label": "Tiered Discount",
+      "application": "customer-ordering"
+    },
+    {
+      "id": "delivery-delivery-man-operations",
+      "label": "Delivery Man Operations",
+      "application": "delivery"
+    },
+    {
+      "id": "delivery-delivery-support-and-chat",
+      "label": "Delivery Support & Chat",
+      "application": "delivery"
+    },
+    {
+      "id": "delivery-driver-cash-and-compensation",
+      "label": "Driver Cash & Compensation",
+      "application": "delivery"
+    },
+    {
+      "id": "delivery-ops-and-infra",
+      "label": "Ops & Infra",
+      "application": "delivery"
+    },
+    {
+      "id": "identity-and-access-authentication-and-tokens",
+      "label": "Authentication & Tokens",
+      "application": "identity-and-access"
+    },
+    {
+      "id": "identity-and-access-customer-identity",
+      "label": "Customer Identity",
+      "application": "identity-and-access"
+    },
+    {
+      "id": "identity-and-access-delivery-man-identity",
+      "label": "Delivery Man Identity",
+      "application": "identity-and-access"
+    },
+    {
+      "id": "identity-and-access-ops-and-infra",
+      "label": "Ops & Infra",
+      "application": "identity-and-access"
+    },
+    {
+      "id": "identity-and-access-restaurant-and-admin-user-identity",
+      "label": "Restaurant & Admin User Identity",
+      "application": "identity-and-access"
+    },
+    {
+      "id": "restaurant-portal-menu-and-order-management",
+      "label": "Menu & Order Management",
+      "application": "restaurant-portal"
+    },
+    {
+      "id": "restaurant-portal-merchant-account-and-access",
+      "label": "Merchant Account & Access",
+      "application": "restaurant-portal"
+    },
+    {
+      "id": "restaurant-portal-merchant-finance-and-reporting",
+      "label": "Merchant Finance & Reporting",
+      "application": "restaurant-portal"
+    },
+    {
+      "id": "restaurant-portal-ops-and-infra",
+      "label": "Ops & Infra",
+      "application": "restaurant-portal"
+    }
+  ],
+  "entities": [
+    {
+      "id": "ApiKey",
+      "label": "Api\nKey",
+      "type": "transaction",
+      "module": "admin",
+      "cycles": [
+        "admin-admin-back-office"
+      ],
+      "note": "../Admin/Admin Back-Office/ApiKey.md"
+    },
+    {
+      "id": "Audiance",
+      "label": "Audiance",
+      "type": "transaction",
+      "module": "customer-ordering",
+      "cycles": [
+        "customer-ordering-marketing-and-content"
+      ],
+      "note": "../Admin/Catalog & Content Administration/Audiance.md"
+    },
+    {
+      "id": "BlockedUsersFromCOD",
+      "label": "Blocked\nUsers\nFrom\nCOD",
+      "type": "master",
+      "module": "customer-ordering",
+      "cycles": [
+        "customer-ordering-cart-and-checkout"
+      ],
+      "note": "../Customer Ordering/Cart & Checkout/BlockedUsersFromCOD.md"
+    },
+    {
+      "id": "CartItem",
+      "label": "Cart\nItem",
+      "type": "transaction",
+      "module": "customer-ordering",
+      "cycles": [
+        "customer-ordering-cart-and-checkout"
+      ],
+      "note": "../Customer Ordering/Cart & Checkout/CartItem.md"
+    },
+    {
+      "id": "City",
+      "label": "City",
+      "type": "master",
+      "module": "admin",
+      "cycles": [
+        "admin-city-and-geography-administration"
+      ],
+      "note": "../Admin/City & Geography Administration/City/City.technical.md"
+    },
+    {
+      "id": "CityBreakConfiguration",
+      "label": "City\nBreak\nConfiguration",
+      "type": "master",
+      "module": "admin",
+      "cycles": [
+        "admin-city-and-geography-administration"
+      ],
+      "note": "../Admin/City & Geography Administration/CityBreakConfiguration.md"
+    },
+    {
+      "id": "CityRushTimeConfiguration",
+      "label": "City\nRush\nTime\nConfiguration",
+      "type": "master",
+      "module": "admin",
+      "cycles": [
+        "admin-city-and-geography-administration"
+      ],
+      "note": "../Admin/City & Geography Administration/CityRushTimeConfiguration/CityRushTimeConfiguration.technical.md"
+    },
+    {
+      "id": "Compensation",
+      "label": "Compensation",
+      "type": "financial",
+      "module": "delivery",
+      "cycles": [
+        "delivery-driver-cash-and-compensation"
+      ],
+      "note": "../Delivery/Driver Cash & Compensation/Compensation.md"
+    },
+    {
+      "id": "Configuration",
+      "label": "Configuration",
+      "type": "master",
+      "module": "admin",
+      "cycles": [
+        "admin-admin-back-office"
+      ],
+      "note": "../Admin/Admin Back-Office/Configuration/Configuration.technical.md"
+    },
+    {
+      "id": "Customer",
+      "label": "Customer",
+      "type": "master",
+      "module": "identity-and-access",
+      "cycles": [
+        "identity-and-access-customer-identity"
+      ],
+      "note": "../Identity & Access/Customer Identity/Customer/Customer.technical.md"
+    },
+    {
+      "id": "CustomerAddresses",
+      "label": "Customer\nAddresses",
+      "type": "transaction",
+      "module": "identity-and-access",
+      "cycles": [
+        "identity-and-access-customer-identity"
+      ],
+      "note": "../Identity & Access/Customer Identity/Customer/CustomerAddresses.md"
+    },
+    {
+      "id": "CustomerCart",
+      "label": "Customer\nCart",
+      "type": "master",
+      "module": "customer-ordering",
+      "cycles": [
+        "customer-ordering-cart-and-checkout"
+      ],
+      "note": "../Customer Ordering/Cart & Checkout/CustomerCart/CustomerCart.technical.md"
+    },
+    {
+      "id": "DeliveryBouns",
+      "label": "Delivery\nBouns",
+      "type": "financial",
+      "module": "delivery",
+      "cycles": [
+        "delivery-driver-cash-and-compensation"
+      ],
+      "note": "../Delivery/Driver Cash & Compensation/DeliveryBouns/DeliveryBouns.technical.md"
+    },
+    {
+      "id": "DeliveryMen",
+      "label": "Delivery\nMen",
+      "type": "transaction",
+      "module": "delivery",
+      "cycles": [
+        "delivery-delivery-man-operations"
+      ],
+      "note": "../Identity & Access/Delivery Man Identity/DeliveryMen/DeliveryMen.technical.md"
+    },
+    {
+      "id": "DeliveryZone",
+      "label": "Delivery\nZone",
+      "type": "transaction",
+      "module": "delivery",
+      "cycles": [
+        "delivery-delivery-man-operations"
+      ],
+      "note": "../Delivery/Delivery Man Operations/DeliveryZone.md"
+    },
+    {
+      "id": "DeliverymanTransaction",
+      "label": "Deliveryman\nTransaction",
+      "type": "financial",
+      "module": "delivery",
+      "cycles": [
+        "delivery-delivery-man-operations"
+      ],
+      "note": "../Delivery/Driver Cash & Compensation/DeliverymanTransaction/DeliverymanTransaction.technical.md"
+    },
+    {
+      "id": "LoyaltyPoints",
+      "label": "Loyalty\nPoints",
+      "type": "financial",
+      "module": "customer-ordering",
+      "cycles": [
+        "customer-ordering-discounts-and-coupons"
+      ],
+      "note": "../Identity & Access/Customer Identity/Customer/LoyaltyPoints.md"
+    },
+    {
+      "id": "MenuItem",
+      "label": "Menu\nItem",
+      "type": "transaction",
+      "module": "customer-ordering",
+      "cycles": [
+        "customer-ordering-restaurant-and-menu-discovery"
+      ],
+      "note": "../Customer Ordering/Restaurant & Menu Discovery/MenuItem/MenuItem.technical.md"
+    },
+    {
+      "id": "MenuItemPrice",
+      "label": "Menu\nItem\nPrice",
+      "type": "transaction",
+      "module": "customer-ordering",
+      "cycles": [
+        "customer-ordering-restaurant-and-menu-discovery"
+      ],
+      "note": "../Customer Ordering/Restaurant & Menu Discovery/MenuItem/MenuItemPrice.technical.md"
+    },
+    {
+      "id": "Offers",
+      "label": "Offers",
+      "type": "transaction",
+      "module": "customer-ordering",
+      "cycles": [
+        "customer-ordering-discounts-and-coupons"
+      ],
+      "note": "../Customer Ordering/Restaurant & Menu Discovery/Offers/Offers.technical.md"
+    },
+    {
+      "id": "Order",
+      "label": "Order",
+      "type": "transaction",
+      "module": "customer-ordering",
+      "cycles": [
+        "customer-ordering-order-and-fulfilment"
+      ],
+      "note": "../Customer Ordering/Order & Fulfilment/Order/Order.technical.md"
+    },
+    {
+      "id": "OrderDelivery",
+      "label": "Order\nDelivery",
+      "type": "transaction",
+      "module": "customer-ordering",
+      "cycles": [
+        "customer-ordering-order-and-fulfilment"
+      ],
+      "note": "../Delivery/Delivery Man Operations/OrderDelivery/OrderDelivery.technical.md"
+    },
+    {
+      "id": "OrderDetails",
+      "label": "Order\nDetails",
+      "type": "transaction",
+      "module": "customer-ordering",
+      "cycles": [
+        "customer-ordering-order-and-fulfilment"
+      ],
+      "note": "../Customer Ordering/Order & Fulfilment/OrderDetails.technical.md"
+    },
+    {
+      "id": "OrderRestaurantDetails",
+      "label": "Order\nRestaurant\nDetails",
+      "type": "transaction",
+      "module": "customer-ordering",
+      "cycles": [
+        "customer-ordering-order-and-fulfilment"
+      ],
+      "note": "../Customer Ordering/Order & Fulfilment/OrderRestaurantDetails.md"
+    },
+    {
+      "id": "PaymentMethod",
+      "label": "Payment\nMethod",
+      "type": "financial",
+      "module": "customer-ordering",
+      "cycles": [
+        "customer-ordering-payments"
+      ],
+      "note": "../Admin/Order & Customer Administration/PaymentMethod.md"
+    },
+    {
+      "id": "Permission",
+      "label": "Permission",
+      "type": "master",
+      "module": "identity-and-access",
+      "cycles": [
+        "identity-and-access-restaurant-and-admin-user-identity"
+      ],
+      "note": "../Identity & Access/Restaurant & Admin User Identity/Permission/Permission.technical.md"
+    },
+    {
+      "id": "PromoCodes",
+      "label": "Promo\nCodes",
+      "type": "master",
+      "module": "customer-ordering",
+      "cycles": [
+        "customer-ordering-discounts-and-coupons"
+      ],
+      "note": "../Customer Ordering/Discounts & Coupons/PromoCodes/PromoCodes.technical.md"
+    },
+    {
+      "id": "Restaurant",
+      "label": "Restaurant",
+      "type": "transaction",
+      "module": "customer-ordering",
+      "cycles": [
+        "customer-ordering-restaurant-and-menu-discovery"
+      ],
+      "note": "../Customer Ordering/Restaurant & Menu Discovery/Restaurant/Restaurant.technical.md"
+    },
+    {
+      "id": "RestaurantReview",
+      "label": "Restaurant\nReview",
+      "type": "transaction",
+      "module": "customer-ordering",
+      "cycles": [
+        "customer-ordering-restaurant-and-menu-discovery"
+      ],
+      "note": "../Customer Ordering/Restaurant & Menu Discovery/RestaurantReview.md"
+    },
+    {
+      "id": "StoreTypes",
+      "label": "Store\nTypes",
+      "type": "transaction",
+      "module": "customer-ordering",
+      "cycles": [
+        "customer-ordering-restaurant-and-menu-discovery"
+      ],
+      "note": "../Admin/Catalog & Content Administration/StoreTypes/StoreTypes.technical.md"
+    },
+    {
+      "id": "Vouchers",
+      "label": "Vouchers",
+      "type": "financial",
+      "module": "customer-ordering",
+      "cycles": [
+        "customer-ordering-discounts-and-coupons"
+      ],
+      "note": "../Customer Ordering/Discounts & Coupons/Vouchers/Vouchers.technical.md"
+    },
+    {
+      "id": "WalletTransaction",
+      "label": "Wallet\nTransaction",
+      "type": "financial",
+      "module": "customer-ordering",
+      "cycles": [
+        "customer-ordering-payments"
+      ],
+      "note": "../Identity & Access/Customer Identity/Customer/WalletTransaction.md"
+    },
+    {
+      "id": "TieredDiscount",
+      "label": "Tiered\nDiscount",
+      "type": "transaction",
+      "module": "customer-ordering",
+      "cycles": [
+        "customer-ordering-tiered-discount"
+      ],
+      "note": "../Customer Ordering/Tiered Discount/TieredDiscount/TieredDiscount.technical.md"
+    },
+    {
+      "id": "TieredDiscountTier",
+      "label": "Tiered\nDiscount\nTier",
+      "type": "transaction",
+      "module": "customer-ordering",
+      "cycles": [
+        "customer-ordering-tiered-discount"
+      ],
+      "note": "../Customer Ordering/Tiered Discount/TieredDiscountTier.md"
+    },
+    {
+      "id": "OrderComplaint",
+      "label": "Order\nComplaint",
+      "type": "transaction",
+      "module": "customer-ordering",
+      "cycles": [
+        "customer-ordering-order-and-fulfilment"
+      ],
+      "note": "../Customer Ordering/Order & Fulfilment/OrderComplaint.md"
+    },
+    {
+      "id": "DeliveryAnnouncement",
+      "label": "Delivery\nAnnouncement",
+      "type": "transaction",
+      "module": "delivery",
+      "cycles": [
+        "delivery-delivery-man-operations"
+      ],
+      "note": "../Delivery/Delivery Man Operations/DeliveryAnnouncement/DeliveryAnnouncement.technical.md"
+    },
+    {
+      "id": "DeliveryManNotification",
+      "label": "Delivery\nMan\nNotification",
+      "type": "transaction",
+      "module": "delivery",
+      "cycles": [
+        "delivery-delivery-man-operations"
+      ],
+      "note": "../Delivery/Delivery Man Operations/DeliveryManNotification/DeliveryManNotification.technical.md"
+    }
+  ],
+  "links": [
+    {
+      "source": "TieredDiscount",
+      "target": "TieredDiscountTier",
+      "label": "HAS MANY",
+      "cross": false
+    },
+    {
+      "source": "CustomerCart",
+      "target": "CartItem",
+      "label": "HAS MANY",
+      "cross": false
+    },
+    {
+      "source": "CustomerCart",
+      "target": "TieredDiscount",
+      "label": "LOCKS",
+      "cross": true
+    },
+    {
+      "source": "CartItem",
+      "target": "TieredDiscount",
+      "label": "SELECTS",
+      "cross": true
+    },
+    {
+      "source": "CustomerCart",
+      "target": "PromoCodes",
+      "label": "CHECKOUT READS",
+      "cross": true
+    },
+    {
+      "source": "CustomerCart",
+      "target": "Vouchers",
+      "label": "CHECKOUT READS",
+      "cross": true
+    },
+    {
+      "source": "CustomerCart",
+      "target": "Order",
+      "label": "BECOMES",
+      "cross": true
+    },
+    {
+      "source": "Order",
+      "target": "OrderRestaurantDetails",
+      "label": "HAS MANY",
+      "cross": false
+    },
+    {
+      "source": "PromoCodes",
+      "target": "Order",
+      "label": "APPLIED TO",
+      "cross": true
+    },
+    {
+      "source": "Vouchers",
+      "target": "Order",
+      "label": "APPLIED TO",
+      "cross": true
+    },
+    {
+      "source": "TieredDiscount",
+      "target": "OrderRestaurantDetails",
+      "label": "APPLIED TO",
+      "cross": true
+    },
+    {
+      "source": "Restaurant",
+      "target": "MenuItem",
+      "label": "HAS MENU",
+      "cross": false
+    },
+    {
+      "source": "MenuItem",
+      "target": "CartItem",
+      "label": "SNAPSHOTTED INTO",
+      "cross": true
+    },
+    {
+      "source": "Restaurant",
+      "target": "CartItem",
+      "label": "SNAPSHOTTED INTO",
+      "cross": true
+    },
+    {
+      "source": "TieredDiscount",
+      "target": "Restaurant",
+      "label": "OPTIONALLY SCOPES TO",
+      "cross": true
+    }
+  ],
+  "integrations": [
+    {
+      "source": "customer-ordering",
+      "target": "restaurant-portal",
+      "label": "new-order notification (SignalR); order confirm/cook (shared Order entity)"
+    },
+    {
+      "source": "customer-ordering",
+      "target": "admin",
+      "label": "order/review/chat relay (SignalR); compensation/ERP sync (shared Order entity)"
+    },
+    {
+      "source": "customer-ordering",
+      "target": "delivery",
+      "label": "delivery-man assignment/delivery (shared Order entity)"
+    },
+    {
+      "source": "identity-and-access",
+      "target": "customer-ordering",
+      "label": "token issuance/validation"
+    },
+    {
+      "source": "identity-and-access",
+      "target": "restaurant-portal",
+      "label": "token issuance/validation"
+    },
+    {
+      "source": "identity-and-access",
+      "target": "delivery",
+      "label": "token issuance/validation"
+    },
+    {
+      "source": "identity-and-access",
+      "target": "admin",
+      "label": "token issuance/validation"
+    },
+    {
+      "source": "admin",
+      "target": "customer-ordering",
+      "label": "Tiered Discount campaigns (shared DB, no HTTP)"
+    }
+  ]
+}
